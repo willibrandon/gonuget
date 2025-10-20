@@ -46,6 +46,36 @@ type FrameworkVersion struct {
 	Revision int
 }
 
+// Compare compares two framework versions.
+// Returns -1 if v < other, 0 if v == other, 1 if v > other.
+func (v FrameworkVersion) Compare(other FrameworkVersion) int {
+	if v.Major != other.Major {
+		if v.Major < other.Major {
+			return -1
+		}
+		return 1
+	}
+	if v.Minor != other.Minor {
+		if v.Minor < other.Minor {
+			return -1
+		}
+		return 1
+	}
+	if v.Build != other.Build {
+		if v.Build < other.Build {
+			return -1
+		}
+		return 1
+	}
+	if v.Revision != other.Revision {
+		if v.Revision < other.Revision {
+			return -1
+		}
+		return 1
+	}
+	return 0
+}
+
 // String returns the string representation of the framework.
 func (fw *NuGetFramework) String() string {
 	if fw.originalString != "" {
@@ -320,4 +350,110 @@ func parsePCL(s string) (*NuGetFramework, error) {
 		Profile:        s, // Store the profile string for now
 		originalString: "portable-" + s,
 	}, nil
+}
+
+// IsCompatible checks if this framework is compatible with the target framework.
+//
+// Returns true if a package targeting this framework can be used by the target.
+//
+// Example:
+//
+//	netstandard2.0.IsCompatible(net6.0) → true
+//	net48.IsCompatible(netstandard2.1) → false
+func (f *NuGetFramework) IsCompatible(target *NuGetFramework) bool {
+	if f == nil || target == nil {
+		return false
+	}
+
+	// Same framework and version
+	if f.Framework == target.Framework && f.Version.Compare(target.Version) == 0 {
+		return true
+	}
+
+	// Check framework compatibility rules
+	return isCompatibleWith(f, target)
+}
+
+// isCompatibleWith implements the core compatibility logic.
+func isCompatibleWith(pkg, target *NuGetFramework) bool {
+	// .NET Standard compatibility
+	if pkg.Framework == ".NETStandard" {
+		return isNetStandardCompatible(pkg, target)
+	}
+
+	// .NETCoreApp compatibility
+	if pkg.Framework == ".NETCoreApp" && target.Framework == ".NETCoreApp" {
+		// Higher or equal .NET Core version
+		return pkg.Version.Compare(target.Version) <= 0
+	}
+
+	// .NETFramework compatibility
+	if pkg.Framework == ".NETFramework" && target.Framework == ".NETFramework" {
+		// Higher or equal .NET Framework version
+		return pkg.Version.Compare(target.Version) <= 0
+	}
+
+	// .NET 5+ unified platform (treat as .NETCoreApp for compatibility)
+	if pkg.Framework == ".NETCoreApp" && target.Framework == ".NETCoreApp" {
+		if pkg.Version.Major >= 5 && target.Version.Major >= 5 {
+			return pkg.Version.Compare(target.Version) <= 0
+		}
+	}
+
+	return false
+}
+
+// isNetStandardCompatible checks .NET Standard compatibility with target.
+func isNetStandardCompatible(nsPackage, target *NuGetFramework) bool {
+	nsVersion := nsPackage.Version
+
+	// .NET Standard → .NET Framework
+	if target.Framework == ".NETFramework" {
+		return isNetStandardCompatibleWithFramework(nsVersion, target.Version)
+	}
+
+	// .NET Standard → .NET Core
+	if target.Framework == ".NETCoreApp" {
+		return isNetStandardCompatibleWithCoreApp(nsVersion, target.Version)
+	}
+
+	// .NET Standard → .NET 5+
+	if target.Framework == ".NETCoreApp" && target.Version.Major >= 5 {
+		// .NET 5+ supports .NET Standard 2.1
+		return nsVersion.Major <= 2 && (nsVersion.Major < 2 || nsVersion.Minor <= 1)
+	}
+
+	// .NET Standard → .NET Standard (same or lower)
+	if target.Framework == ".NETStandard" {
+		return nsVersion.Compare(target.Version) <= 0
+	}
+
+	return false
+}
+
+// isNetStandardCompatibleWithFramework checks .NET Standard → .NET Framework compatibility.
+func isNetStandardCompatibleWithFramework(nsVersion, netVersion FrameworkVersion) bool {
+	// .NET Standard 2.1 is NOT compatible with any .NET Framework
+	if nsVersion.Major == 2 && nsVersion.Minor == 1 {
+		return false
+	}
+
+	// Use lookup table with struct key (zero allocations)
+	minVer, ok := NetStandardCompatibilityTable[versionKey{nsVersion.Major, nsVersion.Minor}]
+	if !ok {
+		return false
+	}
+
+	return netVersion.Compare(minVer) >= 0
+}
+
+// isNetStandardCompatibleWithCoreApp checks .NET Standard → .NET Core compatibility.
+func isNetStandardCompatibleWithCoreApp(nsVersion, coreVersion FrameworkVersion) bool {
+	// Use lookup table with struct key (zero allocations)
+	minVer, ok := NetStandardToCoreAppTable[versionKey{nsVersion.Major, nsVersion.Minor}]
+	if !ok {
+		return false
+	}
+
+	return coreVersion.Compare(minVer) >= 0
 }

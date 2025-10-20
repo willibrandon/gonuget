@@ -23,23 +23,24 @@ func TestFrameworkCompatibilityMap(t *testing.T) {
 
 func TestNetStandardCompatibilityTable(t *testing.T) {
 	tests := []struct {
-		nsVersion string
-		minNet    string
+		nsMajor int
+		nsMinor int
+		minNet  FrameworkVersion
 	}{
-		{"1.0", "4.5"},
-		{"1.2", "4.5.1"},
-		{"1.3", "4.6"},
-		{"2.0", "4.6.1"},
+		{1, 0, FrameworkVersion{4, 5, 0, 0}},
+		{1, 2, FrameworkVersion{4, 5, 1, 0}},
+		{1, 3, FrameworkVersion{4, 6, 0, 0}},
+		{2, 0, FrameworkVersion{4, 6, 1, 0}},
 	}
 
 	for _, tt := range tests {
-		got, ok := NetStandardCompatibilityTable[tt.nsVersion]
+		got, ok := NetStandardCompatibilityTable[versionKey{tt.nsMajor, tt.nsMinor}]
 		if !ok {
-			t.Errorf("netStandard %s not in table", tt.nsVersion)
+			t.Errorf("netStandard %d.%d not in table", tt.nsMajor, tt.nsMinor)
 			continue
 		}
-		if got != tt.minNet {
-			t.Errorf("netStandard%s maps to %s, want %s", tt.nsVersion, got, tt.minNet)
+		if got.Compare(tt.minNet) != 0 {
+			t.Errorf("netStandard %d.%d maps to %v, want %v", tt.nsMajor, tt.nsMinor, got, tt.minNet)
 		}
 	}
 }
@@ -47,7 +48,7 @@ func TestNetStandardCompatibilityTable(t *testing.T) {
 func TestNetStandard21NotCompatibleWithFramework(t *testing.T) {
 	// .NET Standard 2.1 should NOT be in the table
 	// (not compatible with any .NET Framework version)
-	_, ok := NetStandardCompatibilityTable["2.1"]
+	_, ok := NetStandardCompatibilityTable[versionKey{2, 1}]
 	if ok {
 		t.Error(".NET Standard 2.1 should NOT be compatible with .NET Framework")
 	}

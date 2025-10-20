@@ -20,36 +20,42 @@ var FrameworkCompatibilityMap = map[string][]string{
 	},
 }
 
+// versionKey is a zero-allocation version key for map lookups.
+type versionKey struct {
+	Major int
+	Minor int
+}
+
 // NetStandardCompatibilityTable defines .NET Standard → .NET Framework version mappings.
 // Maps .NET Standard version to minimum .NET Framework version.
 //
 // Source: DefaultFrameworkMappings.cs
-var NetStandardCompatibilityTable = map[string]string{
-	"1.0": "4.5",
-	"1.1": "4.5",
-	"1.2": "4.5.1",
-	"1.3": "4.6",
-	"1.4": "4.6.1",
-	"1.5": "4.6.1",
-	"1.6": "4.6.1",
-	"2.0": "4.6.1",
+var NetStandardCompatibilityTable = map[versionKey]FrameworkVersion{
+	{1, 0}: {4, 5, 0, 0},
+	{1, 1}: {4, 5, 0, 0},
+	{1, 2}: {4, 5, 1, 0},
+	{1, 3}: {4, 6, 0, 0},
+	{1, 4}: {4, 6, 1, 0},
+	{1, 5}: {4, 6, 1, 0},
+	{1, 6}: {4, 6, 1, 0},
+	{2, 0}: {4, 6, 1, 0},
 	// 2.1 is NOT compatible with any .NET Framework version
 }
 
 // NetStandardToCoreAppTable defines .NET Standard → .NET Core version mappings.
 //
 // Source: DefaultFrameworkMappings.cs
-var NetStandardToCoreAppTable = map[string]string{
-	"1.0": "1.0",
-	"1.1": "1.0",
-	"1.2": "1.0",
-	"1.3": "1.0",
-	"1.4": "1.0",
-	"1.5": "1.0",
-	"1.6": "1.0", // NetCoreApp1.0 supports NetStandard1.6
-	"1.7": "1.1", // NetCoreApp1.1 supports NetStandard1.7
-	"2.0": "2.0", // NetCoreApp2.0 supports NetStandard2.0
-	"2.1": "3.0", // NetCoreApp3.0 supports NetStandard2.1
+var NetStandardToCoreAppTable = map[versionKey]FrameworkVersion{
+	{1, 0}: {1, 0, 0, 0},
+	{1, 1}: {1, 0, 0, 0},
+	{1, 2}: {1, 0, 0, 0},
+	{1, 3}: {1, 0, 0, 0},
+	{1, 4}: {1, 0, 0, 0},
+	{1, 5}: {1, 0, 0, 0},
+	{1, 6}: {1, 0, 0, 0}, // NetCoreApp1.0 supports NetStandard1.6
+	{1, 7}: {1, 1, 0, 0}, // NetCoreApp1.1 supports NetStandard1.7
+	{2, 0}: {2, 0, 0, 0}, // NetCoreApp2.0 supports NetStandard2.0
+	{2, 1}: {3, 0, 0, 0}, // NetCoreApp3.0 supports NetStandard2.1
 }
 
 // FrameworkToNetStandardTable maps various frameworks to their .NET Standard support.
