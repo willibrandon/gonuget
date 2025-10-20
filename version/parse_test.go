@@ -154,3 +154,100 @@ func TestMustParse(t *testing.T) {
 	}()
 	MustParse("invalid")
 }
+
+func TestParse_Legacy(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  *NuGetVersion
+	}{
+		{
+			name:  "4-part version",
+			input: "1.0.0.0",
+			want: &NuGetVersion{
+				Major:           1,
+				Minor:           0,
+				Patch:           0,
+				Revision:        0,
+				IsLegacyVersion: true,
+				originalString:  "1.0.0.0",
+			},
+		},
+		{
+			name:  "4-part with non-zero revision",
+			input: "2.5.3.1",
+			want: &NuGetVersion{
+				Major:           2,
+				Minor:           5,
+				Patch:           3,
+				Revision:        1,
+				IsLegacyVersion: true,
+				originalString:  "2.5.3.1",
+			},
+		},
+		{
+			name:  "4-part with all non-zero",
+			input: "10.20.30.40",
+			want: &NuGetVersion{
+				Major:           10,
+				Minor:           20,
+				Patch:           30,
+				Revision:        40,
+				IsLegacyVersion: true,
+				originalString:  "10.20.30.40",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := Parse(tt.input)
+			if err != nil {
+				t.Errorf("Parse() error = %v", err)
+				return
+			}
+
+			if got.Major != tt.want.Major {
+				t.Errorf("Major = %v, want %v", got.Major, tt.want.Major)
+			}
+			if got.Minor != tt.want.Minor {
+				t.Errorf("Minor = %v, want %v", got.Minor, tt.want.Minor)
+			}
+			if got.Patch != tt.want.Patch {
+				t.Errorf("Patch = %v, want %v", got.Patch, tt.want.Patch)
+			}
+			if got.Revision != tt.want.Revision {
+				t.Errorf("Revision = %v, want %v", got.Revision, tt.want.Revision)
+			}
+			if got.IsLegacyVersion != tt.want.IsLegacyVersion {
+				t.Errorf("IsLegacyVersion = %v, want %v", got.IsLegacyVersion, tt.want.IsLegacyVersion)
+			}
+		})
+	}
+}
+
+func TestParse_Legacy_String(t *testing.T) {
+	// Test that legacy versions format correctly
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{"1.0.0.0", "1.0.0.0"},
+		{"2.5.3.1", "2.5.3.1"},
+		{"10.20.30.40", "10.20.30.40"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			v, err := Parse(tt.input)
+			if err != nil {
+				t.Fatalf("Parse() error = %v", err)
+			}
+
+			got := v.String()
+			if got != tt.expected {
+				t.Errorf("String() = %q, want %q", got, tt.expected)
+			}
+		})
+	}
+}
