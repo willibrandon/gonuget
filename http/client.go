@@ -140,12 +140,25 @@ func (c *Client) DoWithRetry(ctx context.Context, req *http.Request) (*http.Resp
 
 		// Don't sleep after last attempt
 		if attempt < c.retryConfig.MaxRetries {
+			var backoff time.Duration
+
+			// Check for Retry-After header
+			if resp != nil {
+				retryAfter := ParseRetryAfter(resp.Header.Get("Retry-After"))
+				if retryAfter > 0 {
+					backoff = retryAfter
+				}
+			}
+
+			// Fall back to exponential backoff if no Retry-After
+			if backoff == 0 {
+				backoff = c.retryConfig.CalculateBackoff(attempt)
+			}
+
 			// Close response body before retry
 			if resp != nil {
 				resp.Body.Close()
 			}
-
-			backoff := c.retryConfig.CalculateBackoff(attempt)
 
 			select {
 			case <-time.After(backoff):

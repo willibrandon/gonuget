@@ -196,3 +196,142 @@ func TestClient_DoWithRetry_NonRetriableError(t *testing.T) {
 		t.Errorf("StatusCode = %d, want 404", resp.StatusCode)
 	}
 }
+
+func TestParseRetryAfter(t *testing.T) {
+	tests := []struct {
+		name        string
+		headerValue string
+		wantMin     time.Duration
+		wantMax     time.Duration
+	}{
+		{
+			name:        "empty",
+			headerValue: "",
+			wantMin:     0,
+			wantMax:     0,
+		},
+		{
+			name:        "delay-seconds",
+			headerValue: "120",
+			wantMin:     120 * time.Second,
+			wantMax:     120 * time.Second,
+		},
+		{
+			name:        "delay-seconds with whitespace",
+			headerValue: "  60  ",
+			wantMin:     60 * time.Second,
+			wantMax:     60 * time.Second,
+		},
+		{
+			name:        "negative seconds",
+			headerValue: "-10",
+			wantMin:     0,
+			wantMax:     0,
+		},
+		{
+			name:        "capped at 5 minutes",
+			headerValue: "600",
+			wantMin:     300 * time.Second,
+			wantMax:     300 * time.Second,
+		},
+		{
+			name:        "HTTP-date RFC1123",
+			headerValue: time.Now().Add(30 * time.Second).Format(time.RFC1123),
+			wantMin:     29 * time.Second,
+			wantMax:     31 * time.Second,
+		},
+		{
+			name:        "HTTP-date in past",
+			headerValue: time.Now().Add(-30 * time.Second).Format(time.RFC1123),
+			wantMin:     0,
+			wantMax:     0,
+		},
+		{
+			name:        "invalid format",
+			headerValue: "invalid",
+			wantMin:     0,
+			wantMax:     0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := ParseRetryAfter(tt.headerValue)
+			if got < tt.wantMin || got > tt.wantMax {
+				t.Errorf("ParseRetryAfter(%q) = %v, want between %v and %v",
+					tt.headerValue, got, tt.wantMin, tt.wantMax)
+			}
+		})
+	}
+}
+
+func TestClient_DoWithRetry_RetryAfterHeader(t *testing.T) {
+	var attempts int32
+	start := time.Now()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempt := atomic.AddInt32(&attempts, 1)
+		if attempt < 2 {
+			w.Header().Set("Retry-After", "1")
+			w.WriteHeader(http.StatusTooManyRequests)
+		} else {
+			w.WriteHeader(http.StatusOK)
+		}
+	}))
+	defer server.Close()
+
+	client := NewClient(nil)
+	ctx := context.Background()
+
+	req, _ := http.NewRequest("GET", server.URL, nil)
+	resp, err := client.DoWithRetry(ctx, req)
+	if err != nil {
+		t.Fatalf("DoWithRetry() error = %v", err)
+	}
+	defer resp.Body.Close()
+
+	elapsed := time.Since(start)
+
+	// Should have waited at least 1 second due to Retry-After
+	if elapsed < 1*time.Second {
+		t.Errorf("elapsed = %v, want >= 1s", elapsed)
+	}
+
+	if attempts != 2 {
+		t.Errorf("attempts = %d, want 2", attempts)
+	}
+}
+
+func TestClient_DoWithRetry_RetryAfterHTTPDate(t *testing.T) {
+	var attempts int32
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempt := atomic.AddInt32(&attempts, 1)
+		if attempt < 2 {
+			retryTime := time.Now().Add(500 * time.Millisecond)
+			w.Header().Set("Retry-After", retryTime.Format(time.RFC1123))
+			w.WriteHeader(http.StatusServiceUnavailable)
+		} else {
+			w.WriteHeader(http.StatusOK)
+		}
+	}))
+	defer server.Close()
+
+	client := NewClient(nil)
+	ctx := context.Background()
+
+	req, _ := http.NewRequest("GET", server.URL, nil)
+	start := time.Now()
+	resp, err := client.DoWithRetry(ctx, req)
+	if err != nil {
+		t.Fatalf("DoWithRetry() error = %v", err)
+	}
+	defer resp.Body.Close()
+
+	elapsed := time.Since(start)
+
+	// Should have waited at least 500ms
+	if elapsed < 400*time.Millisecond {
+		t.Errorf("elapsed = %v, want >= 400ms", elapsed)
+	}
+}

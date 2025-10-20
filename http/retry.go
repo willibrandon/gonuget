@@ -7,6 +7,8 @@ import (
 	"math/rand"
 	"net"
 	"net/http"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
 )
@@ -97,4 +99,49 @@ func (rc *RetryConfig) CalculateBackoff(attempt int) time.Duration {
 	}
 
 	return time.Duration(backoff)
+}
+
+// ParseRetryAfter parses the Retry-After header value
+// Returns duration to wait, or 0 if header is invalid/missing
+// Supports both delay-seconds (int) and HTTP-date formats
+func ParseRetryAfter(headerValue string) time.Duration {
+	if headerValue == "" {
+		return 0
+	}
+
+	// Try parsing as delay-seconds (integer)
+	if seconds, err := strconv.Atoi(strings.TrimSpace(headerValue)); err == nil {
+		if seconds < 0 {
+			return 0
+		}
+		// Cap at 5 minutes for safety
+		if seconds > 300 {
+			seconds = 300
+		}
+		return time.Duration(seconds) * time.Second
+	}
+
+	// Try parsing as HTTP-date (RFC1123, RFC850, ANSI C)
+	formats := []string{
+		time.RFC1123,
+		time.RFC1123Z,
+		time.RFC850,
+		time.ANSIC,
+	}
+
+	for _, format := range formats {
+		if t, err := time.Parse(format, strings.TrimSpace(headerValue)); err == nil {
+			duration := time.Until(t)
+			if duration < 0 {
+				return 0
+			}
+			// Cap at 5 minutes for safety
+			if duration > 5*time.Minute {
+				duration = 5 * time.Minute
+			}
+			return duration
+		}
+	}
+
+	return 0
 }
