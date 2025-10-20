@@ -150,12 +150,12 @@ func TestNuGetFramework_String(t *testing.T) {
 
 func TestParseFramework_PlatformVersions(t *testing.T) {
 	tests := []struct {
-		name                string
-		tfm                 string
-		wantPlatform        string
-		wantPlatformMajor   int
-		wantPlatformMinor   int
-		wantErr             bool
+		name              string
+		tfm               string
+		wantPlatform      string
+		wantPlatformMajor int
+		wantPlatformMinor int
+		wantErr           bool
 	}{
 		{"android with version", "net6.0-android31.0", "android", 31, 0, false},
 		{"ios with version", "net6.0-ios15.0", "ios", 15, 0, false},

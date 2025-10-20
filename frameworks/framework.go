@@ -64,17 +64,18 @@ func (fw *NuGetFramework) format() string {
 // ParseFramework parses a TFM string into a NuGetFramework.
 //
 // Supported formats:
-//   net10.0          - .NET 10.0 (.NETCoreApp)
-//   net9.0           - .NET 9.0 (.NETCoreApp)
-//   net8.0           - .NET 8.0 (.NETCoreApp)
-//   net5.0           - .NET 5.0 (.NETCoreApp)
-//   netstandard2.1   - .NET Standard 2.1
-//   netcoreapp3.1    - .NET Core 3.1
-//   net481           - .NET Framework 4.8.1 (compact: 3-digit)
-//   net48            - .NET Framework 4.8 (compact: 2-digit)
-//   net4721          - .NET Framework 4.7.2.1 (compact: 4-digit)
-//   net6.0-windows   - .NET 6.0 for Windows (platform-specific)
-//   portable-net45+win8  - PCL Profile
+//
+//	net10.0          - .NET 10.0 (.NETCoreApp)
+//	net9.0           - .NET 9.0 (.NETCoreApp)
+//	net8.0           - .NET 8.0 (.NETCoreApp)
+//	net5.0           - .NET 5.0 (.NETCoreApp)
+//	netstandard2.1   - .NET Standard 2.1
+//	netcoreapp3.1    - .NET Core 3.1
+//	net481           - .NET Framework 4.8.1 (compact: 3-digit)
+//	net48            - .NET Framework 4.8 (compact: 2-digit)
+//	net4721          - .NET Framework 4.7.2.1 (compact: 4-digit)
+//	net6.0-windows   - .NET 6.0 for Windows (platform-specific)
+//	portable-net45+win8  - PCL Profile
 //
 // .NET 5+ (net5.0, net6.0, etc.) maps to .NETCoreApp.
 // .NET Framework 4.x and below (net48, net472, etc.) maps to .NETFramework.
