@@ -179,3 +179,162 @@ func parseReleaseLabels(s string) []string {
 	}
 	return strings.Split(s, ".")
 }
+
+// Compare compares two NuGet versions.
+//
+// Returns:
+//
+//	-1 if v < other
+//	 0 if v == other
+//	 1 if v > other
+//
+// Comparison follows NuGet SemVer 2.0 rules:
+//  1. Compare Major, Minor, Patch numerically
+//  2. For legacy versions, compare Revision
+//  3. Release version > Prerelease version
+//  4. Compare prerelease labels lexicographically
+//  5. Metadata is ignored in comparison
+func (v *NuGetVersion) Compare(other *NuGetVersion) int {
+	if v == nil && other == nil {
+		return 0
+	}
+	if v == nil {
+		return -1
+	}
+	if other == nil {
+		return 1
+	}
+
+	// Compare major
+	if v.Major != other.Major {
+		return intCompare(v.Major, other.Major)
+	}
+
+	// Compare minor
+	if v.Minor != other.Minor {
+		return intCompare(v.Minor, other.Minor)
+	}
+
+	// Compare patch
+	if v.Patch != other.Patch {
+		return intCompare(v.Patch, other.Patch)
+	}
+
+	// Compare revision (only if both are legacy versions)
+	if v.IsLegacyVersion && other.IsLegacyVersion {
+		if v.Revision != other.Revision {
+			return intCompare(v.Revision, other.Revision)
+		}
+	}
+
+	// Compare release labels
+	return compareReleaseLabels(v.ReleaseLabels, other.ReleaseLabels)
+}
+
+// Equals returns true if v equals other.
+func (v *NuGetVersion) Equals(other *NuGetVersion) bool {
+	return v.Compare(other) == 0
+}
+
+// LessThan returns true if v < other.
+func (v *NuGetVersion) LessThan(other *NuGetVersion) bool {
+	return v.Compare(other) < 0
+}
+
+// LessThanOrEqual returns true if v <= other.
+func (v *NuGetVersion) LessThanOrEqual(other *NuGetVersion) bool {
+	return v.Compare(other) <= 0
+}
+
+// GreaterThan returns true if v > other.
+func (v *NuGetVersion) GreaterThan(other *NuGetVersion) bool {
+	return v.Compare(other) > 0
+}
+
+// GreaterThanOrEqual returns true if v >= other.
+func (v *NuGetVersion) GreaterThanOrEqual(other *NuGetVersion) bool {
+	return v.Compare(other) >= 0
+}
+
+// intCompare compares two integers.
+func intCompare(a, b int) int {
+	if a < b {
+		return -1
+	}
+	if a > b {
+		return 1
+	}
+	return 0
+}
+
+// compareReleaseLabels compares prerelease labels.
+//
+// Rules:
+//   - No labels (release) > with labels (prerelease)
+//   - Numeric labels < alphanumeric labels
+//   - Longer label list > shorter (if all previous labels equal)
+func compareReleaseLabels(a, b []string) int {
+	// Release version (no labels) is greater than prerelease
+	if len(a) == 0 && len(b) == 0 {
+		return 0
+	}
+	if len(a) == 0 {
+		return 1 // a is release, b is prerelease
+	}
+	if len(b) == 0 {
+		return -1 // a is prerelease, b is release
+	}
+
+	// Compare label by label
+	minLen := len(a)
+	if len(b) < minLen {
+		minLen = len(b)
+	}
+
+	for i := 0; i < minLen; i++ {
+		result := compareLabel(a[i], b[i])
+		if result != 0 {
+			return result
+		}
+	}
+
+	// If all labels equal, longer list is greater
+	return intCompare(len(a), len(b))
+}
+
+// compareLabel compares two prerelease labels.
+//
+// Numeric labels are compared numerically and are less than alphanumeric labels.
+func compareLabel(a, b string) int {
+	aNum, aIsNum := parseAsInt(a)
+	bNum, bIsNum := parseAsInt(b)
+
+	if aIsNum && bIsNum {
+		return intCompare(aNum, bNum)
+	}
+
+	if aIsNum {
+		return -1 // numeric < alphanumeric
+	}
+	if bIsNum {
+		return 1 // alphanumeric > numeric
+	}
+
+	// Both alphanumeric, compare lexicographically
+	if a < b {
+		return -1
+	}
+	if a > b {
+		return 1
+	}
+	return 0
+}
+
+// parseAsInt tries to parse string as int.
+func parseAsInt(s string) (int, bool) {
+	n, err := strconv.Atoi(s)
+	if err != nil {
+		return 0, false
+	}
+	return n, true
+}

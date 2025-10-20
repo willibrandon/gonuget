@@ -18,6 +18,9 @@ dist/
 *.coverprofile
 coverage.html
 
+# Profiling
+*.prof
+
 # IDEs
 .vscode/
 .idea/
