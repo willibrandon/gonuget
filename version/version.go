@@ -83,6 +83,40 @@ func (v *NuGetVersion) format() string {
 	return s
 }
 
+// ToNormalizedString returns the normalized version string.
+//
+// Normalization rules:
+//   - Remove leading zeros: 1.01.1 → 1.1.1
+//   - Legacy 4-part versions preserve all parts: 1.0.0.0 → 1.0.0.0
+//   - SemVer versions omit trailing zeros: 1.0.0 → 1.0.0
+//   - Prerelease labels preserved: 1.0.0-beta → 1.0.0-beta
+//   - Metadata preserved: 1.0.0+build → 1.0.0+build
+func (v *NuGetVersion) ToNormalizedString() string {
+	if v.IsLegacyVersion {
+		// Legacy versions: preserve 4-part format
+		return fmt.Sprintf("%d.%d.%d.%d", v.Major, v.Minor, v.Patch, v.Revision)
+	}
+
+	// SemVer format
+	s := fmt.Sprintf("%d.%d.%d", v.Major, v.Minor, v.Patch)
+
+	if len(v.ReleaseLabels) > 0 {
+		s += "-"
+		for i, label := range v.ReleaseLabels {
+			if i > 0 {
+				s += "."
+			}
+			s += label
+		}
+	}
+
+	if v.Metadata != "" {
+		s += "+" + v.Metadata
+	}
+
+	return s
+}
+
 // Parse parses a version string into a NuGetVersion.
 //
 // Supported formats:
@@ -122,7 +156,7 @@ func Parse(s string) (*NuGetVersion, error) {
 
 	// Parse the numeric version parts
 	numbers := strings.Split(numberPart, ".")
-	if len(numbers) < 2 || len(numbers) > 4 {
+	if len(numbers) < 1 || len(numbers) > 4 {
 		return nil, fmt.Errorf("invalid version format: %q", s)
 	}
 
@@ -133,12 +167,14 @@ func Parse(s string) (*NuGetVersion, error) {
 	}
 	v.Major = major
 
-	// Parse minor
-	minor, err := strconv.Atoi(numbers[1])
-	if err != nil || minor < 0 {
-		return nil, fmt.Errorf("invalid minor version: %q", numbers[1])
+	// Parse minor (default to 0 if not present)
+	if len(numbers) >= 2 {
+		minor, err := strconv.Atoi(numbers[1])
+		if err != nil || minor < 0 {
+			return nil, fmt.Errorf("invalid minor version: %q", numbers[1])
+		}
+		v.Minor = minor
 	}
-	v.Minor = minor
 
 	// Parse patch (or build)
 	if len(numbers) >= 3 {

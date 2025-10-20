@@ -77,6 +77,16 @@ func TestParse(t *testing.T) {
 			},
 		},
 		{
+			name:  "major only",
+			input: "1",
+			want: &NuGetVersion{
+				Major:          1,
+				Minor:          0,
+				Patch:          0,
+				originalString: "1",
+			},
+		},
+		{
 			name:    "empty string",
 			input:   "",
 			wantErr: true,
@@ -84,11 +94,6 @@ func TestParse(t *testing.T) {
 		{
 			name:    "invalid format - too many parts",
 			input:   "1.2.3.4.5",
-			wantErr: true,
-		},
-		{
-			name:    "invalid format - single number",
-			input:   "1",
 			wantErr: true,
 		},
 		{
