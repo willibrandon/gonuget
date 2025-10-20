@@ -21,9 +21,10 @@ const (
 
 // Client wraps http.Client with NuGet-specific configuration
 type Client struct {
-	httpClient *http.Client
-	userAgent  string
-	timeout    time.Duration
+	httpClient  *http.Client
+	userAgent   string
+	timeout     time.Duration
+	retryConfig *RetryConfig
 }
 
 // Config holds HTTP client configuration
@@ -34,6 +35,7 @@ type Config struct {
 	TLSConfig    *tls.Config
 	MaxIdleConns int
 	EnableHTTP2  bool
+	RetryConfig  *RetryConfig
 }
 
 // DefaultConfig returns a client configuration with sensible defaults
@@ -44,6 +46,7 @@ func DefaultConfig() *Config {
 		UserAgent:    DefaultUserAgent,
 		MaxIdleConns: 100,
 		EnableHTTP2:  true,
+		RetryConfig:  DefaultRetryConfig(),
 	}
 }
 
@@ -51,6 +54,9 @@ func DefaultConfig() *Config {
 func NewClient(cfg *Config) *Client {
 	if cfg == nil {
 		cfg = DefaultConfig()
+	}
+	if cfg.RetryConfig == nil {
+		cfg.RetryConfig = DefaultRetryConfig()
 	}
 
 	transport := &http.Transport{
@@ -71,8 +77,9 @@ func NewClient(cfg *Config) *Client {
 			Transport: transport,
 			Timeout:   cfg.Timeout,
 		},
-		userAgent: cfg.UserAgent,
-		timeout:   cfg.Timeout,
+		userAgent:   cfg.UserAgent,
+		timeout:     cfg.Timeout,
+		retryConfig: cfg.RetryConfig,
 	}
 }
 
@@ -100,6 +107,60 @@ func (c *Client) Get(ctx context.Context, url string) (*http.Response, error) {
 // SetUserAgent updates the client's user agent string
 func (c *Client) SetUserAgent(ua string) {
 	c.userAgent = ua
+}
+
+// DoWithRetry executes an HTTP request with retry logic
+func (c *Client) DoWithRetry(ctx context.Context, req *http.Request) (*http.Response, error) {
+	var lastErr error
+	var resp *http.Response
+
+	for attempt := 0; attempt <= c.retryConfig.MaxRetries; attempt++ {
+		// Clone request for retry (body may have been consumed)
+		reqClone := req.Clone(ctx)
+		if req.Header.Get("User-Agent") == "" {
+			reqClone.Header.Set("User-Agent", c.userAgent)
+		}
+
+		resp, lastErr = c.httpClient.Do(reqClone)
+
+		// Success
+		if lastErr == nil && !IsRetriableStatus(resp.StatusCode) {
+			return resp, nil
+		}
+
+		// Check if error is retriable
+		if lastErr != nil && !IsRetriable(lastErr) {
+			return nil, lastErr
+		}
+
+		// Check if status is retriable
+		if resp != nil && !IsRetriableStatus(resp.StatusCode) {
+			return resp, nil
+		}
+
+		// Don't sleep after last attempt
+		if attempt < c.retryConfig.MaxRetries {
+			// Close response body before retry
+			if resp != nil {
+				resp.Body.Close()
+			}
+
+			backoff := c.retryConfig.CalculateBackoff(attempt)
+
+			select {
+			case <-time.After(backoff):
+				// Continue to next attempt
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
+		}
+	}
+
+	if lastErr != nil {
+		return nil, fmt.Errorf("after %d retries: %w", c.retryConfig.MaxRetries, lastErr)
+	}
+
+	return resp, nil
 }
 
 // Option is a functional option for configuring the client
@@ -130,6 +191,23 @@ func WithTLSConfig(tlsCfg *tls.Config) Option {
 func WithMaxIdleConns(n int) Option {
 	return func(cfg *Config) {
 		cfg.MaxIdleConns = n
+	}
+}
+
+// WithRetryConfig sets custom retry configuration
+func WithRetryConfig(retryCfg *RetryConfig) Option {
+	return func(cfg *Config) {
+		cfg.RetryConfig = retryCfg
+	}
+}
+
+// WithMaxRetries sets the maximum number of retries
+func WithMaxRetries(n int) Option {
+	return func(cfg *Config) {
+		if cfg.RetryConfig == nil {
+			cfg.RetryConfig = DefaultRetryConfig()
+		}
+		cfg.RetryConfig.MaxRetries = n
 	}
 }
 
