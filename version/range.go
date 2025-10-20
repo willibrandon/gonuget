@@ -48,6 +48,16 @@ func ParseVersionRange(s string) (*VersionRange, error) {
 	}, nil
 }
 
+// MustParseRange parses a version range string and panics on error.
+// Use this only when you know the range string is valid.
+func MustParseRange(s string) *VersionRange {
+	r, err := ParseVersionRange(s)
+	if err != nil {
+		panic(err)
+	}
+	return r
+}
+
 // parseRangeSyntax parses bracket range syntax like [1.0, 2.0).
 func parseRangeSyntax(s string) (*VersionRange, error) {
 	// Determine inclusive/exclusive from brackets
