@@ -138,3 +138,10 @@ type PackageType struct {
 	Name    string `json:"name"`
 	Version string `json:"version,omitempty"`
 }
+
+// AutocompleteResponse represents the response from autocomplete API.
+type AutocompleteResponse struct {
+	TotalHits int         `json:"totalHits"`
+	Data      []string    `json:"data"`
+	Context   interface{} `json:"@context,omitempty"`
+}
