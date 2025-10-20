@@ -2,7 +2,7 @@
 
 ## Project Vision
 
-Build the **definitive NuGet client library for Go** that meets and exceeds the official C# NuGet.Client in functionality, performance, and developer experience. This library will be the foundation for LazyNuGet and any other Go tools that need to interact with NuGet feeds.
+Build a **comprehensive NuGet client library for Go** that meets and exceeds the official C# NuGet.Client in functionality, performance, and developer experience. This library will be the foundation for LazyNuGet and any other Go tools that need to interact with NuGet feeds.
 
 ---
 
