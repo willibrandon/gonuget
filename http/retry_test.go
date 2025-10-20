@@ -308,7 +308,9 @@ func TestClient_DoWithRetry_RetryAfterHTTPDate(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		attempt := atomic.AddInt32(&attempts, 1)
 		if attempt < 2 {
-			retryTime := time.Now().Add(500 * time.Millisecond)
+			// Use 3 seconds to avoid RFC1123 precision loss (seconds only, no milliseconds)
+			// RFC1123 truncates sub-second precision, so actual wait may be slightly less
+			retryTime := time.Now().Add(3 * time.Second)
 			w.Header().Set("Retry-After", retryTime.Format(time.RFC1123))
 			w.WriteHeader(http.StatusServiceUnavailable)
 		} else {
@@ -330,8 +332,9 @@ func TestClient_DoWithRetry_RetryAfterHTTPDate(t *testing.T) {
 
 	elapsed := time.Since(start)
 
-	// Should have waited at least 500ms
-	if elapsed < 400*time.Millisecond {
-		t.Errorf("elapsed = %v, want >= 400ms", elapsed)
+	// Should have waited at least 2 seconds (allowing for RFC1123 truncation and timing jitter)
+	// RFC1123 only has second precision, so sub-second values are lost during formatting
+	if elapsed < 2*time.Second {
+		t.Errorf("elapsed = %v, want >= 2s", elapsed)
 	}
 }
