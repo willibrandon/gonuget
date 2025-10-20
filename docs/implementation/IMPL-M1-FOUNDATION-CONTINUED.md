@@ -1020,8 +1020,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/yourusername/gonuget/frameworks"
-	"github.com/yourusername/gonuget/version"
+	"github.com/willibrandon/gonuget/frameworks"
+	"github.com/willibrandon/gonuget/version"
 )
 
 // PackageIdentity uniquely identifies a package by ID and version.
@@ -1166,8 +1166,8 @@ package core
 import (
 	"testing"
 
-	"github.com/yourusername/gonuget/frameworks"
-	"github.com/yourusername/gonuget/version"
+	"github.com/willibrandon/gonuget/frameworks"
+	"github.com/willibrandon/gonuget/version"
 )
 
 func TestPackageIdentity_String(t *testing.T) {

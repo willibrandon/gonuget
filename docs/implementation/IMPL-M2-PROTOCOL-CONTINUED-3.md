@@ -122,8 +122,8 @@ import (
 	"io"
 	"strings"
 
-	nugethttp "github.com/yourusername/gonuget/http"
-	"github.com/yourusername/gonuget/protocol/v3"
+	nugethttp "github.com/willibrandon/gonuget/http"
+	"github.com/willibrandon/gonuget/protocol/v3"
 )
 
 // V3ResourceProvider implements ResourceProvider for NuGet v3 feeds
@@ -269,8 +269,8 @@ import (
 	"io"
 	"strings"
 
-	nugethttp "github.com/yourusername/gonuget/http"
-	"github.com/yourusername/gonuget/protocol/v2"
+	nugethttp "github.com/willibrandon/gonuget/http"
+	"github.com/willibrandon/gonuget/protocol/v2"
 )
 
 // V2ResourceProvider implements ResourceProvider for NuGet v2 feeds
@@ -453,8 +453,8 @@ Add imports:
 
 ```go
 import (
-	"github.com/yourusername/gonuget/protocol/v2"
-	"github.com/yourusername/gonuget/protocol/v3"
+	"github.com/willibrandon/gonuget/protocol/v2"
+	"github.com/willibrandon/gonuget/protocol/v3"
 )
 ```
 
@@ -482,7 +482,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	nugethttp "github.com/yourusername/gonuget/http"
+	nugethttp "github.com/willibrandon/gonuget/http"
 )
 
 func setupV3TestServer(t *testing.T) *httptest.Server {
@@ -677,8 +677,8 @@ import (
 	"io"
 	"sync"
 
-	"github.com/yourusername/gonuget/auth"
-	nugethttp "github.com/yourusername/gonuget/http"
+	"github.com/willibrandon/gonuget/auth"
+	nugethttp "github.com/willibrandon/gonuget/http"
 )
 
 // SourceRepository represents a NuGet package source with authentication
@@ -950,8 +950,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/yourusername/gonuget/auth"
-	nugethttp "github.com/yourusername/gonuget/http"
+	"github.com/willibrandon/gonuget/auth"
+	nugethttp "github.com/willibrandon/gonuget/http"
 )
 
 func TestSourceRepository_Name(t *testing.T) {
@@ -1189,8 +1189,8 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/yourusername/gonuget/frameworks"
-	"github.com/yourusername/gonuget/version"
+	"github.com/willibrandon/gonuget/frameworks"
+	"github.com/willibrandon/gonuget/version"
 )
 
 // Client provides high-level NuGet package operations
@@ -1485,9 +1485,9 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/yourusername/gonuget/frameworks"
-	nugethttp "github.com/yourusername/gonuget/http"
-	"github.com/yourusername/gonuget/version"
+	"github.com/willibrandon/gonuget/frameworks"
+	nugethttp "github.com/willibrandon/gonuget/http"
+	"github.com/willibrandon/gonuget/version"
 )
 
 func setupTestClient(t *testing.T) (*Client, *httptest.Server) {

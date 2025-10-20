@@ -1244,7 +1244,7 @@ import (
 	"sync"
 	"time"
 
-	nugethttp "github.com/yourusername/gonuget/http"
+	nugethttp "github.com/willibrandon/gonuget/http"
 )
 
 // ServiceIndexClient provides access to NuGet v3 service index
@@ -1411,7 +1411,7 @@ import (
 	"testing"
 	"time"
 
-	nugethttp "github.com/yourusername/gonuget/http"
+	nugethttp "github.com/willibrandon/gonuget/http"
 )
 
 var testServiceIndex = &ServiceIndex{
@@ -1765,7 +1765,7 @@ import (
 	"net/url"
 	"strconv"
 
-	nugethttp "github.com/yourusername/gonuget/http"
+	nugethttp "github.com/willibrandon/gonuget/http"
 )
 
 // SearchClient provides package search functionality
@@ -1883,7 +1883,7 @@ import (
 	"strings"
 	"testing"
 
-	nugethttp "github.com/yourusername/gonuget/http"
+	nugethttp "github.com/willibrandon/gonuget/http"
 )
 
 var testSearchResponse = &SearchResponse{

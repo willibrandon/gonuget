@@ -1,2 +1,38 @@
-# Claude Code files
+# Claude Code
 .claude/
+
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+
+# Output
+*.out
+bin/
+dist/
+
+# Coverage
+*.coverprofile
+coverage.html
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary
+tmp/
+temp/
+*.tmp
+
+# Vendor
+vendor/

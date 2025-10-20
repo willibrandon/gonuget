@@ -109,7 +109,7 @@ import (
 	"net/http"
 	"strings"
 
-	nugethttp "github.com/yourusername/gonuget/http"
+	nugethttp "github.com/willibrandon/gonuget/http"
 )
 
 // FeedClient provides v2 feed detection and access
@@ -232,7 +232,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	nugethttp "github.com/yourusername/gonuget/http"
+	nugethttp "github.com/willibrandon/gonuget/http"
 )
 
 const testServiceDocument = `<?xml version="1.0" encoding="utf-8"?>
@@ -381,7 +381,7 @@ import (
 	"strconv"
 	"strings"
 
-	nugethttp "github.com/yourusername/gonuget/http"
+	nugethttp "github.com/willibrandon/gonuget/http"
 )
 
 // SearchClient provides v2 search functionality
@@ -583,7 +583,7 @@ import (
 	"strings"
 	"testing"
 
-	nugethttp "github.com/yourusername/gonuget/http"
+	nugethttp "github.com/willibrandon/gonuget/http"
 )
 
 const testFeedResponse = `<?xml version="1.0" encoding="utf-8"?>
@@ -827,7 +827,7 @@ import (
 	"net/url"
 	"strings"
 
-	nugethttp "github.com/yourusername/gonuget/http"
+	nugethttp "github.com/willibrandon/gonuget/http"
 )
 
 // MetadataClient provides v2 metadata functionality
@@ -1029,7 +1029,7 @@ import (
 	"strings"
 	"testing"
 
-	nugethttp "github.com/yourusername/gonuget/http"
+	nugethttp "github.com/willibrandon/gonuget/http"
 )
 
 const testEntryResponse = `<?xml version="1.0" encoding="utf-8"?>
@@ -1291,7 +1291,7 @@ import (
 	"net/http"
 	"strings"
 
-	nugethttp "github.com/yourusername/gonuget/http"
+	nugethttp "github.com/willibrandon/gonuget/http"
 )
 
 // DownloadClient provides v2 package download functionality
@@ -1426,7 +1426,7 @@ import (
 	"strings"
 	"testing"
 
-	nugethttp "github.com/yourusername/gonuget/http"
+	nugethttp "github.com/willibrandon/gonuget/http"
 )
 
 func setupV2DownloadServer(t *testing.T) (*httptest.Server, *DownloadClient) {

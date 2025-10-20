@@ -99,7 +99,7 @@ import (
 	"net/http"
 	"strings"
 
-	nugethttp "github.com/yourusername/gonuget/http"
+	nugethttp "github.com/willibrandon/gonuget/http"
 )
 
 // MetadataClient provides package metadata functionality
@@ -259,7 +259,7 @@ import (
 	"strings"
 	"testing"
 
-	nugethttp "github.com/yourusername/gonuget/http"
+	nugethttp "github.com/willibrandon/gonuget/http"
 )
 
 var testRegistrationIndex = &RegistrationIndex{
@@ -540,7 +540,7 @@ import (
 	"net/http"
 	"strings"
 
-	nugethttp "github.com/yourusername/gonuget/http"
+	nugethttp "github.com/willibrandon/gonuget/http"
 )
 
 // DownloadClient provides package download functionality
@@ -733,7 +733,7 @@ import (
 	"strings"
 	"testing"
 
-	nugethttp "github.com/yourusername/gonuget/http"
+	nugethttp "github.com/willibrandon/gonuget/http"
 )
 
 func setupDownloadServer(t *testing.T) (*httptest.Server, *DownloadClient) {
@@ -1009,7 +1009,7 @@ import (
 	"net/url"
 	"strconv"
 
-	nugethttp "github.com/yourusername/gonuget/http"
+	nugethttp "github.com/willibrandon/gonuget/http"
 )
 
 // AutocompleteClient provides package and version autocomplete functionality
@@ -1168,7 +1168,7 @@ import (
 	"strings"
 	"testing"
 
-	nugethttp "github.com/yourusername/gonuget/http"
+	nugethttp "github.com/willibrandon/gonuget/http"
 )
 
 func setupAutocompleteServer(t *testing.T) (*httptest.Server, *AutocompleteClient) {

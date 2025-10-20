@@ -34,7 +34,7 @@ Initialize the gonuget Go module with proper project structure and configuration
 
 ```bash
 cd /Users/brandon/src/gonuget
-go mod init github.com/yourusername/gonuget
+go mod init github.com/willibrandon/gonuget
 ```
 
 **2. Create package directories:**
@@ -121,7 +121,7 @@ A complete, production-grade NuGet client library for Go.
 ## Installation
 
 ```bash
-go get github.com/yourusername/gonuget
+go get github.com/willibrandon/gonuget
 ```
 
 ## Quick Start
