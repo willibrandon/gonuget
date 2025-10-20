@@ -1617,3 +1617,725 @@ Status: ✓ Complete"
 → **M1.7: Version Package - Floating Versions**
 
 ---
+
+## Chunk M1.7: Version Package - Floating Versions
+
+**Time:** 3 hours
+**Dependencies:** M1.6
+**Status:** [ ] Not Started
+
+### What You'll Build
+
+Implement floating version support for dynamic version resolution (e.g., `1.0.*`, `1.0.0-*`, `*`).
+
+### Step-by-Step Instructions
+
+**1. Create `version/float.go`:**
+
+```go
+package version
+
+import (
+	"fmt"
+	"strings"
+)
+
+// FloatBehavior defines how floating versions behave.
+type FloatBehavior int
+
+const (
+	// FloatNone means no floating
+	FloatNone FloatBehavior = iota
+
+	// FloatPrerelease floats to latest prerelease: 1.0.0-*
+	FloatPrerelease
+
+	// FloatRevision floats to latest revision: 1.0.0.*
+	FloatRevision
+
+	// FloatPatch floats to latest patch: 1.0.*
+	FloatPatch
+
+	// FloatMinor floats to latest minor: 1.*
+	FloatMinor
+
+	// FloatMajor floats to latest major: *
+	FloatMajor
+)
+
+// String returns the string representation of FloatBehavior.
+func (f FloatBehavior) String() string {
+	switch f {
+	case FloatNone:
+		return "none"
+	case FloatPrerelease:
+		return "prerelease"
+	case FloatRevision:
+		return "revision"
+	case FloatPatch:
+		return "patch"
+	case FloatMinor:
+		return "minor"
+	case FloatMajor:
+		return "major"
+	default:
+		return "unknown"
+	}
+}
+
+// FloatRange represents a floating version range.
+type FloatRange struct {
+	MinVersion    *NuGetVersion
+	FloatBehavior FloatBehavior
+}
+
+// ParseFloatRange parses floating version ranges like 1.0.*, 1.0.0-*, or *.
+func ParseFloatRange(s string) (*FloatRange, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return nil, fmt.Errorf("float range cannot be empty")
+	}
+
+	// Wildcard only: *
+	if s == "*" {
+		return &FloatRange{
+			MinVersion:    nil,
+			FloatBehavior: FloatMajor,
+		}, nil
+	}
+
+	// Prerelease float: 1.0.0-*
+	if strings.HasSuffix(s, "-*") {
+		versionPart := s[:len(s)-2]
+		v, err := Parse(versionPart)
+		if err != nil {
+			return nil, fmt.Errorf("invalid float range: %w", err)
+		}
+		return &FloatRange{
+			MinVersion:    v,
+			FloatBehavior: FloatPrerelease,
+		}, nil
+	}
+
+	// Patch/Minor/Major float: 1.0.*, 1.*, or *.*.*
+	if !strings.Contains(s, "*") {
+		return nil, fmt.Errorf("float range must contain wildcard: %s", s)
+	}
+
+	parts := strings.Split(s, ".")
+	floatIndex := -1
+	for i, part := range parts {
+		if part == "*" {
+			floatIndex = i
+			break
+		}
+	}
+
+	if floatIndex == -1 {
+		return nil, fmt.Errorf("invalid float range: %s", s)
+	}
+
+	// Determine float behavior based on position
+	var behavior FloatBehavior
+	switch floatIndex {
+	case 0:
+		behavior = FloatMajor
+	case 1:
+		behavior = FloatMinor
+	case 2:
+		behavior = FloatPatch
+	case 3:
+		behavior = FloatRevision
+	default:
+		return nil, fmt.Errorf("invalid wildcard position in: %s", s)
+	}
+
+	// Build minimum version from non-wildcard parts
+	var minVersion *NuGetVersion
+	if floatIndex > 0 {
+		versionParts := parts[:floatIndex]
+		// Pad with zeros to make a valid version
+		for len(versionParts) < 2 {
+			versionParts = append(versionParts, "0")
+		}
+		versionStr := strings.Join(versionParts, ".")
+		v, err := Parse(versionStr)
+		if err != nil {
+			return nil, fmt.Errorf("invalid float range: %w", err)
+		}
+		minVersion = v
+	}
+
+	return &FloatRange{
+		MinVersion:    minVersion,
+		FloatBehavior: behavior,
+	}, nil
+}
+
+// Satisfies returns true if the version satisfies this floating range.
+func (f *FloatRange) Satisfies(version *NuGetVersion) bool {
+	if version == nil {
+		return false
+	}
+
+	// No minimum version means any version satisfies (for * wildcard)
+	if f.MinVersion == nil {
+		return true
+	}
+
+	switch f.FloatBehavior {
+	case FloatPrerelease:
+		// Must match major.minor.patch exactly, can have any prerelease
+		return version.Major == f.MinVersion.Major &&
+			version.Minor == f.MinVersion.Minor &&
+			version.Patch == f.MinVersion.Patch
+
+	case FloatRevision:
+		// Must match major.minor.patch, can have any revision
+		return version.Major == f.MinVersion.Major &&
+			version.Minor == f.MinVersion.Minor &&
+			version.Patch == f.MinVersion.Patch
+
+	case FloatPatch:
+		// Must match major.minor, can have any patch
+		return version.Major == f.MinVersion.Major &&
+			version.Minor == f.MinVersion.Minor
+
+	case FloatMinor:
+		// Must match major, can have any minor
+		return version.Major == f.MinVersion.Major
+
+	case FloatMajor:
+		// Any version satisfies
+		return true
+
+	default:
+		return false
+	}
+}
+
+// FindBestMatch finds the highest version that satisfies this floating range.
+func (f *FloatRange) FindBestMatch(versions []*NuGetVersion) *NuGetVersion {
+	var best *NuGetVersion
+
+	for _, v := range versions {
+		if f.Satisfies(v) {
+			if best == nil || v.GreaterThan(best) {
+				best = v
+			}
+		}
+	}
+
+	return best
+}
+
+// String returns the string representation of the floating range.
+func (f *FloatRange) String() string {
+	if f.MinVersion == nil {
+		return "*"
+	}
+
+	switch f.FloatBehavior {
+	case FloatPrerelease:
+		return f.MinVersion.String() + "-*"
+	case FloatRevision:
+		return fmt.Sprintf("%d.%d.%d.*", f.MinVersion.Major, f.MinVersion.Minor, f.MinVersion.Patch)
+	case FloatPatch:
+		return fmt.Sprintf("%d.%d.*", f.MinVersion.Major, f.MinVersion.Minor)
+	case FloatMinor:
+		return fmt.Sprintf("%d.*", f.MinVersion.Major)
+	case FloatMajor:
+		return "*"
+	default:
+		return ""
+	}
+}
+```
+
+**2. Create `version/float_test.go`:**
+
+```go
+package version
+
+import "testing"
+
+func TestParseFloatRange(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		behavior FloatBehavior
+		wantErr  bool
+	}{
+		{"wildcard only", "*", FloatMajor, false},
+		{"major float", "1.*", FloatMinor, false},
+		{"minor float", "1.0.*", FloatPatch, false},
+		{"patch float", "1.0.0.*", FloatRevision, false},
+		{"prerelease float", "1.0.0-*", FloatPrerelease, false},
+		{"no wildcard", "1.0.0", FloatNone, true},
+		{"empty", "", FloatNone, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := ParseFloatRange(tt.input)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ParseFloatRange() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !tt.wantErr && got.FloatBehavior != tt.behavior {
+				t.Errorf("ParseFloatRange() behavior = %v, want %v", got.FloatBehavior, tt.behavior)
+			}
+		})
+	}
+}
+
+func TestFloatRange_Satisfies(t *testing.T) {
+	tests := []struct {
+		name     string
+		floatStr string
+		version  string
+		expected bool
+	}{
+		// Major float
+		{"major float any", "*", "5.0.0", true},
+		{"major float prerelease", "*", "1.0.0-beta", true},
+
+		// Minor float
+		{"minor float match", "1.*", "1.5.0", true},
+		{"minor float no match", "1.*", "2.0.0", false},
+		{"minor float exact", "1.*", "1.0.0", true},
+
+		// Patch float
+		{"patch float match", "1.0.*", "1.0.5", true},
+		{"patch float no match", "1.0.*", "1.1.0", false},
+		{"patch float exact", "1.0.*", "1.0.0", true},
+
+		// Revision float
+		{"revision float match", "1.0.0.*", "1.0.0", true},
+
+		// Prerelease float
+		{"prerelease float match", "1.0.0-*", "1.0.0-beta", true},
+		{"prerelease float match stable", "1.0.0-*", "1.0.0", true},
+		{"prerelease float no match", "1.0.0-*", "1.0.1", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fr, err := ParseFloatRange(tt.floatStr)
+			if err != nil {
+				t.Fatalf("ParseFloatRange() error = %v", err)
+			}
+
+			v := MustParse(tt.version)
+			got := fr.Satisfies(v)
+
+			if got != tt.expected {
+				t.Errorf("Satisfies(%s) = %v, want %v", tt.version, got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestFloatRange_FindBestMatch(t *testing.T) {
+	versions := []*NuGetVersion{
+		MustParse("1.0.0"),
+		MustParse("1.0.5"),
+		MustParse("1.5.0"),
+		MustParse("2.0.0"),
+		MustParse("2.5.0"),
+	}
+
+	tests := []struct {
+		name     string
+		floatStr string
+		expected string
+	}{
+		{"wildcard", "*", "2.5.0"},
+		{"major 1", "1.*", "1.5.0"},
+		{"major 2", "2.*", "2.5.0"},
+		{"minor 1.0", "1.0.*", "1.0.5"},
+		{"no match", "3.*", ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fr, err := ParseFloatRange(tt.floatStr)
+			if err != nil {
+				t.Fatalf("ParseFloatRange() error = %v", err)
+			}
+
+			got := fr.FindBestMatch(versions)
+
+			if tt.expected == "" {
+				if got != nil {
+					t.Errorf("FindBestMatch() = %v, want nil", got)
+				}
+			} else {
+				if got == nil {
+					t.Errorf("FindBestMatch() = nil, want %s", tt.expected)
+				} else if got.String() != tt.expected {
+					t.Errorf("FindBestMatch() = %v, want %s", got, tt.expected)
+				}
+			}
+		})
+	}
+}
+
+func TestFloatBehavior_String(t *testing.T) {
+	tests := []struct {
+		behavior FloatBehavior
+		expected string
+	}{
+		{FloatNone, "none"},
+		{FloatPrerelease, "prerelease"},
+		{FloatRevision, "revision"},
+		{FloatPatch, "patch"},
+		{FloatMinor, "minor"},
+		{FloatMajor, "major"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.expected, func(t *testing.T) {
+			got := tt.behavior.String()
+			if got != tt.expected {
+				t.Errorf("String() = %v, want %v", got, tt.expected)
+			}
+		})
+	}
+}
+```
+
+### Verification Steps
+
+```bash
+# Run float tests
+go test ./version -v -run TestFloat
+
+# Run all tests
+go test ./version -v
+
+# Check coverage
+go test ./version -cover
+```
+
+### Testing
+
+All tests included above. Target: 90%+ coverage.
+
+### Commit
+
+```bash
+git add version/
+git commit -m "feat: add floating version support
+
+Implement floating version ranges for dynamic version resolution. Supports wildcard syntax for major (*), minor (1.*), patch (1.0.*), revision (1.0.0.*), and prerelease (1.0.0-*) floating.
+
+Features:
+- FloatBehavior enum defining float types
+- FloatRange type with parsing and evaluation
+- ParseFloatRange() handles all wildcard variations
+- Satisfies() checks version against float constraints
+- FindBestMatch() finds highest matching version
+- Full test coverage with 30+ test cases
+
+Chunk: M1.7
+Status: ✓ Complete"
+```
+
+### Next Chunk
+→ **M1.8: Version Package - Normalization**
+
+---
+
+## Chunk M1.8: Version Package - Normalization
+
+**Time:** 2 hours
+**Dependencies:** M1.7
+**Status:** [ ] Not Started
+
+### What You'll Build
+
+Implement version normalization to convert versions to their canonical string format.
+
+### Step-by-Step Instructions
+
+**1. Update `version/version.go` - Add normalization method:**
+
+Add this method to the NuGetVersion type:
+
+```go
+// ToNormalizedString returns the normalized version string.
+//
+// Normalization rules:
+//   - Remove leading zeros: 1.01.1 → 1.1.1
+//   - Legacy 4-part versions preserve all parts: 1.0.0.0 → 1.0.0.0
+//   - SemVer versions omit trailing zeros: 1.0.0 → 1.0.0
+//   - Prerelease labels preserved: 1.0.0-beta → 1.0.0-beta
+//   - Metadata preserved: 1.0.0+build → 1.0.0+build
+func (v *NuGetVersion) ToNormalizedString() string {
+	if v.IsLegacyVersion {
+		// Legacy versions: preserve 4-part format
+		return fmt.Sprintf("%d.%d.%d.%d", v.Major, v.Minor, v.Patch, v.Revision)
+	}
+
+	// SemVer format
+	s := fmt.Sprintf("%d.%d.%d", v.Major, v.Minor, v.Patch)
+
+	if len(v.ReleaseLabels) > 0 {
+		s += "-"
+		for i, label := range v.ReleaseLabels {
+			if i > 0 {
+				s += "."
+			}
+			s += label
+		}
+	}
+
+	if v.Metadata != "" {
+		s += "+" + v.Metadata
+	}
+
+	return s
+}
+```
+
+**2. Create `version/normalize.go`:**
+
+```go
+package version
+
+import "fmt"
+
+// Normalize parses a version string and returns its normalized form.
+//
+// Normalization converts versions to their canonical string representation,
+// removing leading zeros and applying consistent formatting.
+//
+// Examples:
+//   - "1.01.1" → "1.1.1"
+//   - "1" → "1.0.0"
+//   - "1.2" → "1.2.0"
+//   - "1.0.0.0" → "1.0.0.0" (legacy preserved)
+func Normalize(s string) (string, error) {
+	v, err := Parse(s)
+	if err != nil {
+		return "", fmt.Errorf("cannot normalize invalid version: %w", err)
+	}
+	return v.ToNormalizedString(), nil
+}
+
+// MustNormalize normalizes a version string, panicking on error.
+func MustNormalize(s string) string {
+	normalized, err := Normalize(s)
+	if err != nil {
+		panic(err)
+	}
+	return normalized
+}
+
+// NormalizeOrOriginal attempts to normalize a version string.
+// If normalization fails, returns the original string.
+func NormalizeOrOriginal(s string) string {
+	normalized, err := Normalize(s)
+	if err != nil {
+		return s
+	}
+	return normalized
+}
+```
+
+**3. Create `version/normalize_test.go`:**
+
+```go
+package version
+
+import "testing"
+
+func TestNormalize(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+		wantErr  bool
+	}{
+		// Basic normalization
+		{"simple version", "1.0.0", "1.0.0", false},
+		{"leading zeros", "1.01.1", "1.1.1", false},
+		{"single digit", "1", "1.0.0", false},
+		{"two digits", "1.2", "1.2.0", false},
+
+		// Legacy versions
+		{"legacy 4-part", "1.0.0.0", "1.0.0.0", false},
+		{"legacy with values", "2.5.3.1", "2.5.3.1", false},
+
+		// Prerelease
+		{"with prerelease", "1.0.0-beta", "1.0.0-beta", false},
+		{"prerelease multi", "1.0.0-beta.1", "1.0.0-beta.1", false},
+
+		// Metadata
+		{"with metadata", "1.0.0+build", "1.0.0+build", false},
+		{"full version", "1.0.0-rc.1+build.123", "1.0.0-rc.1+build.123", false},
+
+		// Invalid
+		{"empty string", "", "", true},
+		{"invalid format", "abc", "", true},
+		{"negative", "-1.0.0", "", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := Normalize(tt.input)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("Normalize() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !tt.wantErr && got != tt.expected {
+				t.Errorf("Normalize() = %v, want %v", got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestMustNormalize(t *testing.T) {
+	// Should not panic
+	result := MustNormalize("1.0.0")
+	if result != "1.0.0" {
+		t.Errorf("MustNormalize() = %v, want 1.0.0", result)
+	}
+
+	// Should panic
+	defer func() {
+		if r := recover(); r == nil {
+			t.Error("MustNormalize() should panic on invalid version")
+		}
+	}()
+	MustNormalize("invalid")
+}
+
+func TestNormalizeOrOriginal(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{"valid version", "1.0.0", "1.0.0"},
+		{"leading zeros", "1.01.1", "1.1.1"},
+		{"invalid returns original", "invalid", "invalid"},
+		{"empty returns original", "", ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := NormalizeOrOriginal(tt.input)
+			if got != tt.expected {
+				t.Errorf("NormalizeOrOriginal() = %v, want %v", got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestNuGetVersion_ToNormalizedString(t *testing.T) {
+	tests := []struct {
+		name     string
+		version  *NuGetVersion
+		expected string
+	}{
+		{
+			name: "simple version",
+			version: &NuGetVersion{
+				Major: 1,
+				Minor: 0,
+				Patch: 0,
+			},
+			expected: "1.0.0",
+		},
+		{
+			name: "with prerelease",
+			version: &NuGetVersion{
+				Major:         1,
+				Minor:         2,
+				Patch:         3,
+				ReleaseLabels: []string{"beta", "1"},
+			},
+			expected: "1.2.3-beta.1",
+		},
+		{
+			name: "with metadata",
+			version: &NuGetVersion{
+				Major:    1,
+				Minor:    0,
+				Patch:    0,
+				Metadata: "build.123",
+			},
+			expected: "1.0.0+build.123",
+		},
+		{
+			name: "legacy version",
+			version: &NuGetVersion{
+				Major:           2,
+				Minor:           5,
+				Patch:           3,
+				Revision:        1,
+				IsLegacyVersion: true,
+			},
+			expected: "2.5.3.1",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.version.ToNormalizedString()
+			if got != tt.expected {
+				t.Errorf("ToNormalizedString() = %v, want %v", got, tt.expected)
+			}
+		})
+	}
+}
+```
+
+### Verification Steps
+
+```bash
+# Run normalization tests
+go test ./version -v -run TestNormalize
+
+# Run all tests
+go test ./version -v
+
+# Check coverage
+go test ./version -cover
+```
+
+### Testing
+
+All tests included above. Target: 90%+ coverage.
+
+### Commit
+
+```bash
+git add version/
+git commit -m "feat: add version normalization
+
+Implement version normalization to convert versions to canonical string format. Handles leading zero removal, default values, and preserves legacy 4-part versions.
+
+Features:
+- ToNormalizedString() method on NuGetVersion
+- Normalize() function for string normalization
+- MustNormalize() panicking variant
+- NormalizeOrOriginal() safe variant
+- Full test coverage with 20+ test cases
+
+Normalization rules:
+- Remove leading zeros (1.01.1 → 1.1.1)
+- Default missing components (1 → 1.0.0)
+- Preserve legacy 4-part versions
+- Preserve prerelease and metadata
+
+Chunk: M1.8
+Status: ✓ Complete"
+```
+
+### Next Chunk
+→ **M1.9: Framework Package - TFM Parsing**
+
+---
