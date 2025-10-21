@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"io"
+	"os"
 	"testing"
 
 	"github.com/willibrandon/gonuget/version"
@@ -43,6 +44,79 @@ func createTestPackage(t *testing.T, files map[string]string, includeSignature b
 	}
 
 	return bytes.NewReader(buf.Bytes())
+}
+
+// createTestPackageBytes creates a minimal test .nupkg and returns the bytes
+func createTestPackageBytes(t *testing.T, files map[string]string, includeSignature bool) []byte {
+	t.Helper()
+
+	buf := new(bytes.Buffer)
+	w := zip.NewWriter(buf)
+
+	// Add files
+	for name, content := range files {
+		f, err := w.Create(name)
+		if err != nil {
+			t.Fatalf("Failed to create file %s: %v", name, err)
+		}
+		if _, err := f.Write([]byte(content)); err != nil {
+			t.Fatalf("Failed to write file %s: %v", name, err)
+		}
+	}
+
+	// Add signature if requested
+	if includeSignature {
+		f, err := w.Create(SignaturePath)
+		if err != nil {
+			t.Fatalf("Failed to create signature: %v", err)
+		}
+		if _, err := f.Write([]byte("signature data")); err != nil {
+			t.Fatalf("Failed to write signature: %v", err)
+		}
+	}
+
+	if err := w.Close(); err != nil {
+		t.Fatalf("Failed to close zip: %v", err)
+	}
+
+	return buf.Bytes()
+}
+
+func TestOpenPackage(t *testing.T) {
+	// Create a temporary .nupkg file
+	files := map[string]string{
+		"test.nuspec":  `<?xml version="1.0"?><package></package>`,
+		"lib/test.dll": "binary content",
+	}
+
+	pkgBytes := createTestPackageBytes(t, files, false)
+	tmpFile := t.TempDir() + "/test.nupkg"
+
+	err := os.WriteFile(tmpFile, pkgBytes, 0644)
+	if err != nil {
+		t.Fatalf("Failed to write temp file: %v", err)
+	}
+
+	pkg, err := OpenPackage(tmpFile)
+	if err != nil {
+		t.Fatalf("OpenPackage failed: %v", err)
+	}
+	defer func() { _ = pkg.Close() }()
+
+	if pkg.zipReader == nil {
+		t.Error("zipReader should not be nil")
+	}
+
+	if !pkg.isClosable {
+		t.Error("Package opened from file should be closable")
+	}
+}
+
+func TestOpenPackage_InvalidFile(t *testing.T) {
+	_, err := OpenPackage("/nonexistent/package.nupkg")
+	if err == nil {
+		t.Error("OpenPackage should fail for non-existent file")
+	}
 }
 
 func TestOpenPackageFromReaderAt(t *testing.T) {
@@ -493,6 +567,353 @@ func TestPackageReader_Close(t *testing.T) {
 	})
 }
 
+func TestPackageReader_GetPackageFiles(t *testing.T) {
+	files := map[string]string{
+		"test.nuspec":               "nuspec content",
+		".signature.p7s":            "signature",
+		"_rels/.rels":               "rels",
+		"[Content_Types].xml":       "content types",
+		"lib/net6.0/test.dll":       "assembly",
+		"content/readme.txt":        "readme",
+		"build/TestPackage.targets": "targets",
+	}
+
+	reader := createTestPackage(t, files, false)
+	pkg, err := OpenPackageFromReaderAt(reader, int64(reader.Len()))
+	if err != nil {
+		t.Fatalf("OpenPackageFromReaderAt failed: %v", err)
+	}
+	defer func() { _ = pkg.Close() }()
+
+	packageFiles := pkg.GetPackageFiles()
+
+	// Should exclude: .nuspec, .signature.p7s, _rels/.rels, [Content_Types].xml
+	// Should include: lib/*, content/*, build/*
+	expectedCount := 3 // lib/net6.0/test.dll, content/readme.txt, build/TestPackage.targets
+	if len(packageFiles) != expectedCount {
+		t.Errorf("GetPackageFiles() returned %d files, want %d", len(packageFiles), expectedCount)
+		for _, f := range packageFiles {
+			t.Logf("  - %s", f.Name)
+		}
+	}
+
+	// Verify metadata files are excluded
+	for _, file := range packageFiles {
+		if IsPackageMetadataFile(file.Name) {
+			t.Errorf("GetPackageFiles() included metadata file: %s", file.Name)
+		}
+	}
+}
+
+func TestPackageReader_GetLibFiles(t *testing.T) {
+	files := map[string]string{
+		"test.nuspec":         "nuspec",
+		"lib/net6.0/test.dll": "assembly",
+		"lib/net48/test.dll":  "assembly",
+		"ref/net6.0/test.dll": "ref assembly",
+		"content/readme.txt":  "readme",
+	}
+
+	reader := createTestPackage(t, files, false)
+	pkg, err := OpenPackageFromReaderAt(reader, int64(reader.Len()))
+	if err != nil {
+		t.Fatalf("OpenPackageFromReaderAt failed: %v", err)
+	}
+	defer func() { _ = pkg.Close() }()
+
+	libFiles := pkg.GetLibFiles()
+
+	expectedCount := 2 // lib/net6.0/test.dll, lib/net48/test.dll
+	if len(libFiles) != expectedCount {
+		t.Errorf("GetLibFiles() returned %d files, want %d", len(libFiles), expectedCount)
+	}
+
+	// Verify all are lib files
+	for _, file := range libFiles {
+		if !IsLibFile(file.Name) {
+			t.Errorf("GetLibFiles() included non-lib file: %s", file.Name)
+		}
+	}
+}
+
+func TestPackageReader_GetRefFiles(t *testing.T) {
+	files := map[string]string{
+		"test.nuspec":         "nuspec",
+		"lib/net6.0/test.dll": "assembly",
+		"ref/net6.0/test.dll": "ref assembly",
+		"ref/net48/test.dll":  "ref assembly",
+	}
+
+	reader := createTestPackage(t, files, false)
+	pkg, err := OpenPackageFromReaderAt(reader, int64(reader.Len()))
+	if err != nil {
+		t.Fatalf("OpenPackageFromReaderAt failed: %v", err)
+	}
+	defer func() { _ = pkg.Close() }()
+
+	refFiles := pkg.GetRefFiles()
+
+	expectedCount := 2 // ref/net6.0/test.dll, ref/net48/test.dll
+	if len(refFiles) != expectedCount {
+		t.Errorf("GetRefFiles() returned %d files, want %d", len(refFiles), expectedCount)
+	}
+
+	// Verify all are ref files
+	for _, file := range refFiles {
+		if !IsRefFile(file.Name) {
+			t.Errorf("GetRefFiles() included non-ref file: %s", file.Name)
+		}
+	}
+}
+
+func TestPackageReader_GetContentFiles(t *testing.T) {
+	files := map[string]string{
+		"test.nuspec":                     "nuspec",
+		"content/readme.txt":              "readme",
+		"content/images/logo.png":         "image",
+		"contentFiles/any/any/app.config": "config",
+		"lib/net6.0/test.dll":             "assembly",
+	}
+
+	reader := createTestPackage(t, files, false)
+	pkg, err := OpenPackageFromReaderAt(reader, int64(reader.Len()))
+	if err != nil {
+		t.Fatalf("OpenPackageFromReaderAt failed: %v", err)
+	}
+	defer func() { _ = pkg.Close() }()
+
+	contentFiles := pkg.GetContentFiles()
+
+	expectedCount := 3 // content/*, contentFiles/*
+	if len(contentFiles) != expectedCount {
+		t.Errorf("GetContentFiles() returned %d files, want %d", len(contentFiles), expectedCount)
+	}
+
+	// Verify all are content files
+	for _, file := range contentFiles {
+		if !IsContentFile(file.Name) {
+			t.Errorf("GetContentFiles() included non-content file: %s", file.Name)
+		}
+	}
+}
+
+func TestPackageReader_GetBuildFiles(t *testing.T) {
+	files := map[string]string{
+		"test.nuspec":                         "nuspec",
+		"build/TestPackage.targets":           "targets",
+		"build/net6.0/TestPackage.props":      "props",
+		"buildTransitive/TestPackage.targets": "transitive targets",
+		"lib/net6.0/test.dll":                 "assembly",
+	}
+
+	reader := createTestPackage(t, files, false)
+	pkg, err := OpenPackageFromReaderAt(reader, int64(reader.Len()))
+	if err != nil {
+		t.Fatalf("OpenPackageFromReaderAt failed: %v", err)
+	}
+	defer func() { _ = pkg.Close() }()
+
+	buildFiles := pkg.GetBuildFiles()
+
+	expectedCount := 3 // build/*, buildTransitive/*
+	if len(buildFiles) != expectedCount {
+		t.Errorf("GetBuildFiles() returned %d files, want %d", len(buildFiles), expectedCount)
+	}
+
+	// Verify all are build files
+	for _, file := range buildFiles {
+		if !IsBuildFile(file.Name) {
+			t.Errorf("GetBuildFiles() included non-build file: %s", file.Name)
+		}
+	}
+}
+
+func TestPackageReader_GetToolsFiles(t *testing.T) {
+	files := map[string]string{
+		"test.nuspec":           "nuspec",
+		"tools/install.ps1":     "install script",
+		"tools/net6.0/tool.exe": "tool",
+		"lib/net6.0/test.dll":   "assembly",
+	}
+
+	reader := createTestPackage(t, files, false)
+	pkg, err := OpenPackageFromReaderAt(reader, int64(reader.Len()))
+	if err != nil {
+		t.Fatalf("OpenPackageFromReaderAt failed: %v", err)
+	}
+	defer func() { _ = pkg.Close() }()
+
+	toolsFiles := pkg.GetToolsFiles()
+
+	expectedCount := 2 // tools/*
+	if len(toolsFiles) != expectedCount {
+		t.Errorf("GetToolsFiles() returned %d files, want %d", len(toolsFiles), expectedCount)
+	}
+
+	// Verify all are tools files
+	for _, file := range toolsFiles {
+		if !IsToolsFile(file.Name) {
+			t.Errorf("GetToolsFiles() included non-tools file: %s", file.Name)
+		}
+	}
+}
+
+func TestPackageReader_ExtractFile(t *testing.T) {
+	files := map[string]string{
+		"test.nuspec":         "nuspec content",
+		"lib/net6.0/test.dll": "assembly content",
+	}
+
+	reader := createTestPackage(t, files, false)
+	pkg, err := OpenPackageFromReaderAt(reader, int64(reader.Len()))
+	if err != nil {
+		t.Fatalf("OpenPackageFromReaderAt failed: %v", err)
+	}
+	defer func() { _ = pkg.Close() }()
+
+	// Create temp directory for extraction
+	tmpDir := t.TempDir()
+	destPath := tmpDir + "/extracted/test.dll"
+
+	err = pkg.ExtractFile("lib/net6.0/test.dll", destPath)
+	if err != nil {
+		t.Fatalf("ExtractFile() error = %v", err)
+	}
+
+	// Verify file was extracted
+	content, err := os.ReadFile(destPath)
+	if err != nil {
+		t.Fatalf("Failed to read extracted file: %v", err)
+	}
+
+	expected := "assembly content"
+	if string(content) != expected {
+		t.Errorf("Extracted content = %s, want %s", string(content), expected)
+	}
+}
+
+func TestPackageReader_ExtractFile_InvalidPath(t *testing.T) {
+	// Create a package with files that should be rejected
+	files := map[string]string{
+		"test.nuspec":  "content",
+		"lib/test.dll": "assembly",
+	}
+
+	reader := createTestPackage(t, files, false)
+	pkg, err := OpenPackageFromReaderAt(reader, int64(reader.Len()))
+	if err != nil {
+		t.Fatalf("OpenPackageFromReaderAt failed: %v", err)
+	}
+	defer func() { _ = pkg.Close() }()
+
+	tmpDir := t.TempDir()
+
+	tests := []struct {
+		name    string
+		zipPath string
+	}{
+		{
+			name:    "path traversal",
+			zipPath: "../etc/passwd",
+		},
+		{
+			name:    "absolute path",
+			zipPath: "/etc/passwd",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := pkg.ExtractFile(tt.zipPath, tmpDir+"/output.txt")
+			if err == nil {
+				t.Error("ExtractFile() should fail for invalid ZIP path")
+			}
+		})
+	}
+}
+
+func TestPackageReader_ExtractFiles(t *testing.T) {
+	files := map[string]string{
+		"test.nuspec":          "nuspec",
+		"lib/net6.0/test1.dll": "assembly1",
+		"lib/net6.0/test2.dll": "assembly2",
+		"content/readme.txt":   "readme",
+	}
+
+	reader := createTestPackage(t, files, false)
+	pkg, err := OpenPackageFromReaderAt(reader, int64(reader.Len()))
+	if err != nil {
+		t.Fatalf("OpenPackageFromReaderAt failed: %v", err)
+	}
+	defer func() { _ = pkg.Close() }()
+
+	tmpDir := t.TempDir()
+
+	// Extract lib files
+	libFiles := pkg.GetLibFiles()
+	err = pkg.ExtractFiles(libFiles, tmpDir)
+	if err != nil {
+		t.Fatalf("ExtractFiles() error = %v", err)
+	}
+
+	// Verify files were extracted with correct paths
+	expectedFiles := []string{
+		"lib/net6.0/test1.dll",
+		"lib/net6.0/test2.dll",
+	}
+
+	for _, expectedFile := range expectedFiles {
+		fullPath := tmpDir + "/" + expectedFile
+		if _, err := os.Stat(fullPath); os.IsNotExist(err) {
+			t.Errorf("Expected file not found: %s", fullPath)
+		}
+	}
+}
+
+func TestPackageReader_CopyFileTo(t *testing.T) {
+	files := map[string]string{
+		"test.nuspec":         "nuspec content",
+		"lib/net6.0/test.dll": "assembly content",
+	}
+
+	reader := createTestPackage(t, files, false)
+	pkg, err := OpenPackageFromReaderAt(reader, int64(reader.Len()))
+	if err != nil {
+		t.Fatalf("OpenPackageFromReaderAt failed: %v", err)
+	}
+	defer func() { _ = pkg.Close() }()
+
+	var buf bytes.Buffer
+	err = pkg.CopyFileTo("lib/net6.0/test.dll", &buf)
+	if err != nil {
+		t.Fatalf("CopyFileTo() error = %v", err)
+	}
+
+	expected := "assembly content"
+	if buf.String() != expected {
+		t.Errorf("Copied content = %s, want %s", buf.String(), expected)
+	}
+}
+
+func TestPackageReader_CopyFileTo_FileNotFound(t *testing.T) {
+	files := map[string]string{
+		"test.nuspec": "content",
+	}
+
+	reader := createTestPackage(t, files, false)
+	pkg, err := OpenPackageFromReaderAt(reader, int64(reader.Len()))
+	if err != nil {
+		t.Fatalf("OpenPackageFromReaderAt failed: %v", err)
+	}
+	defer func() { _ = pkg.Close() }()
+
+	var buf bytes.Buffer
+	err = pkg.CopyFileTo("missing.dll", &buf)
+	if err == nil {
+		t.Error("CopyFileTo() should fail for missing file")
+	}
+}
+
 // BenchmarkFileAccess benchmarks file lookup operations
 func BenchmarkFileAccess(b *testing.B) {
 	files := map[string]string{
@@ -514,7 +935,7 @@ func BenchmarkFileAccess(b *testing.B) {
 	defer func() { _ = pkg.Close() }()
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_, _ = pkg.GetFile("lib/net6.0/file50.dll")
 	}
 }

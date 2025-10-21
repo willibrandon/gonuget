@@ -1015,7 +1015,7 @@ func BenchmarkParseNuspec(b *testing.B) {
 </package>`
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_, err := ParseNuspec(strings.NewReader(xml))
 		if err != nil {
 			b.Fatal(err)
@@ -1043,7 +1043,7 @@ func BenchmarkGetDependencyGroups(b *testing.B) {
 	}
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_, err := nuspec.GetDependencyGroups()
 		if err != nil {
 			b.Fatal(err)

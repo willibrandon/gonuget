@@ -5,6 +5,8 @@ import (
 	"archive/zip"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/willibrandon/gonuget/version"
@@ -234,6 +236,182 @@ func ValidatePackagePath(filePath string) error {
 	// Check for empty path
 	if strings.TrimSpace(normalized) == "" {
 		return ErrInvalidPath
+	}
+
+	return nil
+}
+
+// GetPackageFiles returns all files excluding package metadata.
+// This filters out .nuspec, signatures, and OPC files.
+func (r *PackageReader) GetPackageFiles() []*zip.File {
+	var packageFiles []*zip.File
+
+	for _, file := range r.Files() {
+		if !IsPackageMetadataFile(file.Name) {
+			packageFiles = append(packageFiles, file)
+		}
+	}
+
+	return packageFiles
+}
+
+// GetLibFiles returns all files in the lib/ folder.
+func (r *PackageReader) GetLibFiles() []*zip.File {
+	var libFiles []*zip.File
+
+	for _, file := range r.Files() {
+		if IsLibFile(file.Name) {
+			libFiles = append(libFiles, file)
+		}
+	}
+
+	return libFiles
+}
+
+// GetRefFiles returns all files in the ref/ folder.
+func (r *PackageReader) GetRefFiles() []*zip.File {
+	var refFiles []*zip.File
+
+	for _, file := range r.Files() {
+		if IsRefFile(file.Name) {
+			refFiles = append(refFiles, file)
+		}
+	}
+
+	return refFiles
+}
+
+// GetContentFiles returns all files in content/ folders.
+func (r *PackageReader) GetContentFiles() []*zip.File {
+	var contentFiles []*zip.File
+
+	for _, file := range r.Files() {
+		if IsContentFile(file.Name) {
+			contentFiles = append(contentFiles, file)
+		}
+	}
+
+	return contentFiles
+}
+
+// GetBuildFiles returns all files in build/ folders.
+func (r *PackageReader) GetBuildFiles() []*zip.File {
+	var buildFiles []*zip.File
+
+	for _, file := range r.Files() {
+		if IsBuildFile(file.Name) {
+			buildFiles = append(buildFiles, file)
+		}
+	}
+
+	return buildFiles
+}
+
+// GetToolsFiles returns all files in the tools/ folder.
+func (r *PackageReader) GetToolsFiles() []*zip.File {
+	var toolsFiles []*zip.File
+
+	for _, file := range r.Files() {
+		if IsToolsFile(file.Name) {
+			toolsFiles = append(toolsFiles, file)
+		}
+	}
+
+	return toolsFiles
+}
+
+// ExtractFile extracts a single file from the package to the destination path.
+// The ZIP path is validated to prevent directory traversal attacks.
+func (r *PackageReader) ExtractFile(zipPath, destPath string) error {
+	// Validate ZIP path to prevent malicious packages
+	if err := ValidatePackagePath(zipPath); err != nil {
+		return err
+	}
+
+	// Find file in ZIP
+	zipFile, err := r.GetFile(zipPath)
+	if err != nil {
+		return err
+	}
+
+	// Create destination directory
+	destDir := filepath.Dir(destPath)
+	if err := os.MkdirAll(destDir, 0755); err != nil {
+		return fmt.Errorf("create directory: %w", err)
+	}
+
+	// Open ZIP file
+	rc, err := zipFile.Open()
+	if err != nil {
+		return fmt.Errorf("open zip file: %w", err)
+	}
+	defer func() {
+		_ = rc.Close()
+	}()
+
+	// Create destination file
+	outFile, err := os.Create(destPath)
+	if err != nil {
+		return fmt.Errorf("create output file: %w", err)
+	}
+	defer func() {
+		_ = outFile.Close()
+	}()
+
+	// Copy contents
+	if _, err := io.Copy(outFile, rc); err != nil {
+		return fmt.Errorf("copy file contents: %w", err)
+	}
+
+	return nil
+}
+
+// ExtractFiles extracts multiple files to a destination directory.
+// File paths are preserved relative to the package root.
+func (r *PackageReader) ExtractFiles(files []*zip.File, destDir string) error {
+	for _, file := range files {
+		// Skip directories
+		if strings.HasSuffix(file.Name, "/") {
+			continue
+		}
+
+		// Construct destination path
+		destPath := filepath.Join(destDir, file.Name)
+
+		// Validate path
+		if err := ValidatePackagePath(file.Name); err != nil {
+			return fmt.Errorf("invalid path %q: %w", file.Name, err)
+		}
+
+		// Extract file
+		if err := r.ExtractFile(file.Name, destPath); err != nil {
+			return fmt.Errorf("extract %q: %w", file.Name, err)
+		}
+	}
+
+	return nil
+}
+
+// CopyFileTo copies a file from the package to the provided writer.
+func (r *PackageReader) CopyFileTo(zipPath string, writer io.Writer) error {
+	// Find file in ZIP
+	zipFile, err := r.GetFile(zipPath)
+	if err != nil {
+		return err
+	}
+
+	// Open ZIP file
+	rc, err := zipFile.Open()
+	if err != nil {
+		return fmt.Errorf("open zip file: %w", err)
+	}
+	defer func() {
+		_ = rc.Close()
+	}()
+
+	// Copy to writer
+	if _, err := io.Copy(writer, rc); err != nil {
+		return fmt.Errorf("copy file contents: %w", err)
 	}
 
 	return nil
