@@ -342,12 +342,9 @@ func compareReleaseLabels(a, b []string) int {
 	}
 
 	// Compare label by label
-	minLen := len(a)
-	if len(b) < minLen {
-		minLen = len(b)
-	}
+	minLen := min(len(a), len(b))
 
-	for i := 0; i < minLen; i++ {
+	for i := range minLen {
 		result := compareLabel(a[i], b[i])
 		if result != 0 {
 			return result

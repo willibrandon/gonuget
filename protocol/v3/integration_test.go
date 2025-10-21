@@ -2,6 +2,7 @@ package v3
 
 import (
 	"context"
+	"slices"
 	"testing"
 
 	nugethttp "github.com/willibrandon/gonuget/http"
@@ -182,15 +183,7 @@ func TestIntegration_Autocomplete(t *testing.T) {
 	}
 
 	// Verify we got Newtonsoft.Json
-	foundNewtonsoft := false
-	for _, id := range response.Data {
-		if id == "Newtonsoft.Json" {
-			foundNewtonsoft = true
-			break
-		}
-	}
-
-	if !foundNewtonsoft {
+	if !slices.Contains(response.Data, "Newtonsoft.Json") {
 		t.Error("AutocompletePackageIDs() did not return Newtonsoft.Json")
 	}
 }

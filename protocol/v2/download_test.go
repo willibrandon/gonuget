@@ -16,8 +16,8 @@ func setupV2DownloadServer(t *testing.T) (*httptest.Server, *DownloadClient) {
 		path := r.URL.Path
 
 		// Handle versioned download
-		if strings.HasPrefix(path, "/package/") {
-			parts := strings.Split(strings.TrimPrefix(path, "/package/"), "/")
+		if suffix, ok := strings.CutPrefix(path, "/package/"); ok {
+			parts := strings.Split(suffix, "/")
 
 			if len(parts) == 2 {
 				// /package/{id}/{version}

@@ -84,7 +84,7 @@ func BenchmarkIsCompatible(b *testing.B) {
 	target := MustParseFramework("net6.0")
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = pkg.IsCompatible(target)
 	}
 }

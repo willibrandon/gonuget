@@ -181,9 +181,8 @@ func parseFrameworkIdentifier(fw *NuGetFramework, s string) error {
 	}
 
 	for _, p := range prefixes {
-		if strings.HasPrefix(s, p.prefix) {
+		if versionPart, ok := strings.CutPrefix(s, p.prefix); ok {
 			// Extract version
-			versionPart := strings.TrimPrefix(s, p.prefix)
 			if versionPart == "" {
 				return fmt.Errorf("missing version for framework %s", p.prefix)
 			}

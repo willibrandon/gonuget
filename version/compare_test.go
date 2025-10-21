@@ -128,7 +128,7 @@ func BenchmarkCompare(b *testing.B) {
 	v2 := MustParse("1.2.3-beta.2")
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = v1.Compare(v2)
 	}
 }
@@ -139,7 +139,7 @@ func BenchmarkCompare_Simple(b *testing.B) {
 	v2 := MustParse("1.2.4")
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = v1.Compare(v2)
 	}
 }

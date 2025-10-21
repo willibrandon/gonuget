@@ -244,7 +244,7 @@ func BenchmarkParseDependencies(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = parseDependencies(input)
 	}
 }
@@ -257,8 +257,7 @@ func parseDependenciesSplit(deps string) []ProtocolDependencyGroup {
 
 	groups := make(map[string][]ProtocolDependency)
 
-	parts := strings.Split(deps, "|")
-	for _, part := range parts {
+	for part := range strings.SplitSeq(deps, "|") {
 		part = strings.TrimSpace(part)
 		if part == "" {
 			continue
@@ -301,7 +300,7 @@ func BenchmarkParseDependencies_Split(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = parseDependenciesSplit(input)
 	}
 }
@@ -383,7 +382,7 @@ func BenchmarkParseDependencies_Optimized(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = parseDependenciesOptimized(input)
 	}
 }
@@ -467,7 +466,7 @@ func BenchmarkParseDependencies_TwoPass(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = parseDependenciesTwoPass(input)
 	}
 }

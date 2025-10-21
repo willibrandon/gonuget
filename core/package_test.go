@@ -210,7 +210,7 @@ func BenchmarkPackageIdentity_Equals(b *testing.B) {
 	p2 := NewPackageIdentity("newtonsoft.json", version.MustParse("13.0.1"))
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = p1.Equals(p2)
 	}
 }
@@ -243,7 +243,7 @@ func BenchmarkGetDependenciesForFramework(b *testing.B) {
 	target := frameworks.MustParseFramework("net8.0")
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = meta.GetDependenciesForFramework(target)
 	}
 }

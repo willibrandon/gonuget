@@ -1,6 +1,9 @@
 package frameworks
 
-import "testing"
+import (
+	"slices"
+	"testing"
+)
 
 func TestFrameworkCompatibilityMap(t *testing.T) {
 	// Verify .NETStandard can target .NETFramework
@@ -9,14 +12,7 @@ func TestFrameworkCompatibilityMap(t *testing.T) {
 		t.Fatal(".NETStandard not in compatibility map")
 	}
 
-	found := false
-	for _, fw := range compat {
-		if fw == ".NETFramework" {
-			found = true
-			break
-		}
-	}
-	if !found {
+	if !slices.Contains(compat, ".NETFramework") {
 		t.Error(".NETStandard should be compatible with .NETFramework")
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"slices"
 
 	"github.com/willibrandon/gonuget/frameworks"
 	"github.com/willibrandon/gonuget/version"
@@ -209,13 +210,10 @@ func (c *Client) ResolvePackageVersion(ctx context.Context, packageID, versionSt
 			return nil, err
 		}
 
-		for _, v := range versions {
-			if v == versionStr {
-				return exactVer, nil
-			}
+		if !slices.Contains(versions, versionStr) {
+			return nil, fmt.Errorf("version %s not found", versionStr)
 		}
-
-		return nil, fmt.Errorf("version %s not found", versionStr)
+		return exactVer, nil
 	}
 
 	// Try parsing as version range
