@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/willibrandon/gonuget/packaging/signatures"
 	"github.com/willibrandon/gonuget/version"
 )
 
@@ -415,4 +416,58 @@ func (r *PackageReader) CopyFileTo(zipPath string, writer io.Writer) error {
 	}
 
 	return nil
+}
+
+// GetPrimarySignature returns the primary signature if package is signed
+func (r *PackageReader) GetPrimarySignature() (*signatures.PrimarySignature, error) {
+	if !r.IsSigned() {
+		return nil, ErrPackageNotSigned
+	}
+
+	// Get signature file
+	sigFile, err := r.GetSignatureFile()
+	if err != nil {
+		return nil, err
+	}
+
+	// Open and read signature data
+	reader, err := sigFile.Open()
+	if err != nil {
+		return nil, fmt.Errorf("open signature file: %w", err)
+	}
+	defer func() { _ = reader.Close() }()
+
+	sigData, err := io.ReadAll(reader)
+	if err != nil {
+		return nil, fmt.Errorf("read signature data: %w", err)
+	}
+
+	// Parse signature
+	return signatures.ReadSignature(sigData)
+}
+
+// IsRepositorySigned checks if package has a repository signature
+func (r *PackageReader) IsRepositorySigned() (bool, error) {
+	sig, err := r.GetPrimarySignature()
+	if err != nil {
+		if err == ErrPackageNotSigned {
+			return false, nil
+		}
+		return false, err
+	}
+
+	return sig.Type == signatures.SignatureTypeRepository, nil
+}
+
+// IsAuthorSigned checks if package has an author signature
+func (r *PackageReader) IsAuthorSigned() (bool, error) {
+	sig, err := r.GetPrimarySignature()
+	if err != nil {
+		if err == ErrPackageNotSigned {
+			return false, nil
+		}
+		return false, err
+	}
+
+	return sig.Type == signatures.SignatureTypeAuthor, nil
 }
