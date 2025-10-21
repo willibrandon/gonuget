@@ -277,12 +277,35 @@ type ParsedDependencyGroup struct {
 	Dependencies    []ParsedDependency
 }
 
+// ToPackageDependencyGroup converts a ParsedDependencyGroup to PackageDependencyGroup.
+func (g *ParsedDependencyGroup) ToPackageDependencyGroup() PackageDependencyGroup {
+	deps := make([]PackageDependency, len(g.Dependencies))
+	for i, dep := range g.Dependencies {
+		deps[i] = dep.ToPackageDependency()
+	}
+
+	return PackageDependencyGroup{
+		TargetFramework: g.TargetFramework,
+		Dependencies:    deps,
+	}
+}
+
 // ParsedDependency represents a dependency with parsed version range.
 type ParsedDependency struct {
 	ID           string
 	VersionRange *version.VersionRange
 	Include      []string // Asset include patterns
 	Exclude      []string // Asset exclude patterns
+}
+
+// ToPackageDependency converts a ParsedDependency to PackageDependency.
+func (d *ParsedDependency) ToPackageDependency() PackageDependency {
+	return PackageDependency{
+		ID:           d.ID,
+		VersionRange: d.VersionRange,
+		Include:      d.Include,
+		Exclude:      d.Exclude,
+	}
 }
 
 func parseDependencies(deps []Dependency) ([]ParsedDependency, error) {
@@ -370,4 +393,12 @@ func (n *Nuspec) GetFrameworkReferenceGroups() ([]ParsedFrameworkReferenceGroup,
 type ParsedFrameworkReferenceGroup struct {
 	TargetFramework *frameworks.NuGetFramework
 	References      []string
+}
+
+// ToPackageFrameworkReferenceGroup converts to PackageFrameworkReferenceGroup.
+func (g *ParsedFrameworkReferenceGroup) ToPackageFrameworkReferenceGroup() PackageFrameworkReferenceGroup {
+	return PackageFrameworkReferenceGroup{
+		TargetFramework: g.TargetFramework,
+		References:      g.References,
+	}
 }
