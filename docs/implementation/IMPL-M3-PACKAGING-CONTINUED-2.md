@@ -1053,9 +1053,15 @@ SignPackageData()
         │   │   ├── CommitmentTypeIndication (Author/Repository)
         │   │   └── SigningCertificateV2
         │   ├── SignAttributes() - RSA-PKCS#1 v1.5
-        │   └── AddTimestamp() - RFC 3161 (optional)
+        │   └── AddTimestamp() - RFC 3161 (when TimestampURL provided)
         └── EncodeSignedData() - DER encoding
 ```
+
+**Timestamp Behavior** (matching NuGet.Client):
+- Timestamps are **optional** based on SigningOptions.TimestampURL
+- If TimestampURL is empty/nil, signature is created without timestamp
+- If TimestampURL is provided, RFC 3161 timestamp token is requested and embedded
+- Reference: X509SignatureProvider.cs:51-58 checks `if (_timestampProvider == null)`
 
 ###
 
@@ -1664,7 +1670,9 @@ func createSignerInfo(contentHash []byte, opts SigningOptions) (*SignerInfo, err
 		Signature: signature,
 	}
 
-	// 6. Add timestamp to unsigned attributes (if requested)
+	// 6. Add timestamp to unsigned attributes (if TimestampURL provided)
+	// Matches NuGet.Client behavior: X509SignatureProvider.cs:51-58
+	// Timestamps are optional - only added when TimestampURL is configured
 	if opts.TimestampURL != "" {
 		timestampAttr, err := createTimestampAttribute(signature, opts)
 		if err != nil {
@@ -1709,8 +1717,11 @@ func signAttributes(attributesBytes []byte, opts SigningOptions) ([]byte, error)
 	return signature, nil
 }
 
+// createTimestampAttribute requests an RFC 3161 timestamp token and creates the unsigned attribute
+// This function is only called when opts.TimestampURL is non-empty
+// Matches NuGet.Client: X509SignatureProvider.TimestampPrimarySignatureAsync
 func createTimestampAttribute(signature []byte, opts SigningOptions) (Attribute, error) {
-	// Request RFC 3161 timestamp
+	// Request RFC 3161 timestamp token from TSA
 	client := NewTimestampClient(opts.TimestampURL, opts.TimestampTimeout)
 
 	// Hash the signature
@@ -2511,6 +2522,131 @@ func TestDefaultSigningOptions(t *testing.T) {
 
 	if opts.TimestampTimeout != 30*time.Second {
 		t.Errorf("expected 30s timeout, got %v", opts.TimestampTimeout)
+	}
+}
+
+// TestSignPackageData_WithoutTimestamp tests creating signature without timestamp
+// Matches NuGet.Client behavior when no timestamp URL is provided
+func TestSignPackageData_WithoutTimestamp(t *testing.T) {
+	rootCert, rootKey := generateTestRootCA(t)
+	signerCert, signerKey := generateTestCodeSigningCert(t, rootCert, rootKey)
+
+	testData := []byte("test package content")
+	hash := sha256.Sum256(testData)
+
+	// Create signature WITHOUT TimestampURL
+	opts := SigningOptions{
+		Certificate:   signerCert,
+		PrivateKey:    signerKey,
+		SignatureType: SignatureTypeAuthor,
+		HashAlgorithm: HashAlgorithmSHA256,
+		// TimestampURL is empty - no timestamp should be added
+	}
+
+	signature, err := SignPackageData(hash[:], opts)
+	if err != nil {
+		t.Fatalf("SignPackageData failed: %v", err)
+	}
+
+	if len(signature) == 0 {
+		t.Fatal("signature is empty")
+	}
+
+	// Parse signature
+	var contentInfo ContentInfo
+	_, err = asn1.Unmarshal(signature, &contentInfo)
+	if err != nil {
+		t.Fatalf("failed to parse ContentInfo: %v", err)
+	}
+
+	var signedData SignedData
+	_, err = asn1.Unmarshal(contentInfo.Content.Bytes, &signedData)
+	if err != nil {
+		t.Fatalf("failed to parse SignedData: %v", err)
+	}
+
+	// Verify SignerInfo exists
+	if len(signedData.SignerInfos) != 1 {
+		t.Fatalf("expected 1 SignerInfo, got %d", len(signedData.SignerInfos))
+	}
+
+	// Verify unsigned attributes are EMPTY (no timestamp)
+	signerInfo := signedData.SignerInfos[0]
+	if len(signerInfo.UnsignedAttrs.Bytes) > 0 {
+		t.Error("unsigned attributes should be empty when no timestamp URL provided")
+	}
+}
+
+// TestSignPackageData_WithTimestamp tests creating signature with timestamp
+// Requires real timestamp server (skip if unavailable)
+func TestSignPackageData_WithTimestamp(t *testing.T) {
+	rootCert, rootKey := generateTestRootCA(t)
+	signerCert, signerKey := generateTestCodeSigningCert(t, rootCert, rootKey)
+
+	testData := []byte("test package content")
+	hash := sha256.Sum256(testData)
+
+	// Create signature WITH TimestampURL
+	opts := SigningOptions{
+		Certificate:      signerCert,
+		PrivateKey:       signerKey,
+		SignatureType:    SignatureTypeAuthor,
+		HashAlgorithm:    HashAlgorithmSHA256,
+		TimestampURL:     "http://timestamp.digicert.com",
+		TimestampTimeout: 10 * time.Second,
+	}
+
+	signature, err := SignPackageData(hash[:], opts)
+	if err != nil {
+		t.Skipf("SignPackageData with timestamp failed (TSA may be unavailable): %v", err)
+	}
+
+	if len(signature) == 0 {
+		t.Fatal("signature is empty")
+	}
+
+	// Parse signature
+	var contentInfo ContentInfo
+	_, err = asn1.Unmarshal(signature, &contentInfo)
+	if err != nil {
+		t.Fatalf("failed to parse ContentInfo: %v", err)
+	}
+
+	var signedData SignedData
+	_, err = asn1.Unmarshal(contentInfo.Content.Bytes, &signedData)
+	if err != nil {
+		t.Fatalf("failed to parse SignedData: %v", err)
+	}
+
+	// Verify SignerInfo exists
+	if len(signedData.SignerInfos) != 1 {
+		t.Fatalf("expected 1 SignerInfo, got %d", len(signedData.SignerInfos))
+	}
+
+	// Verify unsigned attributes are PRESENT (contains timestamp)
+	signerInfo := signedData.SignerInfos[0]
+	if len(signerInfo.UnsignedAttrs.Bytes) == 0 {
+		t.Error("unsigned attributes should contain timestamp token")
+	}
+
+	// Parse unsigned attributes
+	var unsignedAttrs []Attribute
+	_, err = asn1.Unmarshal(signerInfo.UnsignedAttrs.Bytes, &unsignedAttrs)
+	if err != nil {
+		t.Fatalf("failed to parse unsigned attributes: %v", err)
+	}
+
+	// Verify timestamp attribute exists
+	var foundTimestamp bool
+	for _, attr := range unsignedAttrs {
+		if attr.Type.Equal(oidSignatureTimeStampToken) {
+			foundTimestamp = true
+			break
+		}
+	}
+
+	if !foundTimestamp {
+		t.Error("timestamp attribute not found in unsigned attributes")
 	}
 }
 
