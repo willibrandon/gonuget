@@ -1762,29 +1762,630 @@ func (b *PackageBuilder) Sign(opts signatures.SigningOptions) error {
 // 4. Embed signature into .signature.p7s file in the ZIP
 // 5. Update OPC files ([Content_Types].xml and package rels)
 ```
+#### 6. Comprehensive Test Implementation
 
-#### 5. Verification Steps
+```go
+// packaging/signatures/signer_test.go
+
+package signatures
+
+import (
+	"crypto/sha256"
+	"crypto/x509"
+	"encoding/asn1"
+	"testing"
+	"time"
+)
+
+// TestSignPackageData_ValidAuthorSignature tests creating a valid author signature
+func TestSignPackageData_ValidAuthorSignature(t *testing.T) {
+	// Arrange: Generate test certificates (using helpers from verifier_test.go)
+	rootCert, rootKey := generateTestRootCA(t)
+	signerCert, signerKey := generateTestCodeSigningCert(t, rootCert, rootKey)
+
+	// Calculate test package hash
+	testData := []byte("test package content")
+	hasher := sha256.New()
+	hasher.Write(testData)
+	contentHash := hasher.Sum(nil)
+
+	// Create signing options
+	opts := SigningOptions{
+		Certificate:      signerCert,
+		PrivateKey:       signerKey,
+		CertificateChain: []*x509.Certificate{rootCert},
+		SignatureType:    SignatureTypeAuthor,
+		HashAlgorithm:    HashAlgorithmSHA256,
+	}
+
+	// Act: Sign the package data
+	signature, err := SignPackageData(contentHash, opts)
+
+	// Assert
+	if err != nil {
+		t.Fatalf("SignPackageData failed: %v", err)
+	}
+
+	if len(signature) == 0 {
+		t.Fatal("signature is empty")
+	}
+
+	// Verify it's valid PKCS#7 by parsing ContentInfo
+	var contentInfo ContentInfo
+	_, err = asn1.Unmarshal(signature, &contentInfo)
+	if err != nil {
+		t.Fatalf("failed to parse ContentInfo: %v", err)
+	}
+
+	if !contentInfo.ContentType.Equal(oidSignedData) {
+		t.Errorf("expected SignedData OID, got %v", contentInfo.ContentType)
+	}
+}
+
+// TestSignPackageData_RepositorySignature tests creating a repository signature
+func TestSignPackageData_RepositorySignature(t *testing.T) {
+	rootCert, rootKey := generateTestRootCA(t)
+	signerCert, signerKey := generateTestCodeSigningCert(t, rootCert, rootKey)
+
+	testData := []byte("test package content")
+	hasher := sha256.New()
+	hasher.Write(testData)
+	contentHash := hasher.Sum(nil)
+
+	opts := SigningOptions{
+		Certificate:   signerCert,
+		PrivateKey:    signerKey,
+		SignatureType: SignatureTypeRepository,
+		HashAlgorithm: HashAlgorithmSHA256,
+	}
+
+	signature, err := SignPackageData(contentHash, opts)
+	if err != nil {
+		t.Fatalf("SignPackageData failed: %v", err)
+	}
+
+	if len(signature) == 0 {
+		t.Fatal("signature is empty")
+	}
+}
+
+// TestSignPackageData_AllHashAlgorithms tests all supported hash algorithms
+func TestSignPackageData_AllHashAlgorithms(t *testing.T) {
+	rootCert, rootKey := generateTestRootCA(t)
+	signerCert, signerKey := generateTestCodeSigningCert(t, rootCert, rootKey)
+
+	testCases := []struct {
+		name      string
+		hashAlg   HashAlgorithmName
+		expectOID asn1.ObjectIdentifier
+	}{
+		{"SHA256", HashAlgorithmSHA256, oidSHA256WithRSA},
+		{"SHA384", HashAlgorithmSHA384, oidSHA384WithRSA},
+		{"SHA512", HashAlgorithmSHA512, oidSHA512WithRSA},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			testData := []byte("test package content")
+			h := getCryptoHash(tc.hashAlg)
+			hasher := h.New()
+			hasher.Write(testData)
+			contentHash := hasher.Sum(nil)
+
+			opts := SigningOptions{
+				Certificate:   signerCert,
+				PrivateKey:    signerKey,
+				SignatureType: SignatureTypeAuthor,
+				HashAlgorithm: tc.hashAlg,
+			}
+
+			signature, err := SignPackageData(contentHash, opts)
+			if err != nil {
+				t.Fatalf("SignPackageData failed for %s: %v", tc.name, err)
+			}
+
+			if len(signature) == 0 {
+				t.Fatalf("signature is empty for %s", tc.name)
+			}
+		})
+	}
+}
+
+// TestSigningOptions_Validate tests signing options validation
+func TestSigningOptions_Validate(t *testing.T) {
+	rootCert, rootKey := generateTestRootCA(t)
+	signerCert, signerKey := generateTestCodeSigningCert(t, rootCert, rootKey)
+	_, wrongKey := generateTestCodeSigningCert(t, rootCert, rootKey)
+	weakCert, weakKey := generateWeakRSAKeyCert(t, rootCert, rootKey)
+
+	testCases := []struct {
+		name        string
+		opts        SigningOptions
+		expectError bool
+		errorMsg    string
+	}{
+		{
+			name: "Valid options",
+			opts: SigningOptions{
+				Certificate:   signerCert,
+				PrivateKey:    signerKey,
+				SignatureType: SignatureTypeAuthor,
+				HashAlgorithm: HashAlgorithmSHA256,
+			},
+			expectError: false,
+		},
+		{
+			name: "Missing certificate",
+			opts: SigningOptions{
+				PrivateKey:    signerKey,
+				SignatureType: SignatureTypeAuthor,
+				HashAlgorithm: HashAlgorithmSHA256,
+			},
+			expectError: true,
+			errorMsg:    "certificate is required",
+		},
+		{
+			name: "Missing private key",
+			opts: SigningOptions{
+				Certificate:   signerCert,
+				SignatureType: SignatureTypeAuthor,
+				HashAlgorithm: HashAlgorithmSHA256,
+			},
+			expectError: true,
+			errorMsg:    "private key is required",
+		},
+		{
+			name: "Key mismatch",
+			opts: SigningOptions{
+				Certificate:   signerCert,
+				PrivateKey:    wrongKey,
+				SignatureType: SignatureTypeAuthor,
+				HashAlgorithm: HashAlgorithmSHA256,
+			},
+			expectError: true,
+			errorMsg:    "key does not match certificate",
+		},
+		{
+			name: "Weak RSA key",
+			opts: SigningOptions{
+				Certificate:   weakCert,
+				PrivateKey:    weakKey,
+				SignatureType: SignatureTypeAuthor,
+				HashAlgorithm: HashAlgorithmSHA256,
+			},
+			expectError: true,
+			errorMsg:    "RSA key must be at least 2048 bits",
+		},
+		{
+			name: "Invalid hash algorithm",
+			opts: SigningOptions{
+				Certificate:   signerCert,
+				PrivateKey:    signerKey,
+				SignatureType: SignatureTypeAuthor,
+				HashAlgorithm: "SHA1", // Not allowed
+			},
+			expectError: true,
+			errorMsg:    "hash algorithm",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := tc.opts.Validate()
+
+			if tc.expectError {
+				if err == nil {
+					t.Fatalf("expected error containing '%s', got nil", tc.errorMsg)
+				}
+				if tc.errorMsg != "" && !contains(err.Error(), tc.errorMsg) {
+					t.Errorf("expected error containing '%s', got '%v'", tc.errorMsg, err)
+				}
+			} else {
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+			}
+		})
+	}
+}
+
+// TestBuildSignedAttributes tests attribute creation
+func TestBuildSignedAttributes(t *testing.T) {
+	rootCert, rootKey := generateTestRootCA(t)
+	signerCert, _ := generateTestCodeSigningCert(t, rootCert, rootKey)
+
+	contentHash := sha256.Sum256([]byte("test content"))
+
+	testCases := []struct {
+		name      string
+		sigType   SignatureType
+		hashAlg   HashAlgorithmName
+		expectErr bool
+	}{
+		{"Author signature", SignatureTypeAuthor, HashAlgorithmSHA256, false},
+		{"Repository signature", SignatureTypeRepository, HashAlgorithmSHA256, false},
+		{"SHA384", SignatureTypeAuthor, HashAlgorithmSHA384, false},
+		{"SHA512", SignatureTypeAuthor, HashAlgorithmSHA512, false},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			attrs, err := BuildSignedAttributes(contentHash[:], tc.sigType, signerCert, tc.hashAlg)
+
+			if tc.expectErr {
+				if err == nil {
+					t.Fatal("expected error, got nil")
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			// Verify we have required attributes
+			if len(attrs) < 4 {
+				t.Fatalf("expected at least 4 attributes, got %d", len(attrs))
+			}
+
+			// Verify attribute OIDs
+			foundContentType := false
+			foundSigningTime := false
+			foundMessageDigest := false
+			foundCommitment := false
+			foundSigningCert := false
+
+			for _, attr := range attrs {
+				switch {
+				case attr.Type.Equal(oidContentType):
+					foundContentType = true
+				case attr.Type.Equal(oidSigningTime):
+					foundSigningTime = true
+				case attr.Type.Equal(oidMessageDigest):
+					foundMessageDigest = true
+				case attr.Type.Equal(oidCommitmentTypeIndication):
+					foundCommitment = true
+				case attr.Type.Equal(oidSigningCertificateV2):
+					foundSigningCert = true
+				}
+			}
+
+			if !foundContentType {
+				t.Error("missing content-type attribute")
+			}
+			if !foundSigningTime {
+				t.Error("missing signing-time attribute")
+			}
+			if !foundMessageDigest {
+				t.Error("missing message-digest attribute")
+			}
+			if !foundCommitment && tc.sigType != SignatureTypeUnknown {
+				t.Error("missing commitment-type-indication attribute")
+			}
+			if !foundSigningCert {
+				t.Error("missing signing-certificate-v2 attribute")
+			}
+		})
+	}
+}
+
+// TestCreateCommitmentTypeIndicationAttribute tests commitment type attribute
+func TestCreateCommitmentTypeIndicationAttribute(t *testing.T) {
+	testCases := []struct {
+		name        string
+		sigType     SignatureType
+		expectedOID asn1.ObjectIdentifier
+		expectErr   bool
+	}{
+		{
+			name:        "Author signature",
+			sigType:     SignatureTypeAuthor,
+			expectedOID: oidProofOfOrigin,
+			expectErr:   false,
+		},
+		{
+			name:        "Repository signature",
+			sigType:     SignatureTypeRepository,
+			expectedOID: oidProofOfReceipt,
+			expectErr:   false,
+		},
+		{
+			name:      "Unknown signature type",
+			sigType:   SignatureTypeUnknown,
+			expectErr: true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			attr, err := createCommitmentTypeIndicationAttribute(tc.sigType)
+
+			if tc.expectErr {
+				if err == nil {
+					t.Fatal("expected error, got nil")
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			if !attr.Type.Equal(oidCommitmentTypeIndication) {
+				t.Errorf("expected OID %v, got %v", oidCommitmentTypeIndication, attr.Type)
+			}
+
+			// Decode and verify commitment OID
+			var values []asn1.RawValue
+			_, err = asn1.Unmarshal(attr.Values.FullBytes, &values)
+			if err != nil {
+				t.Fatalf("failed to unmarshal values: %v", err)
+			}
+
+			if len(values) != 1 {
+				t.Fatalf("expected 1 value, got %d", len(values))
+			}
+
+			var commitment CommitmentTypeIndication
+			_, err = asn1.Unmarshal(values[0].FullBytes, &commitment)
+			if err != nil {
+				t.Fatalf("failed to unmarshal commitment: %v", err)
+			}
+
+			if !commitment.CommitmentTypeID.Equal(tc.expectedOID) {
+				t.Errorf("expected commitment OID %v, got %v", tc.expectedOID, commitment.CommitmentTypeID)
+			}
+		})
+	}
+}
+
+// TestEncodeAttributesForSigning tests attribute encoding
+func TestEncodeAttributesForSigning(t *testing.T) {
+	rootCert, rootKey := generateTestRootCA(t)
+	signerCert, _ := generateTestCodeSigningCert(t, rootCert, rootKey)
+
+	contentHash := sha256.Sum256([]byte("test content"))
+	attrs, err := BuildSignedAttributes(contentHash[:], SignatureTypeAuthor, signerCert, HashAlgorithmSHA256)
+	if err != nil {
+		t.Fatalf("BuildSignedAttributes failed: %v", err)
+	}
+
+	encoded, err := EncodeAttributesForSigning(attrs)
+	if err != nil {
+		t.Fatalf("EncodeAttributesForSigning failed: %v", err)
+	}
+
+	if len(encoded) == 0 {
+		t.Fatal("encoded attributes are empty")
+	}
+
+	// Verify it's a SET (tag 17)
+	if encoded[0] != 0x31 { // SET tag
+		t.Errorf("expected SET tag (0x31), got 0x%02x", encoded[0])
+	}
+}
+
+// TestSignAndVerifyIntegration tests end-to-end signature creation and verification
+func TestSignAndVerifyIntegration(t *testing.T) {
+	// Generate certificates
+	rootCert, rootKey := generateTestRootCA(t)
+	signerCert, signerKey := generateTestCodeSigningCert(t, rootCert, rootKey)
+
+	// Create test package hash
+	testData := []byte("test package content for integration test")
+	contentHash := sha256.Sum256(testData)
+
+	// Sign package
+	opts := SigningOptions{
+		Certificate:      signerCert,
+		PrivateKey:       signerKey,
+		CertificateChain: []*x509.Certificate{rootCert},
+		SignatureType:    SignatureTypeAuthor,
+		HashAlgorithm:    HashAlgorithmSHA256,
+	}
+
+	signature, err := SignPackageData(contentHash[:], opts)
+	if err != nil {
+		t.Fatalf("SignPackageData failed: %v", err)
+	}
+
+	// Parse signature using existing reader (M3.8)
+	// Note: This would use the PrimarySignature parsing from reader.go
+	var contentInfo ContentInfo
+	_, err = asn1.Unmarshal(signature, &contentInfo)
+	if err != nil {
+		t.Fatalf("failed to parse signature: %v", err)
+	}
+
+	// Verify signature structure
+	if !contentInfo.ContentType.Equal(oidSignedData) {
+		t.Errorf("expected SignedData, got OID %v", contentInfo.ContentType)
+	}
+
+	// Parse SignedData
+	var signedData SignedData
+	_, err = asn1.Unmarshal(contentInfo.Content.Bytes, &signedData)
+	if err != nil {
+		t.Fatalf("failed to parse SignedData: %v", err)
+	}
+
+	// Verify SignedData structure
+	if signedData.Version != 1 {
+		t.Errorf("expected version 1, got %d", signedData.Version)
+	}
+
+	if len(signedData.SignerInfos) != 1 {
+		t.Fatalf("expected 1 SignerInfo, got %d", len(signedData.SignerInfos))
+	}
+
+	// Verify certificates are included
+	if len(signedData.Certificates.Bytes) == 0 {
+		t.Error("certificates not included in signature")
+	}
+
+	// Verify SignerInfo
+	signerInfo := signedData.SignerInfos[0]
+	if len(signerInfo.Signature) == 0 {
+		t.Error("signature is empty")
+	}
+
+	if len(signerInfo.SignedAttrs.Bytes) == 0 {
+		t.Error("signed attributes are empty")
+	}
+}
+
+// TestDefaultSigningOptions tests default options
+func TestDefaultSigningOptions(t *testing.T) {
+	rootCert, rootKey := generateTestRootCA(t)
+	signerCert, signerKey := generateTestCodeSigningCert(t, rootCert, rootKey)
+
+	opts := DefaultSigningOptions(signerCert, signerKey)
+
+	if opts.Certificate != signerCert {
+		t.Error("certificate not set")
+	}
+
+	if opts.PrivateKey != signerKey {
+		t.Error("private key not set")
+	}
+
+	if opts.SignatureType != SignatureTypeAuthor {
+		t.Errorf("expected SignatureTypeAuthor, got %s", opts.SignatureType)
+	}
+
+	if opts.HashAlgorithm != HashAlgorithmSHA256 {
+		t.Errorf("expected SHA256, got %s", opts.HashAlgorithm)
+	}
+
+	if opts.TimestampTimeout != 30*time.Second {
+		t.Errorf("expected 30s timeout, got %v", opts.TimestampTimeout)
+	}
+}
+
+// TestSignPackageData_WithCertificateChain tests signing with certificate chain
+func TestSignPackageData_WithCertificateChain(t *testing.T) {
+	// Create root → intermediate → signer chain
+	rootCert, rootKey := generateTestRootCA(t)
+	intermediateCert, intermediateKey := generateTestCodeSigningCert(t, rootCert, rootKey)
+	signerCert, signerKey := generateTestCodeSigningCert(t, intermediateCert, intermediateKey)
+
+	contentHash := sha256.Sum256([]byte("test content"))
+
+	opts := SigningOptions{
+		Certificate:      signerCert,
+		PrivateKey:       signerKey,
+		CertificateChain: []*x509.Certificate{intermediateCert, rootCert},
+		SignatureType:    SignatureTypeAuthor,
+		HashAlgorithm:    HashAlgorithmSHA256,
+	}
+
+	signature, err := SignPackageData(contentHash[:], opts)
+	if err != nil {
+		t.Fatalf("SignPackageData failed: %v", err)
+	}
+
+	if len(signature) == 0 {
+		t.Fatal("signature is empty")
+	}
+
+	// Parse and verify chain is included
+	var contentInfo ContentInfo
+	_, err = asn1.Unmarshal(signature, &contentInfo)
+	if err != nil {
+		t.Fatalf("failed to parse ContentInfo: %v", err)
+	}
+
+	var signedData SignedData
+	_, err = asn1.Unmarshal(contentInfo.Content.Bytes, &signedData)
+	if err != nil {
+		t.Fatalf("failed to parse SignedData: %v", err)
+	}
+
+	// Verify certificates are present (should have signer + intermediate + root)
+	if len(signedData.Certificates.Bytes) == 0 {
+		t.Error("no certificates in signature")
+	}
+}
+
+// Helper function
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || len(s) > len(substr) && (s[:len(substr)] == substr || s[len(s)-len(substr):] == substr || containsSubstring(s, substr)))
+}
+
+func containsSubstring(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
+}
+```
+
+### Testing Requirements
+
+Following NuGet.Client's testing patterns:
+
+1. **Certificate Generation** (reuse from verifier_test.go):
+   - `generateTestRootCA()` - Self-signed root CA
+   - `generateTestCodeSigningCert()` - Code signing certificate
+   - `generateWeakRSAKeyCert()` - Weak key for negative testing
+   - `generateExpiredCert()` - Expired certificate
+
+2. **CMS Structure Tests**:
+   - ✓ ContentInfo encoding with oidSignedData
+   - ✓ SignedData structure with version, digest algorithms, certificates
+   - ✓ SignerInfo with IssuerAndSerialNumber
+   - ✓ SignerInfo with SubjectKeyIdentifier (when present)
+
+3. **Attribute Tests**:
+   - ✓ All signed attributes creation (content-type, signing-time, message-digest)
+   - ✓ Commitment-type-indication for Author and Repository
+   - ✓ Signing-certificate-v2 with cert hash and issuer/serial
+   - ✓ Attribute encoding for signing (DER with SET tag)
+
+4. **Signature Tests**:
+   - ✓ RSA-PKCS#1 v1.5 signing with crypto/rsa
+   - ✓ All hash algorithms (SHA256/384/512)
+   - ✓ Certificate chain inclusion
+   - ✓ Validation tests (missing cert, key mismatch, weak keys)
+
+5. **Integration Tests**:
+   - ✓ Create signature and parse with existing structures
+   - ✓ Verify signature structure matches RFC 5652
+   - ✓ End-to-end: sign → parse → verify structure
+
+### Test Coverage Targets
+
+- **cms.go**: 95%+ (structure definitions, OID mappings)
+- **attributes.go**: 95%+ (all attribute builders)
+- **signer.go**: 90%+ (signing logic, validation)
+- **Overall**: 90%+ coverage
+
+### Verification Steps
 
 ```bash
 # 1. Build
 go build ./packaging/signatures
 
-# 2. Run signing tests
+# 2. Run all tests
+go test ./packaging/signatures -v
+
+# 3. Run specific test categories
 go test ./packaging/signatures -v -run TestSignPackageData
-
-# 3. Run attribute tests
 go test ./packaging/signatures -v -run TestBuildSignedAttributes
+go test ./packaging/signatures -v -run TestSigningOptions
 
-# 4. Run CMS structure tests
-go test ./packaging/signatures -v -run TestCreateSignedData
+# 4. Check coverage
+go test ./packaging/signatures -coverprofile=/tmp/signer_coverage.out
+go tool cover -func=/tmp/signer_coverage.out
 
-# 5. Run end-to-end test with real certificate
-go test ./packaging/signatures -v -run TestSignAndVerify
+# 5. Run integration test
+go test ./packaging/signatures -v -run TestSignAndVerifyIntegration
 
-# 6. Check coverage
-go test ./packaging/signatures -cover
+# 6. Format check
+gofmt -l packaging/signatures/
 ```
-
 ### Testing Requirements
 
 1. **CMS Structure Tests**:
