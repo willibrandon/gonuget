@@ -98,7 +98,7 @@ func TestClient_DoWithRetry_Success(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DoWithRetry() error = %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("StatusCode = %d, want 200", resp.StatusCode)
@@ -134,7 +134,7 @@ func TestClient_DoWithRetry_EventualSuccess(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DoWithRetry() error = %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("StatusCode = %d, want 200", resp.StatusCode)
@@ -167,7 +167,7 @@ func TestClient_DoWithRetry_MaxRetriesExceeded(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DoWithRetry() error = %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// Should return last response even after max retries
 	if resp.StatusCode != http.StatusServiceUnavailable {
@@ -189,7 +189,7 @@ func TestClient_DoWithRetry_NonRetriableError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DoWithRetry() error = %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// Should not retry 404
 	if resp.StatusCode != http.StatusNotFound {
@@ -288,7 +288,7 @@ func TestClient_DoWithRetry_RetryAfterHeader(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DoWithRetry() error = %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	elapsed := time.Since(start)
 
@@ -328,7 +328,7 @@ func TestClient_DoWithRetry_RetryAfterHTTPDate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DoWithRetry() error = %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	elapsed := time.Since(start)
 

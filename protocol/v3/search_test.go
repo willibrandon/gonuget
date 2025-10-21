@@ -53,7 +53,7 @@ func setupSearchServer(t *testing.T) (*httptest.Server, *SearchClient) {
 			},
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(index)
+		_ = json.NewEncoder(w).Encode(index)
 	})
 
 	// Search endpoint
@@ -66,7 +66,7 @@ func setupSearchServer(t *testing.T) (*httptest.Server, *SearchClient) {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(testSearchResponse)
+		_ = json.NewEncoder(w).Encode(testSearchResponse)
 	})
 
 	server := httptest.NewServer(mux)
@@ -133,7 +133,7 @@ func TestSearchClient_SearchWithPagination(t *testing.T) {
 				},
 			}
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(index)
+			_ = json.NewEncoder(w).Encode(index)
 			return
 		}
 
@@ -151,7 +151,7 @@ func TestSearchClient_SearchWithPagination(t *testing.T) {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(&SearchResponse{TotalHits: 100, Data: []SearchResult{}})
+		_ = json.NewEncoder(w).Encode(&SearchResponse{TotalHits: 100, Data: []SearchResult{}})
 	}))
 	defer server.Close()
 

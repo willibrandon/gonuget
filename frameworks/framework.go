@@ -46,6 +46,13 @@ type FrameworkVersion struct {
 	Revision int
 }
 
+// AnyFramework represents the special "any" framework that matches all target frameworks.
+// Used for dependencies without a target framework group.
+var AnyFramework = NuGetFramework{
+	Framework: "Any",
+	Version:   FrameworkVersion{Major: 0, Minor: 0, Build: 0, Revision: 0},
+}
+
 // Compare compares two framework versions.
 // Returns -1 if v < other, 0 if v == other, 1 if v > other.
 func (v FrameworkVersion) Compare(other FrameworkVersion) int {
@@ -82,6 +89,11 @@ func (fw *NuGetFramework) String() string {
 		return fw.originalString
 	}
 	return fw.format()
+}
+
+// IsAny returns true if this framework represents the special "any" framework.
+func (fw *NuGetFramework) IsAny() bool {
+	return fw.Framework == "Any"
 }
 
 // format creates a formatted TFM string.
@@ -360,18 +372,18 @@ func parsePCL(s string) (*NuGetFramework, error) {
 //
 //	netstandard2.0.IsCompatible(net6.0) → true
 //	net48.IsCompatible(netstandard2.1) → false
-func (f *NuGetFramework) IsCompatible(target *NuGetFramework) bool {
-	if f == nil || target == nil {
+func (fw *NuGetFramework) IsCompatible(target *NuGetFramework) bool {
+	if fw == nil || target == nil {
 		return false
 	}
 
 	// Same framework and version
-	if f.Framework == target.Framework && f.Version.Compare(target.Version) == 0 {
+	if fw.Framework == target.Framework && fw.Version.Compare(target.Version) == 0 {
 		return true
 	}
 
 	// Check framework compatibility rules
-	return isCompatibleWith(f, target)
+	return isCompatibleWith(fw, target)
 }
 
 // isCompatibleWith implements the core compatibility logic.

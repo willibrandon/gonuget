@@ -52,7 +52,7 @@ func setupV2SearchServer(t *testing.T) (*httptest.Server, *SearchClient) {
 			}
 
 			w.Header().Set("Content-Type", "application/atom+xml; charset=utf-8")
-			w.Write([]byte(testFeedResponse))
+			_, _ = w.Write([]byte(testFeedResponse))
 			return
 		}
 		http.NotFound(w, r)

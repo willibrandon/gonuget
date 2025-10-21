@@ -66,7 +66,7 @@ func (c *AutocompleteClient) AutocompletePackageIDs(ctx context.Context, sourceU
 	if err != nil {
 		return nil, fmt.Errorf("autocomplete request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
@@ -114,7 +114,7 @@ func (c *AutocompleteClient) AutocompletePackageVersions(ctx context.Context, so
 	if err != nil {
 		return nil, fmt.Errorf("version autocomplete request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusNotFound {
 		return nil, fmt.Errorf("package %q not found", packageID)

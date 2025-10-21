@@ -27,7 +27,7 @@ func setupDownloadServer() (*httptest.Server, *DownloadClient) {
 			},
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(index)
+		_ = json.NewEncoder(w).Encode(index)
 	})
 
 	// Package download endpoint
@@ -39,7 +39,7 @@ func setupDownloadServer() (*httptest.Server, *DownloadClient) {
 			packageID := strings.TrimSuffix(path, "/index.json")
 			if packageID == "newtonsoft.json" {
 				w.Header().Set("Content-Type", "application/json")
-				json.NewEncoder(w).Encode(map[string]any{
+				_ = json.NewEncoder(w).Encode(map[string]any{
 					"versions": []string{"13.0.1", "13.0.2", "13.0.3"},
 				})
 				return
@@ -52,8 +52,8 @@ func setupDownloadServer() (*httptest.Server, *DownloadClient) {
 		if strings.HasSuffix(path, ".nupkg") {
 			if strings.Contains(path, "newtonsoft.json/13.0.3/") {
 				w.Header().Set("Content-Type", "application/zip")
-				w.Write([]byte("PK\x03\x04")) // ZIP file signature
-				w.Write([]byte("fake nupkg content"))
+				_, _ = w.Write([]byte("PK\x03\x04")) // ZIP file signature
+				_, _ = w.Write([]byte("fake nupkg content"))
 				return
 			}
 			http.NotFound(w, r)
@@ -64,7 +64,7 @@ func setupDownloadServer() (*httptest.Server, *DownloadClient) {
 		if strings.HasSuffix(path, ".nuspec") {
 			if strings.Contains(path, "newtonsoft.json/13.0.3/") {
 				w.Header().Set("Content-Type", "application/xml")
-				w.Write([]byte(`<?xml version="1.0"?>
+				_, _ = w.Write([]byte(`<?xml version="1.0"?>
 <package xmlns="http://schemas.microsoft.com/packaging/2013/05/nuspec.xsd">
   <metadata>
     <id>Newtonsoft.Json</id>
@@ -99,7 +99,7 @@ func TestDownloadClient_DownloadPackage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DownloadPackage() error = %v", err)
 	}
-	defer body.Close()
+	defer func() { _ = body.Close() }()
 
 	content, err := io.ReadAll(body)
 	if err != nil {
@@ -142,7 +142,7 @@ func TestDownloadClient_DownloadNuspec(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DownloadNuspec() error = %v", err)
 	}
-	defer body.Close()
+	defer func() { _ = body.Close() }()
 
 	content, err := io.ReadAll(body)
 	if err != nil {

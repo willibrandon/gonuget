@@ -26,8 +26,8 @@ func setupV2DownloadServer(t *testing.T) (*httptest.Server, *DownloadClient) {
 
 				if packageID == "Newtonsoft.Json" && version == "13.0.3" {
 					w.Header().Set("Content-Type", "application/zip")
-					w.Write([]byte("PK\x03\x04")) // ZIP signature
-					w.Write([]byte("fake nupkg content"))
+					_, _ = w.Write([]byte("PK\x03\x04")) // ZIP signature
+					_, _ = w.Write([]byte("fake nupkg content"))
 					return
 				}
 			} else if len(parts) == 1 {
@@ -36,8 +36,8 @@ func setupV2DownloadServer(t *testing.T) (*httptest.Server, *DownloadClient) {
 
 				if packageID == "Newtonsoft.Json" {
 					w.Header().Set("Content-Type", "application/zip")
-					w.Write([]byte("PK\x03\x04")) // ZIP signature
-					w.Write([]byte("fake latest nupkg content"))
+					_, _ = w.Write([]byte("PK\x03\x04")) // ZIP signature
+					_, _ = w.Write([]byte("fake latest nupkg content"))
 					return
 				}
 			}
@@ -65,7 +65,7 @@ func TestDownloadClient_DownloadPackage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DownloadPackage() error = %v", err)
 	}
-	defer body.Close()
+	defer func() { _ = body.Close() }()
 
 	content, err := io.ReadAll(body)
 	if err != nil {
@@ -108,7 +108,7 @@ func TestDownloadClient_DownloadLatestPackage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DownloadLatestPackage() error = %v", err)
 	}
-	defer body.Close()
+	defer func() { _ = body.Close() }()
 
 	content, err := io.ReadAll(body)
 	if err != nil {

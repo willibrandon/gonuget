@@ -109,7 +109,7 @@ func setupV2MetadataServer(t *testing.T) (*httptest.Server, *MetadataClient) {
 		if strings.Contains(r.URL.Path, "Packages(") {
 			if strings.Contains(r.URL.Path, "Newtonsoft.Json") && strings.Contains(r.URL.Path, "13.0.3") {
 				w.Header().Set("Content-Type", "application/atom+xml; charset=utf-8")
-				w.Write([]byte(testPackageEntry))
+				_, _ = w.Write([]byte(testPackageEntry))
 				return
 			}
 			// Version not found
@@ -122,7 +122,7 @@ func setupV2MetadataServer(t *testing.T) (*httptest.Server, *MetadataClient) {
 			query := r.URL.Query()
 			if query.Get("id") == "'Newtonsoft.Json'" || query.Get("id") == "Newtonsoft.Json" {
 				w.Header().Set("Content-Type", "application/atom+xml; charset=utf-8")
-				w.Write([]byte(testVersionsFeed))
+				_, _ = w.Write([]byte(testVersionsFeed))
 				return
 			}
 			// Package not found

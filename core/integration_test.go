@@ -27,7 +27,7 @@ func TestIntegration_Client_SearchPackages(t *testing.T) {
 		SourceURL:  nugetOrgV3,
 		HTTPClient: httpClient,
 	})
-	repoManager.AddRepository(repo)
+	_ = repoManager.AddRepository(repo)
 
 	client := NewClient(ClientConfig{
 		RepositoryManager: repoManager,
@@ -65,7 +65,7 @@ func TestIntegration_Client_GetPackageMetadata(t *testing.T) {
 		SourceURL:  nugetOrgV3,
 		HTTPClient: httpClient,
 	})
-	repoManager.AddRepository(repo)
+	_ = repoManager.AddRepository(repo)
 
 	client := NewClient(ClientConfig{
 		RepositoryManager: repoManager,
@@ -100,7 +100,7 @@ func TestIntegration_Client_ListVersions(t *testing.T) {
 		SourceURL:  nugetOrgV3,
 		HTTPClient: httpClient,
 	})
-	repoManager.AddRepository(repo)
+	_ = repoManager.AddRepository(repo)
 
 	client := NewClient(ClientConfig{
 		RepositoryManager: repoManager,
@@ -144,7 +144,7 @@ func TestIntegration_Client_FindBestVersion(t *testing.T) {
 		SourceURL:  nugetOrgV3,
 		HTTPClient: httpClient,
 	})
-	repoManager.AddRepository(repo)
+	_ = repoManager.AddRepository(repo)
 
 	client := NewClient(ClientConfig{
 		RepositoryManager: repoManager,
@@ -178,7 +178,7 @@ func TestIntegration_Client_ResolvePackageVersion(t *testing.T) {
 		SourceURL:  nugetOrgV3,
 		HTTPClient: httpClient,
 	})
-	repoManager.AddRepository(repo)
+	_ = repoManager.AddRepository(repo)
 
 	client := NewClient(ClientConfig{
 		RepositoryManager: repoManager,
@@ -231,7 +231,7 @@ func TestIntegration_Client_DownloadPackage(t *testing.T) {
 		SourceURL:  nugetOrgV3,
 		HTTPClient: httpClient,
 	})
-	repoManager.AddRepository(repo)
+	_ = repoManager.AddRepository(repo)
 
 	client := NewClient(ClientConfig{
 		RepositoryManager: repoManager,
@@ -242,7 +242,7 @@ func TestIntegration_Client_DownloadPackage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DownloadPackage() error = %v", err)
 	}
-	defer rc.Close()
+	defer func() { _ = rc.Close() }()
 
 	// Just verify we got data
 	buf := make([]byte, 1024)
@@ -271,7 +271,7 @@ func TestIntegration_RepositoryManager_MultipleRepos(t *testing.T) {
 		SourceURL:  nugetOrgV3,
 		HTTPClient: httpClient,
 	})
-	manager.AddRepository(nugetOrg)
+	_ = manager.AddRepository(nugetOrg)
 
 	ctx := context.Background()
 	results, err := manager.SearchAll(ctx, "Newtonsoft.Json", SearchOptions{
@@ -305,7 +305,7 @@ func TestIntegration_Client_GetCompatibleDependencies(t *testing.T) {
 		SourceURL:  nugetOrgV3,
 		HTTPClient: httpClient,
 	})
-	repoManager.AddRepository(repo)
+	_ = repoManager.AddRepository(repo)
 
 	fw, _ := frameworks.ParseFramework("net6.0")
 	client := NewClient(ClientConfig{

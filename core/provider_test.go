@@ -24,7 +24,7 @@ func setupV3TestServer() *httptest.Server {
 					{ID: "http://localhost/packages/", Type: "PackageBaseAddress"},
 				},
 			}
-			json.NewEncoder(w).Encode(index)
+			_ = json.NewEncoder(w).Encode(index)
 			return
 		}
 		http.NotFound(w, r)
@@ -35,7 +35,7 @@ func setupV2TestServer() *httptest.Server {
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/" || r.URL.Path == "" {
 			w.Header().Set("Content-Type", "application/xml")
-			w.Write([]byte(`<?xml version="1.0"?>
+			_, _ = w.Write([]byte(`<?xml version="1.0"?>
 <service xmlns="http://www.w3.org/2007/app">
   <workspace>
     <title>Default</title>

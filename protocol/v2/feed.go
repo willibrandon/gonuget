@@ -42,7 +42,7 @@ func (c *FeedClient) DetectV2Feed(ctx context.Context, feedURL string) (bool, er
 	if err != nil {
 		return false, fmt.Errorf("fetch service: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return false, nil
@@ -92,7 +92,7 @@ func (c *FeedClient) GetServiceDocument(ctx context.Context, feedURL string) (*S
 	if err != nil {
 		return nil, fmt.Errorf("fetch service: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))

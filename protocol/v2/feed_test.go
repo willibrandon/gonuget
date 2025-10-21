@@ -23,7 +23,7 @@ func setupV2Server(t *testing.T) (*httptest.Server, *FeedClient) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/" || r.URL.Path == "" {
 			w.Header().Set("Content-Type", "application/xml; charset=utf-8")
-			w.Write([]byte(testServiceDocument))
+			_, _ = w.Write([]byte(testServiceDocument))
 			return
 		}
 		http.NotFound(w, r)
@@ -54,7 +54,7 @@ func TestFeedClient_DetectV2Feed(t *testing.T) {
 func TestFeedClient_DetectV2Feed_NotV2(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"version":"3.0.0"}`))
+		_, _ = w.Write([]byte(`{"version":"3.0.0"}`))
 	}))
 	defer server.Close()
 

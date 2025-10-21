@@ -144,7 +144,7 @@ func TestIntegration_Download(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DownloadPackage() error = %v", err)
 	}
-	defer rc.Close()
+	defer func() { _ = rc.Close() }()
 
 	// Just verify we got data
 	buf := make([]byte, 1024)

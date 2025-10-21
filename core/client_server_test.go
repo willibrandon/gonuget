@@ -80,7 +80,7 @@ func createTestServer() *httptest.Server {
 					},
 				},
 			}
-			json.NewEncoder(w).Encode(response)
+			_ = json.NewEncoder(w).Encode(response)
 
 		case r.URL.Path == "/index.json":
 			// Service index (must come AFTER more specific paths like /registration/)
@@ -101,7 +101,7 @@ func createTestServer() *httptest.Server {
 					},
 				},
 			}
-			json.NewEncoder(w).Encode(index)
+			_ = json.NewEncoder(w).Encode(index)
 
 		case strings.Contains(r.URL.Path, "/search"):
 			// Search
@@ -115,12 +115,12 @@ func createTestServer() *httptest.Server {
 					},
 				},
 			}
-			json.NewEncoder(w).Encode(response)
+			_ = json.NewEncoder(w).Encode(response)
 
 		case strings.Contains(r.URL.Path, "/download/"):
 			// Download
 			w.Header().Set("Content-Type", "application/zip")
-			w.Write([]byte("fake package content"))
+			_, _ = w.Write([]byte("fake package content"))
 
 		default:
 			http.NotFound(w, r)
@@ -140,7 +140,7 @@ func TestClient_FindBestVersion(t *testing.T) {
 		SourceURL:  server.URL,
 		HTTPClient: httpClient,
 	})
-	repoManager.AddRepository(repo)
+	_ = repoManager.AddRepository(repo)
 
 	client := NewClient(ClientConfig{
 		RepositoryManager: repoManager,
@@ -171,7 +171,7 @@ func TestClient_FindBestVersion_NoMatch(t *testing.T) {
 		SourceURL:  server.URL,
 		HTTPClient: httpClient,
 	})
-	repoManager.AddRepository(repo)
+	_ = repoManager.AddRepository(repo)
 
 	client := NewClient(ClientConfig{
 		RepositoryManager: repoManager,
@@ -198,7 +198,7 @@ func TestClient_ResolvePackageVersion_Exact(t *testing.T) {
 		SourceURL:  server.URL,
 		HTTPClient: httpClient,
 	})
-	repoManager.AddRepository(repo)
+	_ = repoManager.AddRepository(repo)
 
 	client := NewClient(ClientConfig{
 		RepositoryManager: repoManager,
@@ -227,7 +227,7 @@ func TestClient_ResolvePackageVersion_Range(t *testing.T) {
 		SourceURL:  server.URL,
 		HTTPClient: httpClient,
 	})
-	repoManager.AddRepository(repo)
+	_ = repoManager.AddRepository(repo)
 
 	client := NewClient(ClientConfig{
 		RepositoryManager: repoManager,
@@ -256,7 +256,7 @@ func TestClient_ResolvePackageVersion_NotFound(t *testing.T) {
 		SourceURL:  server.URL,
 		HTTPClient: httpClient,
 	})
-	repoManager.AddRepository(repo)
+	_ = repoManager.AddRepository(repo)
 
 	client := NewClient(ClientConfig{
 		RepositoryManager: repoManager,
@@ -281,7 +281,7 @@ func TestClient_SearchPackages(t *testing.T) {
 		SourceURL:  server.URL,
 		HTTPClient: httpClient,
 	})
-	repoManager.AddRepository(repo)
+	_ = repoManager.AddRepository(repo)
 
 	client := NewClient(ClientConfig{
 		RepositoryManager: repoManager,
@@ -384,7 +384,7 @@ func TestSourceRepository_DownloadPackage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DownloadPackage() error = %v", err)
 	}
-	defer rc.Close()
+	defer func() { _ = rc.Close() }()
 
 	data, _ := io.ReadAll(rc)
 	if string(data) != "fake package content" {
@@ -410,8 +410,8 @@ func TestRepositoryManager_SearchAll(t *testing.T) {
 		HTTPClient: httpClient,
 	})
 
-	manager.AddRepository(repo1)
-	manager.AddRepository(repo2)
+	_ = manager.AddRepository(repo1)
+	_ = manager.AddRepository(repo2)
 
 	ctx := context.Background()
 	results, err := manager.SearchAll(ctx, "test", SearchOptions{})
@@ -451,8 +451,8 @@ func TestClient_GetPackageMetadata_MultipleRepos(t *testing.T) {
 		HTTPClient: httpClient,
 	})
 
-	repoManager.AddRepository(repo1)
-	repoManager.AddRepository(repo2)
+	_ = repoManager.AddRepository(repo1)
+	_ = repoManager.AddRepository(repo2)
 
 	client := NewClient(ClientConfig{
 		RepositoryManager: repoManager,
@@ -488,8 +488,8 @@ func TestClient_ListVersions_MultipleRepos(t *testing.T) {
 		HTTPClient: httpClient,
 	})
 
-	repoManager.AddRepository(repo1)
-	repoManager.AddRepository(repo2)
+	_ = repoManager.AddRepository(repo1)
+	_ = repoManager.AddRepository(repo2)
 
 	client := NewClient(ClientConfig{
 		RepositoryManager: repoManager,
@@ -519,7 +519,7 @@ func TestClient_DownloadPackage_MultipleRepos(t *testing.T) {
 		SourceURL:  server.URL,
 		HTTPClient: httpClient,
 	})
-	repoManager.AddRepository(repo)
+	_ = repoManager.AddRepository(repo)
 
 	client := NewClient(ClientConfig{
 		RepositoryManager: repoManager,
@@ -530,7 +530,7 @@ func TestClient_DownloadPackage_MultipleRepos(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DownloadPackage() error = %v", err)
 	}
-	defer rc.Close()
+	defer func() { _ = rc.Close() }()
 
 	data, _ := io.ReadAll(rc)
 	if len(data) == 0 {

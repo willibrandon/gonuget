@@ -63,7 +63,7 @@ func (c *MetadataClient) GetPackageMetadata(ctx context.Context, feedURL, packag
 	if err != nil {
 		return nil, fmt.Errorf("metadata request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusNotFound {
 		return nil, fmt.Errorf("package %q version %q not found", packageID, version)
@@ -126,7 +126,7 @@ func (c *MetadataClient) ListVersions(ctx context.Context, feedURL, packageID st
 	if err != nil {
 		return nil, fmt.Errorf("list versions request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusNotFound {
 		return nil, fmt.Errorf("package %q not found", packageID)

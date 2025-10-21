@@ -58,13 +58,13 @@ func (c *DownloadClient) DownloadPackage(ctx context.Context, sourceURL, package
 	}
 
 	if resp.StatusCode == http.StatusNotFound {
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		return nil, fmt.Errorf("package %s %s not found", packageID, version)
 	}
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		return nil, fmt.Errorf("download returned %d: %s", resp.StatusCode, body)
 	}
 
@@ -103,13 +103,13 @@ func (c *DownloadClient) DownloadNuspec(ctx context.Context, sourceURL, packageI
 	}
 
 	if resp.StatusCode == http.StatusNotFound {
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		return nil, fmt.Errorf("nuspec for %s %s not found", packageID, version)
 	}
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		return nil, fmt.Errorf("nuspec returned %d: %s", resp.StatusCode, body)
 	}
 
@@ -143,7 +143,7 @@ func (c *DownloadClient) GetPackageVersions(ctx context.Context, sourceURL, pack
 	if err != nil {
 		return nil, fmt.Errorf("versions request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusNotFound {
 		return nil, fmt.Errorf("package %s not found", packageID)

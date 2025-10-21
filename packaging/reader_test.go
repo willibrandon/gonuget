@@ -57,7 +57,7 @@ func TestOpenPackageFromReaderAt(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OpenPackageFromReaderAt failed: %v", err)
 	}
-	defer pkg.Close()
+	defer func() { _ = pkg.Close() }()
 
 	if pkg.zipReaderAt == nil {
 		t.Error("zipReaderAt should not be nil")
@@ -79,7 +79,7 @@ func TestPackageReader_Files(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OpenPackageFromReaderAt failed: %v", err)
 	}
-	defer pkg.Close()
+	defer func() { _ = pkg.Close() }()
 
 	zipFiles := pkg.Files()
 	if len(zipFiles) != 2 {
@@ -116,7 +116,7 @@ func TestPackageReader_IsSigned(t *testing.T) {
 			if err != nil {
 				t.Fatalf("OpenPackageFromReaderAt failed: %v", err)
 			}
-			defer pkg.Close()
+			defer func() { _ = pkg.Close() }()
 
 			got := pkg.IsSigned()
 			if got != tt.want {
@@ -143,7 +143,7 @@ func TestPackageReader_GetSignatureFile(t *testing.T) {
 		if err != nil {
 			t.Fatalf("OpenPackageFromReaderAt failed: %v", err)
 		}
-		defer pkg.Close()
+		defer func() { _ = pkg.Close() }()
 
 		sigFile, err := pkg.GetSignatureFile()
 		if err != nil {
@@ -165,7 +165,7 @@ func TestPackageReader_GetSignatureFile(t *testing.T) {
 		if err != nil {
 			t.Fatalf("OpenPackageFromReaderAt failed: %v", err)
 		}
-		defer pkg.Close()
+		defer func() { _ = pkg.Close() }()
 
 		_, err = pkg.GetSignatureFile()
 		if err != ErrPackageNotSigned {
@@ -226,7 +226,7 @@ func TestPackageReader_GetNuspecFile(t *testing.T) {
 			if err != nil {
 				t.Fatalf("OpenPackageFromReaderAt failed: %v", err)
 			}
-			defer pkg.Close()
+			defer func() { _ = pkg.Close() }()
 
 			nuspecFile, err := pkg.GetNuspecFile()
 			if err != tt.wantErr {
@@ -259,13 +259,13 @@ func TestPackageReader_OpenNuspec(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OpenPackageFromReaderAt failed: %v", err)
 	}
-	defer pkg.Close()
+	defer func() { _ = pkg.Close() }()
 
 	rc, err := pkg.OpenNuspec()
 	if err != nil {
 		t.Fatalf("OpenNuspec() error = %v", err)
 	}
-	defer rc.Close()
+	defer func() { _ = rc.Close() }()
 
 	content, err := io.ReadAll(rc)
 	if err != nil {
@@ -330,7 +330,7 @@ func TestPackageReader_GetFile(t *testing.T) {
 			if err != nil {
 				t.Fatalf("OpenPackageFromReaderAt failed: %v", err)
 			}
-			defer pkg.Close()
+			defer func() { _ = pkg.Close() }()
 
 			file, err := pkg.GetFile(tt.lookFor)
 			if (err != nil) != tt.wantErr {
@@ -355,7 +355,7 @@ func TestPackageReader_HasFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OpenPackageFromReaderAt failed: %v", err)
 	}
-	defer pkg.Close()
+	defer func() { _ = pkg.Close() }()
 
 	if !pkg.HasFile("lib/test.dll") {
 		t.Error("HasFile() should return true for existing file")
@@ -379,7 +379,7 @@ func TestPackageReader_GetFiles(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OpenPackageFromReaderAt failed: %v", err)
 	}
-	defer pkg.Close()
+	defer func() { _ = pkg.Close() }()
 
 	matches := pkg.GetFiles("lib/net6.0/")
 	if len(matches) != 2 {
@@ -505,16 +505,16 @@ func BenchmarkFileAccess(b *testing.B) {
 	w := zip.NewWriter(&buf)
 	for name, content := range files {
 		f, _ := w.Create(name)
-		f.Write([]byte(content))
+		_, _ = f.Write([]byte(content))
 	}
-	w.Close()
+	_ = w.Close()
 
 	reader := bytes.NewReader(buf.Bytes())
 	pkg, _ := OpenPackageFromReaderAt(reader, int64(reader.Len()))
-	defer pkg.Close()
+	defer func() { _ = pkg.Close() }()
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		pkg.GetFile("lib/net6.0/file50.dll")
+		_, _ = pkg.GetFile("lib/net6.0/file50.dll")
 	}
 }

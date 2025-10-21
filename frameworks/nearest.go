@@ -54,15 +54,18 @@ func calculateCompatibilityScore(fw, target *NuGetFramework) int {
 			if target.Framework == ".NETFramework" && versionDiff > 0 {
 				// Older .NET Framework versions get less bonus
 				score += 50
-			} else if versionDiff == 0 {
-				// Same version
-				score += 150
-			} else if versionDiff <= 2 {
-				// Very close versions get bonus
-				score += 120 - (versionDiff * 30)
 			} else {
-				// Distant versions
-				score += 50 - (versionDiff * 5)
+				switch {
+				case versionDiff == 0:
+					// Same version
+					score += 150
+				case versionDiff <= 2:
+					// Very close versions get bonus
+					score += 120 - (versionDiff * 30)
+				default:
+					// Distant versions
+					score += 50 - (versionDiff * 5)
+				}
 			}
 		}
 		return score

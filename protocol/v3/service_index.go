@@ -74,7 +74,7 @@ func (c *ServiceIndexClient) fetchServiceIndex(ctx context.Context, sourceURL st
 	if err != nil {
 		return nil, fmt.Errorf("fetch service index: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != 200 {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))

@@ -26,7 +26,7 @@ func TestMetadataClient_GetPackageMetadata_WithPaginatedPages(t *testing.T) {
 					},
 				},
 			}
-			json.NewEncoder(w).Encode(index)
+			_ = json.NewEncoder(w).Encode(index)
 
 		case "/registration/testpkg/index.json":
 			// Return index with external page reference (no inline items)
@@ -41,7 +41,7 @@ func TestMetadataClient_GetPackageMetadata_WithPaginatedPages(t *testing.T) {
 					},
 				},
 			}
-			json.NewEncoder(w).Encode(response)
+			_ = json.NewEncoder(w).Encode(response)
 
 		case "/registration/testpkg/page/1.0.0/2.0.0.json":
 			// Return the actual page with items
@@ -63,7 +63,7 @@ func TestMetadataClient_GetPackageMetadata_WithPaginatedPages(t *testing.T) {
 					},
 				},
 			}
-			json.NewEncoder(w).Encode(page)
+			_ = json.NewEncoder(w).Encode(page)
 
 		default:
 			http.NotFound(w, r)
@@ -117,7 +117,7 @@ func TestMetadataClient_GetPackageMetadata_PageFetchError(t *testing.T) {
 					},
 				},
 			}
-			json.NewEncoder(w).Encode(index)
+			_ = json.NewEncoder(w).Encode(index)
 
 		case "/registration/testpkg/index.json":
 			response := RegistrationIndex{
@@ -131,7 +131,7 @@ func TestMetadataClient_GetPackageMetadata_PageFetchError(t *testing.T) {
 					},
 				},
 			}
-			json.NewEncoder(w).Encode(response)
+			_ = json.NewEncoder(w).Encode(response)
 
 		case "/registration/testpkg/page/bad.json":
 			// Return error when fetching page
@@ -172,7 +172,7 @@ func TestMetadataClient_GetPackageMetadata_NotFound(t *testing.T) {
 					},
 				},
 			}
-			json.NewEncoder(w).Encode(index)
+			_ = json.NewEncoder(w).Encode(index)
 
 		case "/registration/nonexistent/index.json":
 			http.NotFound(w, r)
@@ -207,11 +207,11 @@ func TestMetadataClient_GetPackageMetadata_InvalidJSON(t *testing.T) {
 					},
 				},
 			}
-			json.NewEncoder(w).Encode(index)
+			_ = json.NewEncoder(w).Encode(index)
 
 		case "/registration/badpkg/index.json":
 			// Return invalid JSON
-			w.Write([]byte("not valid json"))
+			_, _ = w.Write([]byte("not valid json"))
 
 		default:
 			http.NotFound(w, r)
@@ -243,7 +243,7 @@ func TestMetadataClient_GetVersionMetadata_Success(t *testing.T) {
 					},
 				},
 			}
-			json.NewEncoder(w).Encode(index)
+			_ = json.NewEncoder(w).Encode(index)
 
 		case "/registration/testpkg/index.json":
 			response := RegistrationIndex{
@@ -271,7 +271,7 @@ func TestMetadataClient_GetVersionMetadata_Success(t *testing.T) {
 					},
 				},
 			}
-			json.NewEncoder(w).Encode(response)
+			_ = json.NewEncoder(w).Encode(response)
 
 		default:
 			http.NotFound(w, r)
@@ -311,7 +311,7 @@ func TestMetadataClient_GetVersionMetadata_VersionNotFound(t *testing.T) {
 					},
 				},
 			}
-			json.NewEncoder(w).Encode(index)
+			_ = json.NewEncoder(w).Encode(index)
 
 		case "/registration/testpkg/index.json":
 			response := RegistrationIndex{
@@ -333,7 +333,7 @@ func TestMetadataClient_GetVersionMetadata_VersionNotFound(t *testing.T) {
 					},
 				},
 			}
-			json.NewEncoder(w).Encode(response)
+			_ = json.NewEncoder(w).Encode(response)
 
 		default:
 			http.NotFound(w, r)
@@ -365,7 +365,7 @@ func TestMetadataClient_ListVersions_Success(t *testing.T) {
 					},
 				},
 			}
-			json.NewEncoder(w).Encode(index)
+			_ = json.NewEncoder(w).Encode(index)
 
 		case "/registration/testpkg/index.json":
 			response := RegistrationIndex{
@@ -399,7 +399,7 @@ func TestMetadataClient_ListVersions_Success(t *testing.T) {
 					},
 				},
 			}
-			json.NewEncoder(w).Encode(response)
+			_ = json.NewEncoder(w).Encode(response)
 
 		default:
 			http.NotFound(w, r)
@@ -451,7 +451,7 @@ func TestMetadataClient_ListVersions_ErrorPaths(t *testing.T) {
 								},
 							},
 						}
-						json.NewEncoder(w).Encode(index)
+						_ = json.NewEncoder(w).Encode(index)
 					case "/registration/testpkg/index.json":
 						http.Error(w, "Not Found", http.StatusNotFound)
 					default:
@@ -477,9 +477,9 @@ func TestMetadataClient_ListVersions_ErrorPaths(t *testing.T) {
 								},
 							},
 						}
-						json.NewEncoder(w).Encode(index)
+						_ = json.NewEncoder(w).Encode(index)
 					case "/registration/testpkg/index.json":
-						w.Write([]byte("not json"))
+						_, _ = w.Write([]byte("not json"))
 					default:
 						http.NotFound(w, r)
 					}
@@ -525,7 +525,7 @@ func TestMetadataClient_fetchRegistrationPage_InvalidJSON(t *testing.T) {
 					},
 				},
 			}
-			json.NewEncoder(w).Encode(index)
+			_ = json.NewEncoder(w).Encode(index)
 
 		case "/registration/testpkg/index.json":
 			response := RegistrationIndex{
@@ -539,11 +539,11 @@ func TestMetadataClient_fetchRegistrationPage_InvalidJSON(t *testing.T) {
 					},
 				},
 			}
-			json.NewEncoder(w).Encode(response)
+			_ = json.NewEncoder(w).Encode(response)
 
 		case "/registration/testpkg/page/bad.json":
 			// Return invalid JSON for page
-			w.Write([]byte("invalid json"))
+			_, _ = w.Write([]byte("invalid json"))
 
 		default:
 			http.NotFound(w, r)

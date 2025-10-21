@@ -80,7 +80,7 @@ func setupMetadataServer() (*httptest.Server, *MetadataClient) {
 			},
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(index)
+		_ = json.NewEncoder(w).Encode(index)
 	})
 
 	// Registration endpoint
@@ -89,7 +89,7 @@ func setupMetadataServer() (*httptest.Server, *MetadataClient) {
 
 		if strings.HasPrefix(path, "newtonsoft.json/") {
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(testRegistrationIndex)
+			_ = json.NewEncoder(w).Encode(testRegistrationIndex)
 			return
 		}
 

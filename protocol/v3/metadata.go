@@ -49,7 +49,7 @@ func (c *MetadataClient) GetPackageMetadata(ctx context.Context, sourceURL, pack
 	if err != nil {
 		return nil, fmt.Errorf("fetch registration: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusNotFound {
 		return nil, fmt.Errorf("package %q not found", packageID)
@@ -127,7 +127,7 @@ func (c *MetadataClient) fetchRegistrationPage(ctx context.Context, pageURL stri
 	if err != nil {
 		return nil, fmt.Errorf("fetch page: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))

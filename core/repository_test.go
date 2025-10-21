@@ -76,7 +76,7 @@ func TestSourceRepository_WithAuthentication(t *testing.T) {
 
 		if r.URL.Path == "/index.json" {
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(map[string]any{
+			_ = json.NewEncoder(w).Encode(map[string]any{
 				"version":   "3.0.0",
 				"resources": []map[string]string{},
 			})
@@ -109,13 +109,13 @@ func TestRepositoryManager_AddRepository(t *testing.T) {
 
 	err := manager.AddRepository(repo)
 	if err != nil {
-		t.Fatalf("AddRepository() error = %v", err)
+		t.Fatalf("_ = AddRepository() error = %v", err)
 	}
 
 	// Try to add duplicate
 	err = manager.AddRepository(repo)
 	if err == nil {
-		t.Error("AddRepository() expected error for duplicate")
+		t.Error("_ = AddRepository() expected error for duplicate")
 	}
 }
 
@@ -127,7 +127,7 @@ func TestRepositoryManager_GetRepository(t *testing.T) {
 		SourceURL: "https://api.nuget.org/v3/index.json",
 	})
 
-	manager.AddRepository(repo)
+	_ = manager.AddRepository(repo)
 
 	got, err := manager.GetRepository("nuget.org")
 	if err != nil {
@@ -153,7 +153,7 @@ func TestRepositoryManager_RemoveRepository(t *testing.T) {
 		SourceURL: "https://api.nuget.org/v3/index.json",
 	})
 
-	manager.AddRepository(repo)
+	_ = manager.AddRepository(repo)
 
 	err := manager.RemoveRepository("nuget.org")
 	if err != nil {
@@ -186,8 +186,8 @@ func TestRepositoryManager_ListRepositories(t *testing.T) {
 		SourceURL: "https://myget.org/v3/index.json",
 	})
 
-	manager.AddRepository(repo1)
-	manager.AddRepository(repo2)
+	_ = manager.AddRepository(repo1)
+	_ = manager.AddRepository(repo2)
 
 	repos := manager.ListRepositories()
 

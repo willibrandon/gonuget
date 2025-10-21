@@ -181,6 +181,40 @@ func (r *PackageReader) GetFiles(prefix string) []*zip.File {
 	return matches
 }
 
+// GetNuspec reads and parses the .nuspec file.
+func (r *PackageReader) GetNuspec() (*Nuspec, error) {
+	nuspecReader, err := r.OpenNuspec()
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		_ = nuspecReader.Close()
+	}()
+
+	return ParseNuspec(nuspecReader)
+}
+
+// GetIdentity returns the package identity from the nuspec.
+// Reference: PackageArchiveReader.GetIdentity
+func (r *PackageReader) GetIdentity() (*PackageIdentity, error) {
+	if r.identity != nil {
+		return r.identity, nil
+	}
+
+	nuspec, err := r.GetNuspec()
+	if err != nil {
+		return nil, err
+	}
+
+	identity, err := nuspec.GetParsedIdentity()
+	if err != nil {
+		return nil, err
+	}
+
+	r.identity = identity
+	return identity, nil
+}
+
 // ValidatePackagePath checks for path traversal attacks.
 // Reference: PackageBuilder validation logic
 func ValidatePackagePath(filePath string) error {

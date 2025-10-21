@@ -40,7 +40,7 @@ func TestServiceIndexClient_GetServiceIndex(t *testing.T) {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(testServiceIndex)
+		_ = json.NewEncoder(w).Encode(testServiceIndex)
 	}))
 	defer server.Close()
 
@@ -68,7 +68,7 @@ func TestServiceIndexClient_Cache(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		callCount++
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(testServiceIndex)
+		_ = json.NewEncoder(w).Encode(testServiceIndex)
 	}))
 	defer server.Close()
 
@@ -103,7 +103,7 @@ func TestServiceIndexClient_CacheExpiration(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		callCount++
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(testServiceIndex)
+		_ = json.NewEncoder(w).Encode(testServiceIndex)
 	}))
 	defer server.Close()
 
@@ -138,7 +138,7 @@ func TestServiceIndexClient_CacheExpiration(t *testing.T) {
 func TestServiceIndexClient_GetResourceURL(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(testServiceIndex)
+		_ = json.NewEncoder(w).Encode(testServiceIndex)
 	}))
 	defer server.Close()
 
@@ -203,7 +203,7 @@ func TestServiceIndexClient_GetAllResourceURLs(t *testing.T) {
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(multiResourceIndex)
+		_ = json.NewEncoder(w).Encode(multiResourceIndex)
 	}))
 	defer server.Close()
 
@@ -235,7 +235,7 @@ func TestServiceIndexClient_GetAllResourceURLs(t *testing.T) {
 func TestServiceIndexClient_ClearCache(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(testServiceIndex)
+		_ = json.NewEncoder(w).Encode(testServiceIndex)
 	}))
 	defer server.Close()
 

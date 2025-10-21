@@ -141,7 +141,7 @@ func (f *ProviderFactory) CreateProvider(ctx context.Context, sourceURL string) 
 
 	resp, err := f.httpClient.Get(ctx, indexURL)
 	if err == nil {
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		if resp.StatusCode == http.StatusOK {
 			// V3 feed detected
 			return NewV3ResourceProvider(sourceURL, f.httpClient), nil
@@ -151,7 +151,7 @@ func (f *ProviderFactory) CreateProvider(ctx context.Context, sourceURL string) 
 	// Try v2 - make direct HTTP call with authentication
 	resp, err = f.httpClient.Get(ctx, sourceURL)
 	if err == nil {
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		if resp.StatusCode == http.StatusOK {
 			contentType := resp.Header.Get("Content-Type")
 			// V2 feeds typically return XML

@@ -26,7 +26,7 @@ func setupAutocompleteServer() (*httptest.Server, *AutocompleteClient) {
 			},
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(index)
+		_ = json.NewEncoder(w).Encode(index)
 	})
 
 	// Autocomplete endpoint
@@ -40,7 +40,7 @@ func setupAutocompleteServer() (*httptest.Server, *AutocompleteClient) {
 			w.Header().Set("Content-Type", "application/json")
 
 			if q == "newtonsoft" {
-				json.NewEncoder(w).Encode(&AutocompleteResponse{
+				_ = json.NewEncoder(w).Encode(&AutocompleteResponse{
 					TotalHits: 2,
 					Data: []string{
 						"Newtonsoft.Json",
@@ -51,7 +51,7 @@ func setupAutocompleteServer() (*httptest.Server, *AutocompleteClient) {
 			}
 
 			// Empty query
-			json.NewEncoder(w).Encode(&AutocompleteResponse{
+			_ = json.NewEncoder(w).Encode(&AutocompleteResponse{
 				TotalHits: 0,
 				Data:      []string{},
 			})
@@ -61,7 +61,7 @@ func setupAutocompleteServer() (*httptest.Server, *AutocompleteClient) {
 		// Package version autocomplete
 		if strings.ToLower(packageID) == "newtonsoft.json" {
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(&AutocompleteResponse{
+			_ = json.NewEncoder(w).Encode(&AutocompleteResponse{
 				TotalHits: 3,
 				Data: []string{
 					"13.0.1",

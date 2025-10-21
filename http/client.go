@@ -157,7 +157,7 @@ func (c *Client) DoWithRetry(ctx context.Context, req *http.Request) (*http.Resp
 
 			// Close response body before retry
 			if resp != nil {
-				resp.Body.Close()
+				_ = resp.Body.Close()
 			}
 
 			select {
