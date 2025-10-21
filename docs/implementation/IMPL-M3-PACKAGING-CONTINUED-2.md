@@ -25,8 +25,8 @@ Implement reading and parsing of PKCS#7 package signatures from signed .nupkg fi
 ### Reference Implementation
 
 **NuGet.Client Reference**:
-- `NuGet.Packaging.Signing/PackageArchiveReader.cs` GetPrimarySignatureAsync (lines 100-150)
-- `NuGet.Packaging.Signing/SignedPackageArchiveUtility.cs` OpenPackageSignatureFileStream (lines 74-90)
+- `NuGet.Packaging.Signing/PackageArchiveReader.cs` GetPrimarySignatureAsync 
+- `NuGet.Packaging.Signing/SignedPackageArchiveUtility.cs` OpenPackageSignatureFileStream 
 - `NuGet.Packaging.Signing/PrimarySignature.cs` - Signature structure
 
 **Signature Reading** (SignedPackageArchiveUtility.cs:79-90):
@@ -570,7 +570,7 @@ Implement package signature verification including certificate chain validation,
 ### Reference Implementation
 
 **NuGet.Client Reference**:
-- `NuGet.Packaging.Signing/SignedPackageArchiveUtility.cs` VerifySignedPackageIntegrity (lines 447-533)
+- `NuGet.Packaging.Signing/SignedPackageArchiveUtility.cs` VerifySignedPackageIntegrity 
 - `NuGet.Packaging.Signing/SignatureVerificationProvider.cs`
 - NuGet uses Windows certificate store or custom trust policies
 
@@ -769,7 +769,7 @@ func isHashAlgorithmAllowed(hashAlg HashAlgorithmName, allowed []HashAlgorithmNa
 
 func verifySignerKeyLength(cert *x509.Certificate) error {
     // RSA minimum 2048 bits
-    // Reference: SigningSpecificationsV1.cs line 13
+    // Reference: SigningSpecificationsV1.cs 
     if cert.PublicKeyAlgorithm == x509.RSA {
         rsaPubKey, ok := cert.PublicKey.(*rsa.PublicKey)
         if !ok {

@@ -41,7 +41,7 @@ Implement a package reader that provides access to .nupkg files (ZIP archives) w
 
 **NuGet.Client Reference**:
 - `NuGet.Packaging/PackageArchiveReader.cs` (580 lines)
-- `NuGet.Packaging/Signing/SignedPackageArchiveUtility.cs` (lines 28-69 for signature detection)
+- `NuGet.Packaging/Signing/SignedPackageArchiveUtility.cs` (signature detection)
 
 **Key Patterns**:
 ```csharp
@@ -145,11 +145,11 @@ func (r *PackageReader) Files() []*zip.File {
 
 ```go
 // SignaturePath is the path to the signature file in a signed package
-// Reference: SigningSpecificationsV1.cs line 11
+// Reference: SigningSpecificationsV1.cs 
 const SignaturePath = ".signature.p7s"
 
 // IsSigned checks if the package contains a signature file
-// Reference: PackageArchiveReader.cs lines 45-60
+// Reference: PackageArchiveReader.cs 
 func (r *PackageReader) IsSigned() bool {
     if r.isSigned != nil {
         return *r.isSigned
@@ -158,7 +158,7 @@ func (r *PackageReader) IsSigned() bool {
     signed := false
     for _, file := range r.Files() {
         // Exact match on signature path
-        // Reference: SignedPackageArchiveUtility.cs lines 141-156
+        // Reference: SignedPackageArchiveUtility.cs 
         if file.Name == SignaturePath {
             signed = true
             break

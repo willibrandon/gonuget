@@ -24,7 +24,7 @@ Implement Open Packaging Conventions (OPC) compliance for .nupkg files including
 ### Reference Implementation
 
 **NuGet.Client Reference**:
-- `NuGet.Packaging/PackageBuilder.cs` (lines 1370-1500 for OPC methods)
+- `NuGet.Packaging/PackageBuilder.cs` (OPC methods)
 - OPC specification: ISO/IEC 29500-2:2008
 
 **Critical Pattern** (PackageBuilder.cs WriteOpcContentTypes):
@@ -514,8 +514,8 @@ Implement the Save method that writes the complete .nupkg file including nuspec 
 ### Reference Implementation
 
 **NuGet.Client Reference**:
-- `NuGet.Packaging/PackageBuilder.cs` Save method (lines 400-500)
-- `NuGet.Packaging/Authoring/Manifest.cs` Save method (lines 62-109)
+- `NuGet.Packaging/PackageBuilder.cs` Save method ()
+- `NuGet.Packaging/Authoring/Manifest.cs` Save method ()
 
 **Save Pattern** (PackageBuilder.cs:400-470):
 ```csharp
@@ -972,7 +972,7 @@ Implement comprehensive package validation including ID validation, dependency v
 ### Reference Implementation
 
 **NuGet.Client Reference**:
-- `NuGet.Packaging/PackageBuilder.cs` validation methods (lines 600-900)
+- `NuGet.Packaging/PackageBuilder.cs` validation methods ()
 - `NuGet.Packaging/Rules/` - Validation rule implementations
 - `NuGet.Packaging.Core/PackageIdValidator.cs`
 
