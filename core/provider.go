@@ -4,10 +4,10 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/http"
+	"strings"
 
 	nugethttp "github.com/willibrandon/gonuget/http"
-	"github.com/willibrandon/gonuget/protocol/v2"
-	"github.com/willibrandon/gonuget/protocol/v3"
 )
 
 // ResourceProvider provides access to NuGet resources (search, metadata, download)
@@ -85,35 +85,80 @@ type SearchOptions struct {
 	IncludePrerelease bool
 }
 
+// HTTPClient defines the interface for making HTTP requests
+type HTTPClient interface {
+	Do(ctx context.Context, req *http.Request) (*http.Response, error)
+	Get(ctx context.Context, url string) (*http.Response, error)
+	DoWithRetry(ctx context.Context, req *http.Request) (*http.Response, error)
+	SetUserAgent(ua string)
+}
+
 // ProviderFactory creates resource providers based on protocol detection
 type ProviderFactory struct {
-	httpClient *nugethttp.Client
+	httpClient HTTPClient
 }
 
 // NewProviderFactory creates a new provider factory
-func NewProviderFactory(httpClient *nugethttp.Client) *ProviderFactory {
+func NewProviderFactory(httpClient HTTPClient) *ProviderFactory {
 	return &ProviderFactory{
 		httpClient: httpClient,
 	}
 }
 
+// getConcreteClient extracts the underlying *nugethttp.Client from HTTPClient
+func getConcreteClient(client HTTPClient) *nugethttp.Client {
+	if c, ok := client.(*nugethttp.Client); ok {
+		return c
+	}
+	if ac, ok := client.(*authenticatedHTTPClient); ok {
+		return ac.base
+	}
+	// This should never happen if the interface is used correctly
+	return nil
+}
+
 // CreateProvider creates a resource provider for the given source URL
 // Automatically detects v2 vs v3 protocol
 func (f *ProviderFactory) CreateProvider(ctx context.Context, sourceURL string) (ResourceProvider, error) {
-	// Try v3 first (modern protocol)
-	serviceIndexClient := v3.NewServiceIndexClient(f.httpClient)
-	_, err := serviceIndexClient.GetServiceIndex(ctx, sourceURL)
-	if err == nil {
-		// V3 feed detected
-		return NewV3ResourceProvider(sourceURL, f.httpClient), nil
+	// Extract concrete client for protocol detection
+	// Note: If httpClient is already authenticated, the concrete client will still be wrapped
+	// by the authenticatedHTTPClient, so protocol detection requests will be authenticated
+	concreteClient := getConcreteClient(f.httpClient)
+	if concreteClient == nil {
+		return nil, fmt.Errorf("invalid HTTP client")
 	}
 
-	// Try v2
-	feedClient := v2.NewFeedClient(f.httpClient)
-	isV2, err := feedClient.DetectV2Feed(ctx, sourceURL)
-	if err == nil && isV2 {
-		// V2 feed detected
-		return NewV2ResourceProvider(sourceURL, f.httpClient), nil
+	// For protocol detection, we need to use the httpClient (potentially authenticated)
+	// but the protocol clients need *nugethttp.Client. We'll make the detection calls
+	// directly using the HTTPClient interface.
+
+	// Try v3 first (modern protocol) - make direct HTTP call with authentication
+	indexURL := sourceURL
+	if indexURL[len(indexURL)-1] != '/' {
+		indexURL += "/"
+	}
+	indexURL += "index.json"
+
+	resp, err := f.httpClient.Get(ctx, indexURL)
+	if err == nil {
+		resp.Body.Close()
+		if resp.StatusCode == http.StatusOK {
+			// V3 feed detected
+			return NewV3ResourceProvider(sourceURL, f.httpClient), nil
+		}
+	}
+
+	// Try v2 - make direct HTTP call with authentication
+	resp, err = f.httpClient.Get(ctx, sourceURL)
+	if err == nil {
+		defer resp.Body.Close()
+		if resp.StatusCode == http.StatusOK {
+			contentType := resp.Header.Get("Content-Type")
+			// V2 feeds typically return XML
+			if strings.Contains(contentType, "xml") || strings.Contains(contentType, "atom") {
+				return NewV2ResourceProvider(sourceURL, f.httpClient), nil
+			}
+		}
 	}
 
 	return nil, fmt.Errorf("unable to detect protocol version for %s", sourceURL)

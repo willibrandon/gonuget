@@ -18,12 +18,22 @@ type V2ResourceProvider struct {
 }
 
 // NewV2ResourceProvider creates a new v2 resource provider
-func NewV2ResourceProvider(sourceURL string, httpClient *nugethttp.Client) *V2ResourceProvider {
+func NewV2ResourceProvider(sourceURL string, httpClient HTTPClient) *V2ResourceProvider {
+	// Type assert to *nugethttp.Client for protocol clients
+	// This is safe because HTTPClient interface is implemented by *nugethttp.Client
+	// and authenticatedHTTPClient which wraps it
+	var client *nugethttp.Client
+	if c, ok := httpClient.(*nugethttp.Client); ok {
+		client = c
+	} else if ac, ok := httpClient.(*authenticatedHTTPClient); ok {
+		client = ac.base
+	}
+
 	return &V2ResourceProvider{
 		sourceURL:      sourceURL,
-		searchClient:   v2.NewSearchClient(httpClient),
-		metadataClient: v2.NewMetadataClient(httpClient),
-		downloadClient: v2.NewDownloadClient(httpClient),
+		searchClient:   v2.NewSearchClient(client),
+		metadataClient: v2.NewMetadataClient(client),
+		downloadClient: v2.NewDownloadClient(client),
 	}
 }
 

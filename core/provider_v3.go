@@ -19,15 +19,25 @@ type V3ResourceProvider struct {
 }
 
 // NewV3ResourceProvider creates a new v3 resource provider
-func NewV3ResourceProvider(sourceURL string, httpClient *nugethttp.Client) *V3ResourceProvider {
-	serviceIndexClient := v3.NewServiceIndexClient(httpClient)
+func NewV3ResourceProvider(sourceURL string, httpClient HTTPClient) *V3ResourceProvider {
+	// Type assert to *nugethttp.Client for protocol clients
+	// This is safe because HTTPClient interface is implemented by *nugethttp.Client
+	// and authenticatedHTTPClient which wraps it
+	var client *nugethttp.Client
+	if c, ok := httpClient.(*nugethttp.Client); ok {
+		client = c
+	} else if ac, ok := httpClient.(*authenticatedHTTPClient); ok {
+		client = ac.base
+	}
+
+	serviceIndexClient := v3.NewServiceIndexClient(client)
 
 	return &V3ResourceProvider{
 		sourceURL:          sourceURL,
 		serviceIndexClient: serviceIndexClient,
-		searchClient:       v3.NewSearchClient(httpClient, serviceIndexClient),
-		metadataClient:     v3.NewMetadataClient(httpClient, serviceIndexClient),
-		downloadClient:     v3.NewDownloadClient(httpClient, serviceIndexClient),
+		searchClient:       v3.NewSearchClient(client, serviceIndexClient),
+		metadataClient:     v3.NewMetadataClient(client, serviceIndexClient),
+		downloadClient:     v3.NewDownloadClient(client, serviceIndexClient),
 	}
 }
 
