@@ -5,28 +5,8 @@ import (
 	"testing"
 
 	"github.com/willibrandon/gonuget/frameworks"
-	nugethttp "github.com/willibrandon/gonuget/http"
 	"github.com/willibrandon/gonuget/version"
 )
-
-func setupTestClient() (*Client, *RepositoryManager) {
-	httpClient := nugethttp.NewClient(nil)
-	repoManager := NewRepositoryManager()
-
-	repo := NewSourceRepository(RepositoryConfig{
-		Name:       "nuget.org",
-		SourceURL:  "https://api.nuget.org/v3/index.json",
-		HTTPClient: httpClient,
-	})
-
-	repoManager.AddRepository(repo)
-
-	client := NewClient(ClientConfig{
-		RepositoryManager: repoManager,
-	})
-
-	return client, repoManager
-}
 
 func TestClient_GetRepositoryManager(t *testing.T) {
 	client := NewClient(ClientConfig{})

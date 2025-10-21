@@ -30,7 +30,7 @@ var testRegistrationIndex = &RegistrationIndex{
 						Description:       "Json.NET is a popular high-performance JSON framework for .NET",
 						LicenseExpression: "MIT",
 						ProjectURL:        "https://www.newtonsoft.com/json",
-						Tags:              "json serialization",
+						Tags:              []string{"json", "serialization"},
 						DependencyGroups: []DependencyGroup{
 							{
 								TargetFramework: "net6.0",
@@ -50,7 +50,7 @@ var testRegistrationIndex = &RegistrationIndex{
 						Description:       "Json.NET is a popular high-performance JSON framework for .NET",
 						LicenseExpression: "MIT",
 						ProjectURL:        "https://www.newtonsoft.com/json",
-						Tags:              "json serialization",
+						Tags:              []string{"json", "serialization"},
 						DependencyGroups: []DependencyGroup{
 							{
 								TargetFramework: "net6.0",
@@ -65,7 +65,7 @@ var testRegistrationIndex = &RegistrationIndex{
 	},
 }
 
-func setupMetadataServer(t *testing.T) (*httptest.Server, *MetadataClient) {
+func setupMetadataServer() (*httptest.Server, *MetadataClient) {
 	mux := http.NewServeMux()
 
 	// Service index endpoint
@@ -75,7 +75,7 @@ func setupMetadataServer(t *testing.T) (*httptest.Server, *MetadataClient) {
 			Resources: []Resource{
 				{
 					ID:   "http://" + r.Host + "/registration/",
-					Type: ResourceTypeRegistrationsBaseUrl,
+					Type: ResourceTypeRegistrationsBaseURL,
 				},
 			},
 		}
@@ -106,7 +106,7 @@ func setupMetadataServer(t *testing.T) (*httptest.Server, *MetadataClient) {
 }
 
 func TestMetadataClient_GetPackageMetadata(t *testing.T) {
-	server, client := setupMetadataServer(t)
+	server, client := setupMetadataServer()
 	defer server.Close()
 
 	ctx := context.Background()
@@ -157,7 +157,7 @@ func TestMetadataClient_GetPackageMetadata(t *testing.T) {
 }
 
 func TestMetadataClient_GetVersionMetadata(t *testing.T) {
-	server, client := setupMetadataServer(t)
+	server, client := setupMetadataServer()
 	defer server.Close()
 
 	ctx := context.Background()
@@ -181,7 +181,7 @@ func TestMetadataClient_GetVersionMetadata(t *testing.T) {
 }
 
 func TestMetadataClient_GetVersionMetadata_NotFound(t *testing.T) {
-	server, client := setupMetadataServer(t)
+	server, client := setupMetadataServer()
 	defer server.Close()
 
 	ctx := context.Background()
@@ -198,7 +198,7 @@ func TestMetadataClient_GetVersionMetadata_NotFound(t *testing.T) {
 }
 
 func TestMetadataClient_ListVersions(t *testing.T) {
-	server, client := setupMetadataServer(t)
+	server, client := setupMetadataServer()
 	defer server.Close()
 
 	ctx := context.Background()
@@ -221,7 +221,7 @@ func TestMetadataClient_ListVersions(t *testing.T) {
 }
 
 func TestMetadataClient_PackageNotFound(t *testing.T) {
-	server, client := setupMetadataServer(t)
+	server, client := setupMetadataServer()
 	defer server.Close()
 
 	ctx := context.Background()

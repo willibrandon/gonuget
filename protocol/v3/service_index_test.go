@@ -16,7 +16,7 @@ var testServiceIndex = &ServiceIndex{
 	Resources: []Resource{
 		{
 			ID:   "https://api.nuget.org/v3/registration5-gz-semver2/",
-			Type: ResourceTypeRegistrationsBaseUrl,
+			Type: ResourceTypeRegistrationsBaseURL,
 		},
 		{
 			ID:   "https://api.nuget.org/v3-flatcontainer/",

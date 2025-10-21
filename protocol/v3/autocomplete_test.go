@@ -11,7 +11,7 @@ import (
 	nugethttp "github.com/willibrandon/gonuget/http"
 )
 
-func setupAutocompleteServer(t *testing.T) (*httptest.Server, *AutocompleteClient) {
+func setupAutocompleteServer() (*httptest.Server, *AutocompleteClient) {
 	mux := http.NewServeMux()
 
 	// Service index endpoint
@@ -86,7 +86,7 @@ func setupAutocompleteServer(t *testing.T) (*httptest.Server, *AutocompleteClien
 }
 
 func TestAutocompleteClient_AutocompletePackageIDs(t *testing.T) {
-	server, client := setupAutocompleteServer(t)
+	server, client := setupAutocompleteServer()
 	defer server.Close()
 
 	ctx := context.Background()
@@ -113,7 +113,7 @@ func TestAutocompleteClient_AutocompletePackageIDs(t *testing.T) {
 }
 
 func TestAutocompleteClient_AutocompletePackageIDs_EmptyQuery(t *testing.T) {
-	server, client := setupAutocompleteServer(t)
+	server, client := setupAutocompleteServer()
 	defer server.Close()
 
 	ctx := context.Background()
@@ -133,7 +133,7 @@ func TestAutocompleteClient_AutocompletePackageIDs_EmptyQuery(t *testing.T) {
 }
 
 func TestAutocompleteClient_AutocompletePackageIDs_WithPagination(t *testing.T) {
-	server, client := setupAutocompleteServer(t)
+	server, client := setupAutocompleteServer()
 	defer server.Close()
 
 	ctx := context.Background()
@@ -149,7 +149,7 @@ func TestAutocompleteClient_AutocompletePackageIDs_WithPagination(t *testing.T) 
 }
 
 func TestAutocompleteClient_AutocompletePackageVersions(t *testing.T) {
-	server, client := setupAutocompleteServer(t)
+	server, client := setupAutocompleteServer()
 	defer server.Close()
 
 	ctx := context.Background()
@@ -176,7 +176,7 @@ func TestAutocompleteClient_AutocompletePackageVersions(t *testing.T) {
 }
 
 func TestAutocompleteClient_AutocompletePackageVersions_NotFound(t *testing.T) {
-	server, client := setupAutocompleteServer(t)
+	server, client := setupAutocompleteServer()
 	defer server.Close()
 
 	ctx := context.Background()

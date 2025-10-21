@@ -29,7 +29,7 @@ func NewMetadataClient(httpClient *nugethttp.Client, serviceIndexClient *Service
 // Returns all versions and their metadata.
 func (c *MetadataClient) GetPackageMetadata(ctx context.Context, sourceURL, packageID string) (*RegistrationIndex, error) {
 	// Get registration base URL from service index
-	baseURL, err := c.serviceIndexClient.GetResourceURL(ctx, sourceURL, ResourceTypeRegistrationsBaseUrl)
+	baseURL, err := c.serviceIndexClient.GetResourceURL(ctx, sourceURL, ResourceTypeRegistrationsBaseURL)
 	if err != nil {
 		return nil, fmt.Errorf("get registration URL: %w", err)
 	}

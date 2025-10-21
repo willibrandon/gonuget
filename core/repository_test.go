@@ -76,7 +76,7 @@ func TestSourceRepository_WithAuthentication(t *testing.T) {
 
 		if r.URL.Path == "/index.json" {
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(map[string]interface{}{
+			json.NewEncoder(w).Encode(map[string]any{
 				"version":   "3.0.0",
 				"resources": []map[string]string{},
 			})

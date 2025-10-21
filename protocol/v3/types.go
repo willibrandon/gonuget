@@ -11,9 +11,9 @@ import (
 // ServiceIndex represents the NuGet v3 service index.
 // See: https://docs.microsoft.com/en-us/nuget/api/service-index
 type ServiceIndex struct {
-	Version   string      `json:"version"`
-	Resources []Resource  `json:"resources"`
-	Context   interface{} `json:"@context,omitempty"`
+	Version   string     `json:"version"`
+	Resources []Resource `json:"resources"`
+	Context   any        `json:"@context,omitempty"`
 }
 
 // Resource represents a service resource in the service index.
@@ -30,7 +30,7 @@ const (
 	ResourceTypeSearchAutocompleteService = "SearchAutocompleteService"
 
 	// Registration (metadata)
-	ResourceTypeRegistrationsBaseUrl = "RegistrationsBaseUrl"
+	ResourceTypeRegistrationsBaseURL = "RegistrationsBaseUrl"
 
 	// Package download
 	ResourceTypePackageBaseAddress = "PackageBaseAddress"
@@ -49,7 +49,7 @@ const ServiceIndexCacheTTL = 40 * time.Minute
 type SearchResponse struct {
 	TotalHits int            `json:"totalHits"`
 	Data      []SearchResult `json:"data"`
-	Context   interface{}    `json:"@context,omitempty"`
+	Context   any            `json:"@context,omitempty"`
 }
 
 // SearchResult represents a single search result.
@@ -115,7 +115,7 @@ type RegistrationCatalog struct {
 	Published                string            `json:"published,omitempty"`
 	RequireLicenseAcceptance bool              `json:"requireLicenseAcceptance"`
 	Summary                  string            `json:"summary,omitempty"`
-	Tags                     string            `json:"tags,omitempty"`
+	Tags                     []string          `json:"tags,omitempty"`
 	Title                    string            `json:"title,omitempty"`
 	DependencyGroups         []DependencyGroup `json:"dependencyGroups,omitempty"`
 	PackageTypes             []PackageType     `json:"packageTypes,omitempty"`
@@ -141,7 +141,7 @@ type PackageType struct {
 
 // AutocompleteResponse represents the response from autocomplete API.
 type AutocompleteResponse struct {
-	TotalHits int         `json:"totalHits"`
-	Data      []string    `json:"data"`
-	Context   interface{} `json:"@context,omitempty"`
+	TotalHits int      `json:"totalHits"`
+	Data      []string `json:"data"`
+	Context   any      `json:"@context,omitempty"`
 }

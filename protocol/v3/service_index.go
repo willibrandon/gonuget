@@ -90,6 +90,7 @@ func (c *ServiceIndexClient) fetchServiceIndex(ctx context.Context, sourceURL st
 }
 
 // GetResourceURL finds the first resource of the given type.
+// Matches resource types with or without version suffixes (e.g., "PackageBaseAddress" matches "PackageBaseAddress/3.0.0").
 func (c *ServiceIndexClient) GetResourceURL(ctx context.Context, sourceURL, resourceType string) (string, error) {
 	index, err := c.GetServiceIndex(ctx, sourceURL)
 	if err != nil {
@@ -97,7 +98,7 @@ func (c *ServiceIndexClient) GetResourceURL(ctx context.Context, sourceURL, reso
 	}
 
 	for _, resource := range index.Resources {
-		if resource.Type == resourceType {
+		if matchesResourceType(resource.Type, resourceType) {
 			return resource.ID, nil
 		}
 	}
@@ -105,7 +106,21 @@ func (c *ServiceIndexClient) GetResourceURL(ctx context.Context, sourceURL, reso
 	return "", fmt.Errorf("resource type %q not found in service index", resourceType)
 }
 
+// matchesResourceType returns true if the resource type matches, ignoring version suffixes.
+// For example, "PackageBaseAddress/3.0.0" matches "PackageBaseAddress".
+func matchesResourceType(actual, requested string) bool {
+	if actual == requested {
+		return true
+	}
+	// Check if actual starts with requested followed by a slash (version suffix)
+	if len(actual) > len(requested) && actual[:len(requested)] == requested && actual[len(requested)] == '/' {
+		return true
+	}
+	return false
+}
+
 // GetAllResourceURLs finds all resources of the given type.
+// Matches resource types with or without version suffixes (e.g., "PackageBaseAddress" matches "PackageBaseAddress/3.0.0").
 func (c *ServiceIndexClient) GetAllResourceURLs(ctx context.Context, sourceURL, resourceType string) ([]string, error) {
 	index, err := c.GetServiceIndex(ctx, sourceURL)
 	if err != nil {
@@ -114,7 +129,7 @@ func (c *ServiceIndexClient) GetAllResourceURLs(ctx context.Context, sourceURL, 
 
 	var urls []string
 	for _, resource := range index.Resources {
-		if resource.Type == resourceType {
+		if matchesResourceType(resource.Type, resourceType) {
 			urls = append(urls, resource.ID)
 		}
 	}

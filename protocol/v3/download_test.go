@@ -12,7 +12,7 @@ import (
 	nugethttp "github.com/willibrandon/gonuget/http"
 )
 
-func setupDownloadServer(t *testing.T) (*httptest.Server, *DownloadClient) {
+func setupDownloadServer() (*httptest.Server, *DownloadClient) {
 	mux := http.NewServeMux()
 
 	// Service index endpoint
@@ -39,7 +39,7 @@ func setupDownloadServer(t *testing.T) (*httptest.Server, *DownloadClient) {
 			packageID := strings.TrimSuffix(path, "/index.json")
 			if packageID == "newtonsoft.json" {
 				w.Header().Set("Content-Type", "application/json")
-				json.NewEncoder(w).Encode(map[string]interface{}{
+				json.NewEncoder(w).Encode(map[string]any{
 					"versions": []string{"13.0.1", "13.0.2", "13.0.3"},
 				})
 				return
@@ -90,7 +90,7 @@ func setupDownloadServer(t *testing.T) (*httptest.Server, *DownloadClient) {
 }
 
 func TestDownloadClient_DownloadPackage(t *testing.T) {
-	server, client := setupDownloadServer(t)
+	server, client := setupDownloadServer()
 	defer server.Close()
 
 	ctx := context.Background()
@@ -117,7 +117,7 @@ func TestDownloadClient_DownloadPackage(t *testing.T) {
 }
 
 func TestDownloadClient_DownloadPackage_NotFound(t *testing.T) {
-	server, client := setupDownloadServer(t)
+	server, client := setupDownloadServer()
 	defer server.Close()
 
 	ctx := context.Background()
@@ -133,7 +133,7 @@ func TestDownloadClient_DownloadPackage_NotFound(t *testing.T) {
 }
 
 func TestDownloadClient_DownloadNuspec(t *testing.T) {
-	server, client := setupDownloadServer(t)
+	server, client := setupDownloadServer()
 	defer server.Close()
 
 	ctx := context.Background()
@@ -165,7 +165,7 @@ func TestDownloadClient_DownloadNuspec(t *testing.T) {
 }
 
 func TestDownloadClient_DownloadNuspec_NotFound(t *testing.T) {
-	server, client := setupDownloadServer(t)
+	server, client := setupDownloadServer()
 	defer server.Close()
 
 	ctx := context.Background()
@@ -181,7 +181,7 @@ func TestDownloadClient_DownloadNuspec_NotFound(t *testing.T) {
 }
 
 func TestDownloadClient_GetPackageVersions(t *testing.T) {
-	server, client := setupDownloadServer(t)
+	server, client := setupDownloadServer()
 	defer server.Close()
 
 	ctx := context.Background()
@@ -204,7 +204,7 @@ func TestDownloadClient_GetPackageVersions(t *testing.T) {
 }
 
 func TestDownloadClient_GetPackageVersions_NotFound(t *testing.T) {
-	server, client := setupDownloadServer(t)
+	server, client := setupDownloadServer()
 	defer server.Close()
 
 	ctx := context.Background()

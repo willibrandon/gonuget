@@ -70,10 +70,8 @@ func (p *V3ResourceProvider) GetMetadata(ctx context.Context, packageID, version
 		}
 	}
 
-	// Parse tags
-	if catalog.Tags != "" {
-		metadata.Tags = strings.Split(catalog.Tags, " ")
-	}
+	// Copy tags
+	metadata.Tags = catalog.Tags
 
 	// Convert dependency groups
 	for _, dg := range catalog.DependencyGroups {
