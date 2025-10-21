@@ -1,6 +1,7 @@
 package packaging
 
 import (
+	"archive/zip"
 	"fmt"
 	"io"
 	"net/url"
@@ -455,4 +456,25 @@ func (b *PackageBuilder) GetMetadata() PackageMetadata {
 // GetFiles returns the current file list.
 func (b *PackageBuilder) GetFiles() []PackageFile {
 	return b.files
+}
+
+// writeOPCFiles writes OPC-required files to the ZIP.
+func (b *PackageBuilder) writeOPCFiles(zipWriter *zip.Writer, nuspecFileName string) error {
+	// Write core properties
+	corePropsPath, err := WriteCoreProperties(zipWriter, b.metadata)
+	if err != nil {
+		return fmt.Errorf("write core properties: %w", err)
+	}
+
+	// Write relationships
+	if err := WriteRelationships(zipWriter, nuspecFileName, corePropsPath); err != nil {
+		return fmt.Errorf("write relationships: %w", err)
+	}
+
+	// Write content types
+	if err := WriteContentTypes(zipWriter, b.files); err != nil {
+		return fmt.Errorf("write content types: %w", err)
+	}
+
+	return nil
 }

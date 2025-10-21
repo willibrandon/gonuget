@@ -1,6 +1,7 @@
 package packaging
 
 import (
+	"archive/zip"
 	"bytes"
 	"os"
 	"strings"
@@ -720,5 +721,116 @@ func TestFrameworksEqual(t *testing.T) {
 				t.Errorf("frameworksEqual() = %v, want %v", got, tt.expected)
 			}
 		})
+	}
+}
+
+func TestBuilderWriteOPCFiles(t *testing.T) {
+	var buf bytes.Buffer
+	zipWriter := zip.NewWriter(&buf)
+
+	builder := NewPackageBuilder().
+		SetID("TestPackage").
+		SetVersion(version.MustParse("1.0.0")).
+		SetDescription("Test").
+		SetAuthors("Test Author")
+
+	_ = builder.AddFile("test.dll", "lib/net6.0/test.dll")
+
+	nuspecFileName := "TestPackage.nuspec"
+
+	err := builder.writeOPCFiles(zipWriter, nuspecFileName)
+	if err != nil {
+		t.Fatalf("writeOPCFiles() error = %v", err)
+	}
+
+	if err := zipWriter.Close(); err != nil {
+		t.Fatalf("Close ZIP error = %v", err)
+	}
+
+	// Verify ZIP contents
+	zipReader, err := zip.NewReader(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
+	if err != nil {
+		t.Fatalf("Open ZIP error = %v", err)
+	}
+
+	// Check for required OPC files
+	var foundContentTypes, foundRels, foundCoreProps bool
+
+	for _, file := range zipReader.File {
+		switch {
+		case file.Name == OPCContentTypesPath:
+			foundContentTypes = true
+		case file.Name == OPCRelationshipsPath:
+			foundRels = true
+		case strings.HasPrefix(file.Name, OPCCorePropertiesPath) && strings.HasSuffix(file.Name, ".psmdcp"):
+			foundCoreProps = true
+		}
+	}
+
+	if !foundContentTypes {
+		t.Error("[Content_Types].xml not found")
+	}
+
+	if !foundRels {
+		t.Error("_rels/.rels not found")
+	}
+
+	if !foundCoreProps {
+		t.Error("Core properties file not found")
+	}
+}
+
+func TestBuilderAddFileFromBytes_Duplicate(t *testing.T) {
+	builder := NewPackageBuilder()
+
+	content := []byte("test content")
+	targetPath := "lib/net6.0/test.dll"
+
+	err := builder.AddFileFromBytes(targetPath, content)
+	if err != nil {
+		t.Fatalf("First AddFileFromBytes() error = %v", err)
+	}
+
+	// Try to add duplicate
+	err = builder.AddFileFromBytes(targetPath, content)
+	if err == nil {
+		t.Error("Expected error for duplicate file, got nil")
+	}
+}
+
+func TestBuilderAddFileFromReader_Duplicate(t *testing.T) {
+	builder := NewPackageBuilder()
+
+	reader1 := strings.NewReader("content 1")
+	reader2 := strings.NewReader("content 2")
+	targetPath := "lib/net6.0/test.dll"
+
+	err := builder.AddFileFromReader(targetPath, reader1)
+	if err != nil {
+		t.Fatalf("First AddFileFromReader() error = %v", err)
+	}
+
+	// Try to add duplicate
+	err = builder.AddFileFromReader(targetPath, reader2)
+	if err == nil {
+		t.Error("Expected error for duplicate file, got nil")
+	}
+}
+
+func TestBuilderSetIconURL_Invalid(t *testing.T) {
+	builder := NewPackageBuilder()
+
+	err := builder.SetIconURL("://invalid-url")
+	if err == nil {
+		t.Error("Expected error for invalid icon URL, got nil")
+	}
+}
+
+func TestBuilderSetLicenseURL_Invalid(t *testing.T) {
+	builder := NewPackageBuilder()
+
+	err := builder.SetLicenseURL("://invalid-url")
+	if err == nil {
+		t.Error("Expected error for invalid license URL, got nil")
 	}
 }
