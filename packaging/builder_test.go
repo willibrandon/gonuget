@@ -910,7 +910,7 @@ func TestBuilderSave_ValidationErrors(t *testing.T) {
 		{
 			name:        "missing ID",
 			setupFunc:   func(b *PackageBuilder) {},
-			errorSubstr: "package ID is required",
+			errorSubstr: "package ID cannot be empty",
 		},
 		{
 			name: "missing version",
@@ -1250,6 +1250,12 @@ func TestBuilderSave_CompleteMetadata(t *testing.T) {
 		SetReadme("README.md")
 
 	_ = builder.SetProjectURL("https://github.com/test/repo")
+	_ = builder.SetLicenseURL("https://example.com/license")
+
+	// Add required files (icon, readme, and a test file)
+	_ = builder.AddFileFromBytes("icon.png", []byte("fake png data"))
+	_ = builder.AddFileFromBytes("README.md", []byte("# Readme"))
+	_ = builder.AddFileFromBytes("lib/net6.0/test.dll", []byte("test dll"))
 
 	var buf bytes.Buffer
 	err := builder.Save(&buf)

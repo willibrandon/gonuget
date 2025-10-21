@@ -54,7 +54,7 @@ func TestGenerateContentTypes(t *testing.T) {
 
 	// Check file extensions are added
 	foundDll := false
-	foundXml := false
+	foundXML := false
 	foundTxt := false
 	foundNuspec := false
 
@@ -63,7 +63,7 @@ func TestGenerateContentTypes(t *testing.T) {
 		case "dll":
 			foundDll = true
 		case "xml":
-			foundXml = true
+			foundXML = true
 		case "txt":
 			foundTxt = true
 		case "nuspec":
@@ -74,7 +74,7 @@ func TestGenerateContentTypes(t *testing.T) {
 	if !foundDll {
 		t.Error("Expected 'dll' extension default")
 	}
-	if !foundXml {
+	if !foundXML {
 		t.Error("Expected 'xml' extension default")
 	}
 	if !foundTxt {

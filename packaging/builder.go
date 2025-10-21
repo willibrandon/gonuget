@@ -481,8 +481,8 @@ func (b *PackageBuilder) writeOPCFiles(zipWriter *zip.Writer, nuspecFileName str
 
 // Save writes the package to a stream.
 func (b *PackageBuilder) Save(writer io.Writer) error {
-	// Basic validation
-	if err := b.validateBasic(); err != nil {
+	// Comprehensive validation
+	if err := b.Validate(); err != nil {
 		return fmt.Errorf("validation failed: %w", err)
 	}
 
@@ -529,21 +529,62 @@ func (b *PackageBuilder) SaveToFile(path string) error {
 	return file.Close()
 }
 
-func (b *PackageBuilder) validateBasic() error {
-	if b.metadata.ID == "" {
-		return fmt.Errorf("package ID is required")
+// Validate performs comprehensive package validation
+func (b *PackageBuilder) Validate() error {
+	// Validate ID
+	if err := ValidatePackageID(b.metadata.ID); err != nil {
+		return fmt.Errorf("package ID validation: %w", err)
 	}
 
+	// Validate version
 	if b.metadata.Version == nil {
 		return fmt.Errorf("package version is required")
 	}
 
+	// Validate required metadata
 	if b.metadata.Description == "" {
 		return fmt.Errorf("package description is required")
 	}
 
 	if len(b.metadata.Authors) == 0 {
 		return fmt.Errorf("package authors are required")
+	}
+
+	// Validate package is not empty
+	if len(b.files) == 0 && len(b.metadata.DependencyGroups) == 0 && len(b.metadata.FrameworkReferenceGroups) == 0 {
+		return fmt.Errorf("package must contain files, dependencies, or framework references")
+	}
+
+	// Validate dependencies
+	if err := ValidateDependencies(b.metadata.ID, b.metadata.Version, b.metadata.DependencyGroups); err != nil {
+		return fmt.Errorf("dependency validation: %w", err)
+	}
+
+	// Validate files
+	if len(b.files) > 0 {
+		if err := ValidateFiles(b.files); err != nil {
+			return fmt.Errorf("file validation: %w", err)
+		}
+	}
+
+	// Validate license
+	if err := ValidateLicense(b.metadata, b.files); err != nil {
+		return fmt.Errorf("license validation: %w", err)
+	}
+
+	// Validate icon
+	if err := ValidateIcon(b.metadata, b.files); err != nil {
+		return fmt.Errorf("icon validation: %w", err)
+	}
+
+	// Validate readme
+	if err := ValidateReadme(b.metadata, b.files); err != nil {
+		return fmt.Errorf("readme validation: %w", err)
+	}
+
+	// Validate framework references
+	if err := ValidateFrameworkReferences(b.metadata.FrameworkReferenceGroups); err != nil {
+		return fmt.Errorf("framework reference validation: %w", err)
 	}
 
 	return nil
