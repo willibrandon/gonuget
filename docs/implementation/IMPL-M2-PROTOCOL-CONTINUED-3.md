@@ -19,6 +19,8 @@
 
 Implement the resource provider system that abstracts v2 and v3 protocol differences. This provides a unified interface for accessing package sources regardless of protocol version.
 
+The provider returns protocol-level metadata (string-based) that can be converted to rich core types later.
+
 ### Step-by-Step Instructions
 
 **Step 1: Create resource provider interface**
@@ -30,20 +32,26 @@ package core
 
 import (
 	"context"
+	"fmt"
 	"io"
+
+	nugethttp "github.com/willibrandon/gonuget/http"
+	"github.com/willibrandon/gonuget/protocol/v3"
+	"github.com/willibrandon/gonuget/protocol/v2"
+	"github.com/willibrandon/gonuget/protocol/v3"
 )
 
 // ResourceProvider provides access to NuGet resources (search, metadata, download)
 // Abstracts differences between v2 and v3 protocols
 type ResourceProvider interface {
-	// GetPackageMetadata retrieves metadata for a specific package version
-	GetPackageMetadata(ctx context.Context, packageID, version string) (*PackageMetadata, error)
+	// GetMetadata retrieves metadata for a specific package version
+	GetMetadata(ctx context.Context, packageID, version string) (*ProtocolMetadata, error)
 
 	// ListVersions lists all available versions for a package
 	ListVersions(ctx context.Context, packageID string) ([]string, error)
 
 	// Search searches for packages matching the query
-	Search(ctx context.Context, query string, opts SearchOptions) ([]PackageSearchResult, error)
+	Search(ctx context.Context, query string, opts SearchOptions) ([]SearchResult, error)
 
 	// DownloadPackage downloads a .nupkg file
 	DownloadPackage(ctx context.Context, packageID, version string) (io.ReadCloser, error)
@@ -55,8 +63,8 @@ type ResourceProvider interface {
 	ProtocolVersion() string
 }
 
-// PackageMetadata represents package metadata from any protocol version
-type PackageMetadata struct {
+// ProtocolMetadata represents package metadata from protocol (string-based, simple types)
+type ProtocolMetadata struct {
 	ID                       string
 	Version                  string
 	Title                    string
@@ -69,7 +77,7 @@ type PackageMetadata struct {
 	LicenseExpression        string
 	ProjectURL               string
 	Tags                     []string
-	Dependencies             []DependencyGroup
+	Dependencies             []ProtocolDependencyGroup
 	DownloadCount            int64
 	IsPrerelease             bool
 	Published                string
@@ -77,20 +85,20 @@ type PackageMetadata struct {
 	DownloadURL              string
 }
 
-// DependencyGroup represents dependencies for a target framework
-type DependencyGroup struct {
+// ProtocolDependencyGroup represents dependencies for a target framework (string-based)
+type ProtocolDependencyGroup struct {
 	TargetFramework string
-	Dependencies    []PackageDependency
+	Dependencies    []ProtocolDependency
 }
 
-// PackageDependency represents a single dependency
-type PackageDependency struct {
+// ProtocolDependency represents a single dependency (string-based)
+type ProtocolDependency struct {
 	ID    string
 	Range string
 }
 
-// PackageSearchResult represents a search result from any protocol version
-type PackageSearchResult struct {
+// SearchResult represents a search result from any protocol version
+type SearchResult struct {
 	ID             string
 	Version        string
 	Description    string
@@ -103,307 +111,11 @@ type PackageSearchResult struct {
 
 // SearchOptions holds common search parameters
 type SearchOptions struct {
-	Skip           int
-	Take           int
+	Skip              int
+	Take              int
 	IncludePrerelease bool
 }
-```
 
-**Step 2: Create v3 resource provider**
-
-Create `core/provider_v3.go`:
-
-```go
-package core
-
-import (
-	"context"
-	"fmt"
-	"io"
-	"strings"
-
-	nugethttp "github.com/willibrandon/gonuget/http"
-	"github.com/willibrandon/gonuget/protocol/v3"
-)
-
-// V3ResourceProvider implements ResourceProvider for NuGet v3 feeds
-type V3ResourceProvider struct {
-	sourceURL          string
-	serviceIndexClient *v3.ServiceIndexClient
-	searchClient       *v3.SearchClient
-	metadataClient     *v3.MetadataClient
-	downloadClient     *v3.DownloadClient
-}
-
-// NewV3ResourceProvider creates a new v3 resource provider
-func NewV3ResourceProvider(sourceURL string, httpClient *nugethttp.Client) *V3ResourceProvider {
-	serviceIndexClient := v3.NewServiceIndexClient(httpClient)
-
-	return &V3ResourceProvider{
-		sourceURL:          sourceURL,
-		serviceIndexClient: serviceIndexClient,
-		searchClient:       v3.NewSearchClient(httpClient, serviceIndexClient),
-		metadataClient:     v3.NewMetadataClient(httpClient, serviceIndexClient),
-		downloadClient:     v3.NewDownloadClient(httpClient, serviceIndexClient),
-	}
-}
-
-// GetPackageMetadata retrieves metadata for a specific package version
-func (p *V3ResourceProvider) GetPackageMetadata(ctx context.Context, packageID, version string) (*PackageMetadata, error) {
-	catalog, err := p.metadataClient.GetVersionMetadata(ctx, p.sourceURL, packageID, version)
-	if err != nil {
-		return nil, err
-	}
-
-	// Convert v3 catalog to common metadata
-	metadata := &PackageMetadata{
-		ID:                       catalog.PackageID,
-		Version:                  catalog.Version,
-		Title:                    catalog.Title,
-		Description:              catalog.Description,
-		Summary:                  catalog.Summary,
-		IconURL:                  catalog.IconURL,
-		LicenseURL:               catalog.LicenseURL,
-		LicenseExpression:        catalog.LicenseExpression,
-		ProjectURL:               catalog.ProjectURL,
-		RequireLicenseAcceptance: catalog.RequireLicenseAcceptance,
-	}
-
-	// Parse authors
-	if catalog.Authors != "" {
-		metadata.Authors = strings.Split(catalog.Authors, ",")
-		for i := range metadata.Authors {
-			metadata.Authors[i] = strings.TrimSpace(metadata.Authors[i])
-		}
-	}
-
-	// Parse tags
-	if catalog.Tags != "" {
-		metadata.Tags = strings.Split(catalog.Tags, " ")
-	}
-
-	// Convert dependency groups
-	for _, dg := range catalog.DependencyGroups {
-		group := DependencyGroup{
-			TargetFramework: dg.TargetFramework,
-			Dependencies:    make([]PackageDependency, 0, len(dg.Dependencies)),
-		}
-
-		for _, dep := range dg.Dependencies {
-			group.Dependencies = append(group.Dependencies, PackageDependency{
-				ID:    dep.ID,
-				Range: dep.Range,
-			})
-		}
-
-		metadata.Dependencies = append(metadata.Dependencies, group)
-	}
-
-	return metadata, nil
-}
-
-// ListVersions lists all available versions for a package
-func (p *V3ResourceProvider) ListVersions(ctx context.Context, packageID string) ([]string, error) {
-	return p.metadataClient.ListVersions(ctx, p.sourceURL, packageID)
-}
-
-// Search searches for packages matching the query
-func (p *V3ResourceProvider) Search(ctx context.Context, query string, opts SearchOptions) ([]PackageSearchResult, error) {
-	searchOpts := v3.SearchOptions{
-		Query:      query,
-		Skip:       opts.Skip,
-		Take:       opts.Take,
-		Prerelease: opts.IncludePrerelease,
-	}
-
-	resp, err := p.searchClient.Search(ctx, p.sourceURL, searchOpts)
-	if err != nil {
-		return nil, err
-	}
-
-	// Convert v3 results to common format
-	results := make([]PackageSearchResult, 0, len(resp.Data))
-	for _, r := range resp.Data {
-		result := PackageSearchResult{
-			ID:             r.PackageID,
-			Version:        r.Version,
-			Description:    r.Description,
-			Authors:        r.Authors,
-			IconURL:        r.IconURL,
-			Tags:           r.Tags,
-			TotalDownloads: r.TotalDownloads,
-			Verified:       r.Verified,
-		}
-		results = append(results, result)
-	}
-
-	return results, nil
-}
-
-// DownloadPackage downloads a .nupkg file
-func (p *V3ResourceProvider) DownloadPackage(ctx context.Context, packageID, version string) (io.ReadCloser, error) {
-	return p.downloadClient.DownloadPackage(ctx, p.sourceURL, packageID, version)
-}
-
-// SourceURL returns the source URL
-func (p *V3ResourceProvider) SourceURL() string {
-	return p.sourceURL
-}
-
-// ProtocolVersion returns "v3"
-func (p *V3ResourceProvider) ProtocolVersion() string {
-	return "v3"
-}
-```
-
-**Step 3: Create v2 resource provider**
-
-Create `core/provider_v2.go`:
-
-```go
-package core
-
-import (
-	"context"
-	"fmt"
-	"io"
-	"strings"
-
-	nugethttp "github.com/willibrandon/gonuget/http"
-	"github.com/willibrandon/gonuget/protocol/v2"
-)
-
-// V2ResourceProvider implements ResourceProvider for NuGet v2 feeds
-type V2ResourceProvider struct {
-	sourceURL      string
-	searchClient   *v2.SearchClient
-	metadataClient *v2.MetadataClient
-	downloadClient *v2.DownloadClient
-}
-
-// NewV2ResourceProvider creates a new v2 resource provider
-func NewV2ResourceProvider(sourceURL string, httpClient *nugethttp.Client) *V2ResourceProvider {
-	return &V2ResourceProvider{
-		sourceURL:      sourceURL,
-		searchClient:   v2.NewSearchClient(httpClient),
-		metadataClient: v2.NewMetadataClient(httpClient),
-		downloadClient: v2.NewDownloadClient(httpClient),
-	}
-}
-
-// GetPackageMetadata retrieves metadata for a specific package version
-func (p *V2ResourceProvider) GetPackageMetadata(ctx context.Context, packageID, version string) (*PackageMetadata, error) {
-	v2Metadata, err := p.metadataClient.GetPackageMetadata(ctx, p.sourceURL, packageID, version)
-	if err != nil {
-		return nil, err
-	}
-
-	// Convert v2 metadata to common format
-	metadata := &PackageMetadata{
-		ID:                       v2Metadata.ID,
-		Version:                  v2Metadata.Version,
-		Title:                    v2Metadata.Title,
-		Description:              v2Metadata.Description,
-		Summary:                  v2Metadata.Summary,
-		IconURL:                  v2Metadata.IconURL,
-		LicenseURL:               v2Metadata.LicenseURL,
-		ProjectURL:               v2Metadata.ProjectURL,
-		Tags:                     v2Metadata.Tags,
-		DownloadCount:            v2Metadata.DownloadCount,
-		IsPrerelease:             v2Metadata.IsPrerelease,
-		Published:                v2Metadata.Published,
-		RequireLicenseAcceptance: v2Metadata.RequireLicenseAcceptance,
-		DownloadURL:              v2Metadata.DownloadURL,
-	}
-
-	// Parse authors
-	if v2Metadata.Authors != "" {
-		metadata.Authors = strings.Split(v2Metadata.Authors, ",")
-		for i := range metadata.Authors {
-			metadata.Authors[i] = strings.TrimSpace(metadata.Authors[i])
-		}
-	}
-
-	// Parse owners
-	if v2Metadata.Owners != "" {
-		metadata.Owners = strings.Split(v2Metadata.Owners, ",")
-		for i := range metadata.Owners {
-			metadata.Owners[i] = strings.TrimSpace(metadata.Owners[i])
-		}
-	}
-
-	// TODO: Parse v2 dependency string into DependencyGroup
-	// V2 format: "PackageA:1.0:net45|PackageB:2.0:netstandard2.0"
-
-	return metadata, nil
-}
-
-// ListVersions lists all available versions for a package
-func (p *V2ResourceProvider) ListVersions(ctx context.Context, packageID string) ([]string, error) {
-	return p.metadataClient.ListVersions(ctx, p.sourceURL, packageID)
-}
-
-// Search searches for packages matching the query
-func (p *V2ResourceProvider) Search(ctx context.Context, query string, opts SearchOptions) ([]PackageSearchResult, error) {
-	searchOpts := v2.SearchOptions{
-		Query:             query,
-		Skip:              opts.Skip,
-		Top:               opts.Take,
-		IncludePrerelease: opts.IncludePrerelease,
-	}
-
-	v2Results, err := p.searchClient.Search(ctx, p.sourceURL, searchOpts)
-	if err != nil {
-		return nil, err
-	}
-
-	// Convert v2 results to common format
-	results := make([]PackageSearchResult, 0, len(v2Results))
-	for _, r := range v2Results {
-		result := PackageSearchResult{
-			ID:             r.ID,
-			Version:        r.Version,
-			Description:    r.Description,
-			IconURL:        r.IconURL,
-			Tags:           r.Tags,
-			TotalDownloads: r.DownloadCount,
-		}
-
-		// Parse authors
-		if r.Authors != "" {
-			result.Authors = strings.Split(r.Authors, ",")
-			for i := range result.Authors {
-				result.Authors[i] = strings.TrimSpace(result.Authors[i])
-			}
-		}
-
-		results = append(results, result)
-	}
-
-	return results, nil
-}
-
-// DownloadPackage downloads a .nupkg file
-func (p *V2ResourceProvider) DownloadPackage(ctx context.Context, packageID, version string) (io.ReadCloser, error) {
-	return p.downloadClient.DownloadPackage(ctx, p.sourceURL, packageID, version)
-}
-
-// SourceURL returns the source URL
-func (p *V2ResourceProvider) SourceURL() string {
-	return p.sourceURL
-}
-
-// ProtocolVersion returns "v2"
-func (p *V2ResourceProvider) ProtocolVersion() string {
-	return "v2"
-}
-```
-
-**Step 4: Create provider factory**
-
-Add to `core/provider.go`:
-
-```go
 // ProviderFactory creates resource providers based on protocol detection
 type ProviderFactory struct {
 	httpClient *nugethttp.Client
@@ -449,26 +161,297 @@ func (f *ProviderFactory) CreateV2Provider(sourceURL string) ResourceProvider {
 }
 ```
 
-Add imports:
+**Step 2: Create v3 resource provider**
+
+Create `core/provider_v3.go`:
 
 ```go
+package core
+
 import (
-	"github.com/willibrandon/gonuget/protocol/v2"
+	"context"
+	"io"
+	"strings"
+
+	nugethttp "github.com/willibrandon/gonuget/http"
+	"github.com/willibrandon/gonuget/protocol/v3"
 	"github.com/willibrandon/gonuget/protocol/v3"
 )
+
+// V3ResourceProvider implements ResourceProvider for NuGet v3 feeds
+type V3ResourceProvider struct {
+	sourceURL          string
+	serviceIndexClient *v3.ServiceIndexClient
+	searchClient       *v3.SearchClient
+	metadataClient     *v3.MetadataClient
+	downloadClient     *v3.DownloadClient
+}
+
+// NewV3ResourceProvider creates a new v3 resource provider
+func NewV3ResourceProvider(sourceURL string, httpClient *nugethttp.Client) *V3ResourceProvider {
+	serviceIndexClient := v3.NewServiceIndexClient(httpClient)
+
+	return &V3ResourceProvider{
+		sourceURL:          sourceURL,
+		serviceIndexClient: serviceIndexClient,
+		searchClient:       v3.NewSearchClient(httpClient, serviceIndexClient),
+		metadataClient:     v3.NewMetadataClient(httpClient, serviceIndexClient),
+		downloadClient:     v3.NewDownloadClient(httpClient, serviceIndexClient),
+	}
+}
+
+// GetMetadata retrieves metadata for a specific package version
+func (p *V3ResourceProvider) GetMetadata(ctx context.Context, packageID, version string) (*ProtocolMetadata, error) {
+	catalog, err := p.metadataClient.GetVersionMetadata(ctx, p.sourceURL, packageID, version)
+	if err != nil {
+		return nil, err
+	}
+
+	// Convert v3 catalog to protocol metadata
+	metadata := &ProtocolMetadata{
+		ID:                       catalog.PackageID,
+		Version:                  catalog.Version,
+		Title:                    catalog.Title,
+		Description:              catalog.Description,
+		Summary:                  catalog.Summary,
+		IconURL:                  catalog.IconURL,
+		LicenseURL:               catalog.LicenseURL,
+		LicenseExpression:        catalog.LicenseExpression,
+		ProjectURL:               catalog.ProjectURL,
+		RequireLicenseAcceptance: catalog.RequireLicenseAcceptance,
+	}
+
+	// Parse authors
+	if catalog.Authors != "" {
+		metadata.Authors = strings.Split(catalog.Authors, ",")
+		for i := range metadata.Authors {
+			metadata.Authors[i] = strings.TrimSpace(metadata.Authors[i])
+		}
+	}
+
+	// Parse tags
+	if catalog.Tags != "" {
+		metadata.Tags = strings.Split(catalog.Tags, " ")
+	}
+
+	// Convert dependency groups
+	for _, dg := range catalog.DependencyGroups {
+		group := ProtocolDependencyGroup{
+			TargetFramework: dg.TargetFramework,
+			Dependencies:    make([]ProtocolDependency, 0, len(dg.Dependencies)),
+		}
+
+		for _, dep := range dg.Dependencies {
+			group.Dependencies = append(group.Dependencies, ProtocolDependency{
+				ID:    dep.ID,
+				Range: dep.Range,
+			})
+		}
+
+		metadata.Dependencies = append(metadata.Dependencies, group)
+	}
+
+	return metadata, nil
+}
+
+// ListVersions lists all available versions for a package
+func (p *V3ResourceProvider) ListVersions(ctx context.Context, packageID string) ([]string, error) {
+	return p.metadataClient.ListVersions(ctx, p.sourceURL, packageID)
+}
+
+// Search searches for packages matching the query
+func (p *V3ResourceProvider) Search(ctx context.Context, query string, opts SearchOptions) ([]SearchResult, error) {
+	searchOpts := v3.SearchOptions{
+		Query:      query,
+		Skip:       opts.Skip,
+		Take:       opts.Take,
+		Prerelease: opts.IncludePrerelease,
+	}
+
+	resp, err := p.searchClient.Search(ctx, p.sourceURL, searchOpts)
+	if err != nil {
+		return nil, err
+	}
+
+	// Convert v3 results to common format
+	results := make([]SearchResult, 0, len(resp.Data))
+	for _, r := range resp.Data {
+		result := SearchResult{
+			ID:             r.PackageID,
+			Version:        r.Version,
+			Description:    r.Description,
+			Authors:        r.Authors,
+			IconURL:        r.IconURL,
+			Tags:           r.Tags,
+			TotalDownloads: r.TotalDownloads,
+			Verified:       r.Verified,
+		}
+		results = append(results, result)
+	}
+
+	return results, nil
+}
+
+// DownloadPackage downloads a .nupkg file
+func (p *V3ResourceProvider) DownloadPackage(ctx context.Context, packageID, version string) (io.ReadCloser, error) {
+	return p.downloadClient.DownloadPackage(ctx, p.sourceURL, packageID, version)
+}
+
+// SourceURL returns the source URL
+func (p *V3ResourceProvider) SourceURL() string {
+	return p.sourceURL
+}
+
+// ProtocolVersion returns "v3"
+func (p *V3ResourceProvider) ProtocolVersion() string {
+	return "v3"
+}
 ```
 
-### Verification Steps
+**Step 3: Create v2 resource provider**
 
-```bash
-# Build
-go build ./core
+Create `core/provider_v2.go`:
 
-# Format check
-gofmt -l core/
+```go
+package core
+
+import (
+	"context"
+	"io"
+	"strings"
+
+	nugethttp "github.com/willibrandon/gonuget/http"
+	"github.com/willibrandon/gonuget/protocol/v3"
+	"github.com/willibrandon/gonuget/protocol/v2"
+)
+
+// V2ResourceProvider implements ResourceProvider for NuGet v2 feeds
+type V2ResourceProvider struct {
+	sourceURL      string
+	searchClient   *v2.SearchClient
+	metadataClient *v2.MetadataClient
+	downloadClient *v2.DownloadClient
+}
+
+// NewV2ResourceProvider creates a new v2 resource provider
+func NewV2ResourceProvider(sourceURL string, httpClient *nugethttp.Client) *V2ResourceProvider {
+	return &V2ResourceProvider{
+		sourceURL:      sourceURL,
+		searchClient:   v2.NewSearchClient(httpClient),
+		metadataClient: v2.NewMetadataClient(httpClient),
+		downloadClient: v2.NewDownloadClient(httpClient),
+	}
+}
+
+// GetMetadata retrieves metadata for a specific package version
+func (p *V2ResourceProvider) GetMetadata(ctx context.Context, packageID, version string) (*ProtocolMetadata, error) {
+	v2Metadata, err := p.metadataClient.GetPackageMetadata(ctx, p.sourceURL, packageID, version)
+	if err != nil {
+		return nil, err
+	}
+
+	// Convert v2 metadata to protocol format
+	metadata := &ProtocolMetadata{
+		ID:                       v2Metadata.ID,
+		Version:                  v2Metadata.Version,
+		Title:                    v2Metadata.Title,
+		Description:              v2Metadata.Description,
+		Summary:                  v2Metadata.Summary,
+		IconURL:                  v2Metadata.IconURL,
+		LicenseURL:               v2Metadata.LicenseURL,
+		ProjectURL:               v2Metadata.ProjectURL,
+		Tags:                     v2Metadata.Tags,
+		DownloadCount:            v2Metadata.DownloadCount,
+		IsPrerelease:             v2Metadata.IsPrerelease,
+		Published:                v2Metadata.Published,
+		RequireLicenseAcceptance: v2Metadata.RequireLicenseAcceptance,
+		DownloadURL:              v2Metadata.DownloadURL,
+	}
+
+	// Parse authors
+	if v2Metadata.Authors != "" {
+		metadata.Authors = strings.Split(v2Metadata.Authors, ",")
+		for i := range metadata.Authors {
+			metadata.Authors[i] = strings.TrimSpace(metadata.Authors[i])
+		}
+	}
+
+	// Parse owners
+	if v2Metadata.Owners != "" {
+		metadata.Owners = strings.Split(v2Metadata.Owners, ",")
+		for i := range metadata.Owners {
+			metadata.Owners[i] = strings.TrimSpace(metadata.Owners[i])
+		}
+	}
+
+	// TODO: Parse v2 dependency string into ProtocolDependencyGroup
+	// V2 format: "PackageA:1.0:net45|PackageB:2.0:netstandard2.0"
+
+	return metadata, nil
+}
+
+// ListVersions lists all available versions for a package
+func (p *V2ResourceProvider) ListVersions(ctx context.Context, packageID string) ([]string, error) {
+	return p.metadataClient.ListVersions(ctx, p.sourceURL, packageID)
+}
+
+// Search searches for packages matching the query
+func (p *V2ResourceProvider) Search(ctx context.Context, query string, opts SearchOptions) ([]SearchResult, error) {
+	searchOpts := v2.SearchOptions{
+		Query:             query,
+		Skip:              opts.Skip,
+		Top:               opts.Take,
+		IncludePrerelease: opts.IncludePrerelease,
+	}
+
+	v2Results, err := p.searchClient.Search(ctx, p.sourceURL, searchOpts)
+	if err != nil {
+		return nil, err
+	}
+
+	// Convert v2 results to common format
+	results := make([]SearchResult, 0, len(v2Results))
+	for _, r := range v2Results {
+		result := SearchResult{
+			ID:             r.ID,
+			Version:        r.Version,
+			Description:    r.Description,
+			IconURL:        r.IconURL,
+			Tags:           r.Tags,
+			TotalDownloads: r.DownloadCount,
+		}
+
+		// Parse authors
+		if r.Authors != "" {
+			result.Authors = strings.Split(r.Authors, ",")
+			for i := range result.Authors {
+				result.Authors[i] = strings.TrimSpace(result.Authors[i])
+			}
+		}
+
+		results = append(results, result)
+	}
+
+	return results, nil
+}
+
+// DownloadPackage downloads a .nupkg file
+func (p *V2ResourceProvider) DownloadPackage(ctx context.Context, packageID, version string) (io.ReadCloser, error) {
+	return p.downloadClient.DownloadPackage(ctx, p.sourceURL, packageID, version)
+}
+
+// SourceURL returns the source URL
+func (p *V2ResourceProvider) SourceURL() string {
+	return p.sourceURL
+}
+
+// ProtocolVersion returns "v2"
+func (p *V2ResourceProvider) ProtocolVersion() string {
+	return "v2"
+}
 ```
 
-### Testing
+**Step 4: Create provider tests**
 
 Create `core/provider_test.go`:
 
@@ -483,6 +466,7 @@ import (
 	"testing"
 
 	nugethttp "github.com/willibrandon/gonuget/http"
+	"github.com/willibrandon/gonuget/protocol/v3"
 )
 
 func setupV3TestServer(t *testing.T) *httptest.Server {
@@ -627,10 +611,17 @@ func TestV2ResourceProvider_SourceURL(t *testing.T) {
 }
 ```
 
-Run tests:
+### Verification Steps
 
 ```bash
-go test ./core -v
+# Build
+go build ./core
+
+# Format check
+gofmt -l core/
+
+# Run tests
+go test -count=1 ./core -v
 ```
 
 ### Commit
@@ -642,16 +633,18 @@ feat: implement resource provider system
 - Implement V3ResourceProvider for NuGet v3 feeds
 - Implement V2ResourceProvider for NuGet v2 feeds
 - Add ProviderFactory with automatic protocol detection
-- Define common PackageMetadata and SearchResult types
-- Convert between v2/v3 formats and common format
+- Define protocol-level types (ProtocolMetadata, ProtocolDependency, etc.)
+- Convert between v2/v3 formats and protocol format
 - Create comprehensive provider tests
+
+Note: Protocol types use strings (ProtocolMetadata) separate from rich
+domain types (core.PackageMetadata) to avoid mixing concerns.
 
 Chunk: M2.16
 Status: ✓ Complete
 ```
 
 ---
-
 ## [M2.17] Source Repository
 
 **Time Estimate:** 2 hours
@@ -679,6 +672,7 @@ import (
 
 	"github.com/willibrandon/gonuget/auth"
 	nugethttp "github.com/willibrandon/gonuget/http"
+	"github.com/willibrandon/gonuget/protocol/v3"
 )
 
 // SourceRepository represents a NuGet package source with authentication
@@ -952,6 +946,7 @@ import (
 
 	"github.com/willibrandon/gonuget/auth"
 	nugethttp "github.com/willibrandon/gonuget/http"
+	"github.com/willibrandon/gonuget/protocol/v3"
 )
 
 func TestSourceRepository_Name(t *testing.T) {
@@ -1487,6 +1482,7 @@ import (
 
 	"github.com/willibrandon/gonuget/frameworks"
 	nugethttp "github.com/willibrandon/gonuget/http"
+	"github.com/willibrandon/gonuget/protocol/v3"
 	"github.com/willibrandon/gonuget/version"
 )
 
