@@ -13,6 +13,7 @@ import (
 // Nuspec represents a parsed .nuspec manifest.
 type Nuspec struct {
 	XMLName  xml.Name       `xml:"package"`
+	Xmlns    string         `xml:"xmlns,attr,omitempty"`
 	Metadata NuspecMetadata `xml:"metadata"`
 	Files    []NuspecFile   `xml:"files>file"`
 }

@@ -83,6 +83,26 @@ func (v *NuGetVersion) format() string {
 	return s
 }
 
+// IsPrerelease returns true if pre-release labels exist for the version.
+//
+// A version is considered a prerelease if it has any non-empty release labels
+// (e.g., "1.0.0-beta", "1.0.0-rc.1").
+//
+// Note: Metadata (after '+') does not affect prerelease status.
+// For example, "1.0.0+build123" is NOT a prerelease.
+//
+// Reference: SemanticVersion.IsPrerelease in NuGet.Client
+func (v *NuGetVersion) IsPrerelease() bool {
+	if v.ReleaseLabels != nil {
+		for _, label := range v.ReleaseLabels {
+			if label != "" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // ToNormalizedString returns the normalized version string.
 //
 // Normalization rules:

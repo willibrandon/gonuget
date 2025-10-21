@@ -166,11 +166,6 @@ func (r *VersionRange) FindBestMatch(versions []*NuGetVersion) *NuGetVersion {
 
 // String returns the string representation of the range.
 func (r *VersionRange) String() string {
-	if r.MinVersion != nil && r.MaxVersion == nil && r.MinInclusive {
-		// Simple ">= version" case
-		return r.MinVersion.String()
-	}
-
 	minBracket := "("
 	if r.MinInclusive {
 		minBracket = "["

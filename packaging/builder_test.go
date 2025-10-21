@@ -3,6 +3,7 @@ package packaging
 import (
 	"archive/zip"
 	"bytes"
+	"io"
 	"os"
 	"strings"
 	"testing"
@@ -832,5 +833,471 @@ func TestBuilderSetLicenseURL_Invalid(t *testing.T) {
 	err := builder.SetLicenseURL("://invalid-url")
 	if err == nil {
 		t.Error("Expected error for invalid license URL, got nil")
+	}
+}
+
+func TestBuilderSave(t *testing.T) {
+	builder := NewPackageBuilder().
+		SetID("TestPackage").
+		SetVersion(version.MustParse("1.0.0")).
+		SetDescription("Test package description").
+		SetAuthors("Test Author")
+
+	// Add test file from bytes
+	content := []byte("test content")
+	err := builder.AddFileFromBytes("lib/net6.0/test.dll", content)
+	if err != nil {
+		t.Fatalf("AddFileFromBytes() error = %v", err)
+	}
+
+	// Save to buffer
+	var buf bytes.Buffer
+	err = builder.Save(&buf)
+	if err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+
+	// Verify ZIP was created
+	if buf.Len() == 0 {
+		t.Fatal("Save() produced empty output")
+	}
+
+	// Verify ZIP structure
+	zipReader, err := zip.NewReader(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
+	if err != nil {
+		t.Fatalf("Created ZIP is invalid: %v", err)
+	}
+
+	// Check for required files
+	var foundNuspec, foundContentTypes, foundRels, foundTestFile bool
+
+	for _, file := range zipReader.File {
+		switch {
+		case file.Name == "TestPackage.nuspec":
+			foundNuspec = true
+		case file.Name == OPCContentTypesPath:
+			foundContentTypes = true
+		case file.Name == OPCRelationshipsPath:
+			foundRels = true
+		case file.Name == "lib/net6.0/test.dll":
+			foundTestFile = true
+		}
+	}
+
+	if !foundNuspec {
+		t.Error("Nuspec file not found in package")
+	}
+
+	if !foundContentTypes {
+		t.Error("[Content_Types].xml not found in package")
+	}
+
+	if !foundRels {
+		t.Error("_rels/.rels not found in package")
+	}
+
+	if !foundTestFile {
+		t.Error("Test file not found in package")
+	}
+}
+
+func TestBuilderSave_ValidationErrors(t *testing.T) {
+	tests := []struct {
+		name        string
+		setupFunc   func(*PackageBuilder)
+		errorSubstr string
+	}{
+		{
+			name:        "missing ID",
+			setupFunc:   func(b *PackageBuilder) {},
+			errorSubstr: "package ID is required",
+		},
+		{
+			name: "missing version",
+			setupFunc: func(b *PackageBuilder) {
+				b.SetID("TestPackage")
+			},
+			errorSubstr: "package version is required",
+		},
+		{
+			name: "missing description",
+			setupFunc: func(b *PackageBuilder) {
+				b.SetID("TestPackage")
+				b.SetVersion(version.MustParse("1.0.0"))
+			},
+			errorSubstr: "package description is required",
+		},
+		{
+			name: "missing authors",
+			setupFunc: func(b *PackageBuilder) {
+				b.SetID("TestPackage")
+				b.SetVersion(version.MustParse("1.0.0"))
+				b.SetDescription("Test")
+			},
+			errorSubstr: "package authors are required",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			builder := NewPackageBuilder()
+			tt.setupFunc(builder)
+
+			var buf bytes.Buffer
+			err := builder.Save(&buf)
+
+			if err == nil {
+				t.Error("Save() expected error, got nil")
+			}
+
+			if !strings.Contains(err.Error(), tt.errorSubstr) {
+				t.Errorf("Error should contain %q, got %v", tt.errorSubstr, err)
+			}
+		})
+	}
+}
+
+func TestBuilderSaveToFile(t *testing.T) {
+	builder := NewPackageBuilder().
+		SetID("TestPackage").
+		SetVersion(version.MustParse("1.0.0")).
+		SetDescription("Test package description").
+		SetAuthors("Test Author")
+
+	// Add test file
+	content := []byte("test content")
+	err := builder.AddFileFromBytes("lib/net6.0/test.dll", content)
+	if err != nil {
+		t.Fatalf("AddFileFromBytes() error = %v", err)
+	}
+
+	// Save to temp file
+	tmpFile := t.TempDir() + "/test.nupkg"
+	err = builder.SaveToFile(tmpFile)
+	if err != nil {
+		t.Fatalf("SaveToFile() error = %v", err)
+	}
+
+	// Verify file exists
+	info, err := os.Stat(tmpFile)
+	if err != nil {
+		t.Fatalf("Saved file does not exist: %v", err)
+	}
+
+	if info.Size() == 0 {
+		t.Fatal("Saved file is empty")
+	}
+
+	// Verify it's a valid ZIP
+	zipReader, err := zip.OpenReader(tmpFile)
+	if err != nil {
+		t.Fatalf("Saved file is not a valid ZIP: %v", err)
+	}
+	defer func() { _ = zipReader.Close() }()
+
+	// Check for nuspec
+	foundNuspec := false
+	for _, file := range zipReader.File {
+		if file.Name == "TestPackage.nuspec" {
+			foundNuspec = true
+			break
+		}
+	}
+
+	if !foundNuspec {
+		t.Error("Nuspec file not found in saved package")
+	}
+}
+
+func TestBuilderSaveToFile_InvalidPath(t *testing.T) {
+	builder := NewPackageBuilder().
+		SetID("TestPackage").
+		SetVersion(version.MustParse("1.0.0")).
+		SetDescription("Test").
+		SetAuthors("Test Author")
+
+	// Try to save to invalid path
+	err := builder.SaveToFile("/nonexistent/directory/test.nupkg")
+	if err == nil {
+		t.Error("SaveToFile() expected error for invalid path, got nil")
+	}
+}
+
+func TestBuilderSave_MultipleFiles(t *testing.T) {
+	builder := NewPackageBuilder().
+		SetID("TestPackage").
+		SetVersion(version.MustParse("1.0.0")).
+		SetDescription("Test package with multiple files").
+		SetAuthors("Test Author")
+
+	// Add files from different sources
+	_ = builder.AddFileFromBytes("lib/net6.0/library.dll", []byte("library content"))
+	_ = builder.AddFileFromBytes("lib/net6.0/library.xml", []byte("<doc/>"))
+	_ = builder.AddFileFromReader("content/readme.txt", strings.NewReader("README"))
+
+	var buf bytes.Buffer
+	err := builder.Save(&buf)
+	if err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+
+	// Verify all files are in the package
+	zipReader, err := zip.NewReader(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
+	if err != nil {
+		t.Fatalf("Created ZIP is invalid: %v", err)
+	}
+
+	expectedFiles := map[string]bool{
+		"lib/net6.0/library.dll": false,
+		"lib/net6.0/library.xml": false,
+		"content/readme.txt":     false,
+	}
+
+	for _, file := range zipReader.File {
+		if _, ok := expectedFiles[file.Name]; ok {
+			expectedFiles[file.Name] = true
+		}
+	}
+
+	for fileName, found := range expectedFiles {
+		if !found {
+			t.Errorf("File %s not found in package", fileName)
+		}
+	}
+}
+
+func TestBuilderSave_WithDependencies(t *testing.T) {
+	builder := NewPackageBuilder().
+		SetID("TestPackage").
+		SetVersion(version.MustParse("1.0.0")).
+		SetDescription("Test package with dependencies").
+		SetAuthors("Test Author")
+
+	// Add dependencies
+	net60 := frameworks.MustParseFramework("net6.0")
+	vr := version.MustParseRange("[13.0.0,)")
+	builder.AddDependency(net60, "Newtonsoft.Json", vr)
+
+	var buf bytes.Buffer
+	err := builder.Save(&buf)
+	if err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+
+	// Read and verify nuspec contains dependency
+	zipReader, err := zip.NewReader(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
+	if err != nil {
+		t.Fatalf("Created ZIP is invalid: %v", err)
+	}
+
+	var nuspecContent string
+	for _, file := range zipReader.File {
+		if file.Name == "TestPackage.nuspec" {
+			rc, err := file.Open()
+			if err != nil {
+				t.Fatalf("Open nuspec: %v", err)
+			}
+			defer func() { _ = rc.Close() }()
+
+			nuspecBytes, err := io.ReadAll(rc)
+			if err != nil {
+				t.Fatalf("Read nuspec: %v", err)
+			}
+			nuspecContent = string(nuspecBytes)
+			break
+		}
+	}
+
+	if nuspecContent == "" {
+		t.Fatal("Nuspec file not found")
+	}
+
+	if !strings.Contains(nuspecContent, "Newtonsoft.Json") {
+		t.Error("Nuspec should contain dependency on Newtonsoft.Json")
+	}
+
+	if !strings.Contains(nuspecContent, "net6.0") {
+		t.Error("Nuspec should contain target framework net6.0")
+	}
+}
+
+func TestBuilderSave_FileFromDisk(t *testing.T) {
+	// Create temp file on disk
+	tmpDir := t.TempDir()
+	sourceFile := tmpDir + "/source.dll"
+	testContent := []byte("test dll content")
+	err := os.WriteFile(sourceFile, testContent, 0644)
+	if err != nil {
+		t.Fatalf("Failed to create source file: %v", err)
+	}
+
+	builder := NewPackageBuilder().
+		SetID("TestPackage").
+		SetVersion(version.MustParse("1.0.0")).
+		SetDescription("Test").
+		SetAuthors("Test Author")
+
+	// Add file from disk
+	err = builder.AddFile(sourceFile, "lib/net6.0/test.dll")
+	if err != nil {
+		t.Fatalf("AddFile() error = %v", err)
+	}
+
+	// Save package
+	var buf bytes.Buffer
+	err = builder.Save(&buf)
+	if err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+
+	// Verify file content in package
+	zipReader, err := zip.NewReader(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
+	if err != nil {
+		t.Fatalf("Created ZIP is invalid: %v", err)
+	}
+
+	for _, file := range zipReader.File {
+		if file.Name == "lib/net6.0/test.dll" {
+			rc, err := file.Open()
+			if err != nil {
+				t.Fatalf("Open file: %v", err)
+			}
+			defer func() { _ = rc.Close() }()
+
+			content, err := io.ReadAll(rc)
+			if err != nil {
+				t.Fatalf("Read file: %v", err)
+			}
+
+			if !bytes.Equal(content, testContent) {
+				t.Errorf("File content mismatch: got %q, want %q", content, testContent)
+			}
+
+			return
+		}
+	}
+
+	t.Error("File lib/net6.0/test.dll not found in package")
+}
+
+func TestBuilderSave_FileNotFound(t *testing.T) {
+	builder := NewPackageBuilder().
+		SetID("TestPackage").
+		SetVersion(version.MustParse("1.0.0")).
+		SetDescription("Test").
+		SetAuthors("Test Author")
+
+	// Add file from disk that doesn't exist
+	builder.files = append(builder.files, PackageFile{
+		SourcePath: "/nonexistent/file.dll",
+		TargetPath: "lib/net6.0/test.dll",
+	})
+
+	var buf bytes.Buffer
+	err := builder.Save(&buf)
+
+	if err == nil {
+		t.Error("Save() expected error for non-existent source file, got nil")
+	}
+
+	if !strings.Contains(err.Error(), "open source file") {
+		t.Errorf("Error should mention 'open source file', got %v", err)
+	}
+}
+
+func TestBuilderSave_FileWithNoContentSource(t *testing.T) {
+	builder := NewPackageBuilder().
+		SetID("TestPackage").
+		SetVersion(version.MustParse("1.0.0")).
+		SetDescription("Test").
+		SetAuthors("Test Author")
+
+	// Manually create a PackageFile with no content source
+	builder.files = append(builder.files, PackageFile{
+		TargetPath: "lib/net6.0/test.dll",
+		// No SourcePath, Content, or Reader set
+	})
+
+	var buf bytes.Buffer
+	err := builder.Save(&buf)
+
+	if err == nil {
+		t.Error("Save() expected error for file with no content source, got nil")
+	}
+
+	if !strings.Contains(err.Error(), "no content source") {
+		t.Errorf("Error should mention 'no content source', got %v", err)
+	}
+}
+
+func TestBuilderSave_CompleteMetadata(t *testing.T) {
+	builder := NewPackageBuilder().
+		SetID("TestPackage").
+		SetVersion(version.MustParse("1.2.3-beta")).
+		SetDescription("Complete test package").
+		SetAuthors("Author1", "Author2").
+		SetTitle("Test Title").
+		SetOwners("Owner1").
+		SetTags("test", "package", "complete").
+		SetCopyright("Copyright 2025").
+		SetSummary("Test summary").
+		SetReleaseNotes("Initial release").
+		SetLanguage("en-US").
+		SetRequireLicenseAcceptance(true).
+		SetDevelopmentDependency(true).
+		SetServiceable(true).
+		SetIcon("icon.png").
+		SetReadme("README.md")
+
+	_ = builder.SetProjectURL("https://github.com/test/repo")
+
+	var buf bytes.Buffer
+	err := builder.Save(&buf)
+	if err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+
+	// Read nuspec and verify metadata
+	zipReader, err := zip.NewReader(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
+	if err != nil {
+		t.Fatalf("Created ZIP is invalid: %v", err)
+	}
+
+	var nuspecContent string
+	for _, file := range zipReader.File {
+		if file.Name == "TestPackage.nuspec" {
+			rc, err := file.Open()
+			if err != nil {
+				t.Fatalf("Open nuspec: %v", err)
+			}
+			defer func() { _ = rc.Close() }()
+
+			nuspecBytes, err := io.ReadAll(rc)
+			if err != nil {
+				t.Fatalf("Read nuspec: %v", err)
+			}
+			nuspecContent = string(nuspecBytes)
+			break
+		}
+	}
+
+	// Verify key metadata fields
+	expectedStrings := []string{
+		"TestPackage",
+		"1.2.3-beta",
+		"Complete test package",
+		"Author1, Author2",
+		"Test Title",
+		"test package complete",
+		"Copyright 2025",
+		"Initial release",
+		"icon.png",
+		"README.md",
+	}
+
+	for _, expected := range expectedStrings {
+		if !strings.Contains(nuspecContent, expected) {
+			t.Errorf("Nuspec should contain %q", expected)
+		}
 	}
 }

@@ -560,9 +560,27 @@ import (
 )
 
 // Nuspec schema namespaces
+// Reference: ManifestSchemaUtility.cs in NuGet.Client
 const (
-    NuspecNamespaceV5 = "http://schemas.microsoft.com/packaging/2013/05/nuspec.xsd"
-    NuspecNamespaceV6 = "http://schemas.microsoft.com/packaging/2013/01/nuspec.xsd"
+    // SchemaVersionV1 - Baseline schema (2010/07)
+    NuspecNamespaceV1 = "http://schemas.microsoft.com/packaging/2010/07/nuspec.xsd"
+
+    // SchemaVersionV2 - Added copyrights, references and release notes (2011/08)
+    NuspecNamespaceV2 = "http://schemas.microsoft.com/packaging/2011/08/nuspec.xsd"
+
+    // SchemaVersionV3 - Used if the version is a semantic version (2011/10)
+    NuspecNamespaceV3 = "http://schemas.microsoft.com/packaging/2011/10/nuspec.xsd"
+
+    // SchemaVersionV4 - Added 'targetFramework' attribute for 'dependency' elements (2012/06)
+    // Allow framework folders under 'content' and 'tools' folders
+    NuspecNamespaceV4 = "http://schemas.microsoft.com/packaging/2012/06/nuspec.xsd"
+
+    // SchemaVersionV5 - Added 'targetFramework' attribute for 'references' elements (2013/01)
+    // Added 'minClientVersion' attribute
+    NuspecNamespaceV5 = "http://schemas.microsoft.com/packaging/2013/01/nuspec.xsd"
+
+    // SchemaVersionV6 - Allows XDT transformation (2013/05) - most recent
+    NuspecNamespaceV6 = "http://schemas.microsoft.com/packaging/2013/05/nuspec.xsd"
 )
 
 // GenerateNuspecXML generates nuspec XML from package metadata
@@ -587,10 +605,48 @@ func GenerateNuspecXML(metadata PackageMetadata) ([]byte, error) {
     return []byte(buf.String()), nil
 }
 
+// determineNuspecNamespace inspects metadata to determine minimum required schema version
+// Reference: ManifestVersionUtility.GetManifestVersion in NuGet.Client
 func determineNuspecNamespace(metadata PackageMetadata) string {
-    // Use v5 namespace by default (most recent)
-    // Reference: ManifestSchemaUtility in NuGet.Client
-    return NuspecNamespaceV5
+    // Check for features requiring newer schema versions (check newest first)
+
+    // V5 (2013/01): References with target frameworks
+    if hasReferencesWithTargetFramework(metadata) {
+        return NuspecNamespaceV5
+    }
+
+    // V4 (2012/06): Dependencies with target frameworks
+    if hasDependenciesWithTargetFramework(metadata) {
+        return NuspecNamespaceV4
+    }
+
+    // V3 (2011/10): Prerelease/semantic versions
+    if metadata.Version != nil && metadata.Version.IsPrerelease {
+        return NuspecNamespaceV3
+    }
+
+    // V6 (2013/05): Default to most recent for best compatibility
+    return NuspecNamespaceV6
+}
+
+func hasReferencesWithTargetFramework(metadata PackageMetadata) bool {
+    // Check if any reference groups have specific target frameworks
+    for _, group := range metadata.FrameworkReferenceGroups {
+        if group.TargetFramework != nil && !group.TargetFramework.IsAny() {
+            return true
+        }
+    }
+    return false
+}
+
+func hasDependenciesWithTargetFramework(metadata PackageMetadata) bool {
+    // Check if any dependency groups have specific target frameworks
+    for _, group := range metadata.DependencyGroups {
+        if group.TargetFramework != nil && !group.TargetFramework.IsAny() {
+            return true
+        }
+    }
+    return false
 }
 
 func buildNuspecStructure(metadata PackageMetadata, namespace string) *Nuspec {

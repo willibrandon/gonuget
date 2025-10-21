@@ -478,3 +478,143 @@ func (b *PackageBuilder) writeOPCFiles(zipWriter *zip.Writer, nuspecFileName str
 
 	return nil
 }
+
+// Save writes the package to a stream.
+func (b *PackageBuilder) Save(writer io.Writer) error {
+	// Basic validation
+	if err := b.validateBasic(); err != nil {
+		return fmt.Errorf("validation failed: %w", err)
+	}
+
+	// Create ZIP archive
+	zipWriter := zip.NewWriter(writer)
+	defer func() { _ = zipWriter.Close() }()
+
+	// Write nuspec
+	nuspecFileName, err := b.writeNuspec(zipWriter)
+	if err != nil {
+		return fmt.Errorf("write nuspec: %w", err)
+	}
+
+	// Write package files
+	if err := b.writeFiles(zipWriter); err != nil {
+		return fmt.Errorf("write files: %w", err)
+	}
+
+	// Write OPC files
+	if err := b.writeOPCFiles(zipWriter, nuspecFileName); err != nil {
+		return fmt.Errorf("write OPC files: %w", err)
+	}
+
+	// Close the ZIP writer before returning
+	if err := zipWriter.Close(); err != nil {
+		return fmt.Errorf("close ZIP: %w", err)
+	}
+
+	return nil
+}
+
+// SaveToFile writes the package to a file.
+func (b *PackageBuilder) SaveToFile(path string) error {
+	file, err := os.Create(path)
+	if err != nil {
+		return fmt.Errorf("create file: %w", err)
+	}
+	defer func() { _ = file.Close() }()
+
+	if err := b.Save(file); err != nil {
+		return err
+	}
+
+	return file.Close()
+}
+
+func (b *PackageBuilder) validateBasic() error {
+	if b.metadata.ID == "" {
+		return fmt.Errorf("package ID is required")
+	}
+
+	if b.metadata.Version == nil {
+		return fmt.Errorf("package version is required")
+	}
+
+	if b.metadata.Description == "" {
+		return fmt.Errorf("package description is required")
+	}
+
+	if len(b.metadata.Authors) == 0 {
+		return fmt.Errorf("package authors are required")
+	}
+
+	return nil
+}
+
+func (b *PackageBuilder) writeNuspec(zipWriter *zip.Writer) (string, error) {
+	// Generate nuspec XML
+	nuspecXML, err := GenerateNuspecXML(b.metadata)
+	if err != nil {
+		return "", err
+	}
+
+	// Nuspec file name: {ID}.nuspec
+	nuspecFileName := b.metadata.ID + ".nuspec"
+
+	// Create ZIP entry
+	writer, err := zipWriter.Create(nuspecFileName)
+	if err != nil {
+		return "", fmt.Errorf("create nuspec entry: %w", err)
+	}
+
+	// Write XML
+	if _, err := writer.Write(nuspecXML); err != nil {
+		return "", fmt.Errorf("write nuspec: %w", err)
+	}
+
+	return nuspecFileName, nil
+}
+
+func (b *PackageBuilder) writeFiles(zipWriter *zip.Writer) error {
+	for _, file := range b.files {
+		if err := b.writeFile(zipWriter, file); err != nil {
+			return fmt.Errorf("write file %s: %w", file.TargetPath, err)
+		}
+	}
+
+	return nil
+}
+
+func (b *PackageBuilder) writeFile(zipWriter *zip.Writer, file PackageFile) error {
+	// Create ZIP entry
+	writer, err := zipWriter.Create(file.TargetPath)
+	if err != nil {
+		return fmt.Errorf("create ZIP entry: %w", err)
+	}
+
+	// Write from source
+	if file.SourcePath != "" {
+		// Read from disk
+		sourceFile, err := os.Open(file.SourcePath)
+		if err != nil {
+			return fmt.Errorf("open source file: %w", err)
+		}
+		defer func() { _ = sourceFile.Close() }()
+
+		if _, err := io.Copy(writer, sourceFile); err != nil {
+			return fmt.Errorf("copy from source: %w", err)
+		}
+	} else if file.Content != nil {
+		// Write from bytes
+		if _, err := writer.Write(file.Content); err != nil {
+			return fmt.Errorf("write content: %w", err)
+		}
+	} else if file.Reader != nil {
+		// Write from reader
+		if _, err := io.Copy(writer, file.Reader); err != nil {
+			return fmt.Errorf("copy from reader: %w", err)
+		}
+	} else {
+		return fmt.Errorf("no content source for file")
+	}
+
+	return nil
+}
