@@ -184,8 +184,14 @@ func determineSignatureType(signerInfo SignerInfo) SignatureType {
 		// Look for commitment-type-indication attribute
 		if attr.Type.Equal(oidCommitmentTypeIndication) {
 			// Parse the attribute values (SET OF)
+			// Try Bytes first (for real NuGet signatures), then FullBytes (for signatures we create)
 			var values []asn1.RawValue
-			if _, err := asn1.Unmarshal(attr.Values.Bytes, &values); err != nil {
+			_, err := asn1.Unmarshal(attr.Values.Bytes, &values)
+			if err != nil {
+				// Fallback: try FullBytes with SET parameter
+				_, err = asn1.UnmarshalWithParams(attr.Values.FullBytes, &values, "set")
+			}
+			if err != nil {
 				continue
 			}
 
@@ -244,30 +250,27 @@ func extractTimestamps(signerInfo SignerInfo) ([]Timestamp, error) {
 
 		// Look for timestamp token attributes
 		if attr.Type.Equal(oidTimestampToken) {
-			// The attribute value is a SET containing a ContentInfo (timestamp token)
-			// Parse it directly as ContentInfo
-			type ContentInfo struct {
-				ContentType asn1.ObjectIdentifier
-				Content     asn1.RawValue `asn1:"explicit,tag:0"`
+			// RFC 5652: Attribute values are SET OF AttributeValue
+			// For timestamp tokens, the SET contains one ContentInfo (the timestamp token)
+			// The Values.Bytes field contains the SET content (without the SET tag/length header)
+
+			// Parse the SET to extract the ContentInfo
+			// Try to unmarshal as a SET of one RawValue
+			var contentInfoBytes []byte
+
+			// The timestamp token ContentInfo is the content of the SET
+			// Try parsing as a single element
+			var tokenRaw asn1.RawValue
+			rest, err := asn1.Unmarshal(attr.Values.Bytes, &tokenRaw)
+			if err == nil && len(rest) == 0 {
+				// Successfully extracted - use the full bytes of the token
+				contentInfoBytes = tokenRaw.FullBytes
+			} else {
+				// Fallback: maybe the Bytes field already contains just the ContentInfo
+				contentInfoBytes = attr.Values.Bytes
 			}
 
-			var ci ContentInfo
-			if _, err := asn1.Unmarshal(attr.Values.Bytes, &ci); err != nil {
-				continue
-			}
-
-			// Verify it's a signedData
-			if !ci.ContentType.Equal(oidSignedData) {
-				continue
-			}
-
-			// Reconstruct full ContentInfo and parse as timestamp
-			reconstructed, err := asn1.Marshal(ci)
-			if err != nil {
-				continue
-			}
-
-			ts, err := parseTimestampToken(reconstructed)
+			ts, err := parseTimestampToken(contentInfoBytes)
 			if err != nil {
 				continue // Skip invalid timestamps
 			}

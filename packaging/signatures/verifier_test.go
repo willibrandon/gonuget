@@ -3,6 +3,7 @@ package signatures
 import (
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/sha1"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
@@ -13,6 +14,13 @@ import (
 
 // Test helpers to generate certificates for testing
 
+// sha1Hash computes SHA-1 hash for SubjectKeyId (matches X509SubjectKeyIdentifierExtension behavior)
+func sha1Hash(data []byte) []byte {
+	h := sha1.New()
+	h.Write(data)
+	return h.Sum(nil)
+}
+
 // generateTestRootCA creates a self-signed root CA certificate
 func generateTestRootCA(t *testing.T) (*x509.Certificate, *rsa.PrivateKey) {
 	t.Helper()
@@ -21,6 +29,13 @@ func generateTestRootCA(t *testing.T) (*x509.Certificate, *rsa.PrivateKey) {
 	if err != nil {
 		t.Fatalf("failed to generate key: %v", err)
 	}
+
+	// Generate SubjectKeyId from public key (matches NuGet.Client behavior)
+	pubKeyBytes, err := x509.MarshalPKIXPublicKey(&priv.PublicKey)
+	if err != nil {
+		t.Fatalf("failed to marshal public key: %v", err)
+	}
+	subjectKeyID := sha1Hash(pubKeyBytes)
 
 	template := &x509.Certificate{
 		SerialNumber: big.NewInt(1),
@@ -33,6 +48,7 @@ func generateTestRootCA(t *testing.T) (*x509.Certificate, *rsa.PrivateKey) {
 		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
 		IsCA:                  true,
 		BasicConstraintsValid: true,
+		SubjectKeyId:          subjectKeyID,
 	}
 
 	certDER, err := x509.CreateCertificate(rand.Reader, template, template, &priv.PublicKey, priv)
@@ -57,6 +73,13 @@ func generateTestCodeSigningCert(t *testing.T, rootCert *x509.Certificate, rootK
 		t.Fatalf("failed to generate key: %v", err)
 	}
 
+	// Generate SubjectKeyId from public key (matches NuGet.Client behavior)
+	pubKeyBytes, err := x509.MarshalPKIXPublicKey(&priv.PublicKey)
+	if err != nil {
+		t.Fatalf("failed to marshal public key: %v", err)
+	}
+	subjectKeyID := sha1Hash(pubKeyBytes)
+
 	template := &x509.Certificate{
 		SerialNumber: big.NewInt(2),
 		Subject: pkix.Name{
@@ -68,6 +91,7 @@ func generateTestCodeSigningCert(t *testing.T, rootCert *x509.Certificate, rootK
 		KeyUsage:              x509.KeyUsageDigitalSignature,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageCodeSigning},
 		BasicConstraintsValid: true,
+		SubjectKeyId:          subjectKeyID,
 	}
 
 	certDER, err := x509.CreateCertificate(rand.Reader, template, rootCert, &priv.PublicKey, rootKey)
@@ -92,6 +116,13 @@ func generateTestTimestampCert(t *testing.T, rootCert *x509.Certificate, rootKey
 		t.Fatalf("failed to generate key: %v", err)
 	}
 
+	// Generate SubjectKeyId from public key (matches NuGet.Client behavior)
+	pubKeyBytes, err := x509.MarshalPKIXPublicKey(&priv.PublicKey)
+	if err != nil {
+		t.Fatalf("failed to marshal public key: %v", err)
+	}
+	subjectKeyID := sha1Hash(pubKeyBytes)
+
 	template := &x509.Certificate{
 		SerialNumber: big.NewInt(3),
 		Subject: pkix.Name{
@@ -103,6 +134,7 @@ func generateTestTimestampCert(t *testing.T, rootCert *x509.Certificate, rootKey
 		KeyUsage:              x509.KeyUsageDigitalSignature,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageTimeStamping},
 		BasicConstraintsValid: true,
+		SubjectKeyId:          subjectKeyID,
 	}
 
 	certDER, err := x509.CreateCertificate(rand.Reader, template, rootCert, &priv.PublicKey, rootKey)
