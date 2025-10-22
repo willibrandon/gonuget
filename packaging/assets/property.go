@@ -13,16 +13,16 @@ import (
 //   - matchOnly: if true, skip value actualization (performance optimization)
 //
 // Returns parsed value or nil if doesn't match.
-type PropertyParser func(value string, table *PatternTable, matchOnly bool) interface{}
+type PropertyParser func(value string, table *PatternTable, matchOnly bool) any
 
 // CompatibilityTest checks if criterion is compatible with available value.
 // Reference: ContentPropertyDefinition.cs CompatibilityTest
-type CompatibilityTest func(criterion, available interface{}) bool
+type CompatibilityTest func(criterion, available any) bool
 
 // CompareTest determines which of two available values is nearer to criterion.
 // Reference: ContentPropertyDefinition.cs CompareTest
 // Returns: -1 if available1 is nearer, 1 if available2 is nearer, 0 if equal
-type CompareTest func(criterion, available1, available2 interface{}) int
+type CompareTest func(criterion, available1, available2 any) int
 
 // PropertyDefinition defines how a property is parsed and compared.
 // Reference: ContentModel/ContentPropertyDefinition.cs
@@ -48,7 +48,7 @@ type PropertyDefinition struct {
 
 // TryLookup attempts to parse a value using this property definition.
 // Reference: ContentPropertyDefinition.cs TryLookup
-func (pd *PropertyDefinition) TryLookup(name string, table *PatternTable, matchOnly bool) (interface{}, bool) {
+func (pd *PropertyDefinition) TryLookup(name string, table *PatternTable, matchOnly bool) (any, bool) {
 	if name == "" {
 		return nil, false
 	}
@@ -81,7 +81,7 @@ func (pd *PropertyDefinition) TryLookup(name string, table *PatternTable, matchO
 
 // IsCriteriaSatisfied checks if criterion is satisfied by candidate value.
 // Reference: ContentPropertyDefinition.cs IsCriteriaSatisfied
-func (pd *PropertyDefinition) IsCriteriaSatisfied(criteriaValue, candidateValue interface{}) bool {
+func (pd *PropertyDefinition) IsCriteriaSatisfied(criteriaValue, candidateValue any) bool {
 	if pd.CompatibilityTest == nil {
 		// Default: exact equality
 		return criteriaValue == candidateValue
@@ -91,7 +91,7 @@ func (pd *PropertyDefinition) IsCriteriaSatisfied(criteriaValue, candidateValue 
 
 // Compare compares two candidate values against a criterion.
 // Reference: ContentPropertyDefinition.cs Compare
-func (pd *PropertyDefinition) Compare(criteriaValue, candidateValue1, candidateValue2 interface{}) int {
+func (pd *PropertyDefinition) Compare(criteriaValue, candidateValue1, candidateValue2 any) int {
 	// Check if one value is more compatible than the other
 	betterCoverageFromValue1 := pd.IsCriteriaSatisfied(candidateValue1, candidateValue2)
 	betterCoverageFromValue2 := pd.IsCriteriaSatisfied(candidateValue2, candidateValue1)

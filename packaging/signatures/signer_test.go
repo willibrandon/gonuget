@@ -1139,7 +1139,7 @@ func TestRequestTimestamp_HTTPError(t *testing.T) {
 
 func TestGenerateNonce_SignBitCleared(t *testing.T) {
 	// Run multiple times to ensure sign bit is always cleared
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		nonce, err := generateNonce()
 		if err != nil {
 			t.Fatalf("generateNonce failed: %v", err)
@@ -1281,7 +1281,7 @@ func TestTimestampErrorPaths(t *testing.T) {
 	}
 
 	// Test generateNonce
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		nonce, err := generateNonce()
 		if err != nil {
 			t.Fatalf("generateNonce failed: %v", err)

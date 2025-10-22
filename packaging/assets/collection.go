@@ -12,7 +12,7 @@ type ContentItemCollection struct {
 func NewContentItemCollection(paths []string) *ContentItemCollection {
 	assets := make([]*ContentItem, len(paths))
 	for i, path := range paths {
-		assets[i] = &ContentItem{Path: path, Properties: make(map[string]interface{})}
+		assets[i] = &ContentItem{Path: path, Properties: make(map[string]any)}
 	}
 	return &ContentItemCollection{Assets: assets}
 }
@@ -152,11 +152,11 @@ func (c *ContentItemCollection) FindBestItemGroup(criteria *SelectionCriteria, p
 // ContentItemGroup represents assets grouped by properties.
 // Reference: ContentModel/ContentItemGroup.cs
 type ContentItemGroup struct {
-	Properties map[string]interface{}
+	Properties map[string]any
 	Items      []*ContentItem
 }
 
-func buildGroupKey(properties map[string]interface{}) string {
+func buildGroupKey(properties map[string]any) string {
 	// Build stable key from properties
 	key := ""
 	if tfm, ok := properties["tfm"]; ok {

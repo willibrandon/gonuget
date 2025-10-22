@@ -101,21 +101,21 @@ func (c *ManagedCodeConventions) defineProperties() {
 // Property parsers
 // Reference: ManagedCodeConventions.cs
 
-func allowEmptyFolderParser(value string, table *PatternTable, matchOnly bool) interface{} {
+func allowEmptyFolderParser(value string, table *PatternTable, matchOnly bool) any {
 	if matchOnly {
 		return value // Return something non-nil to indicate match
 	}
 	return value
 }
 
-func identityParser(value string, table *PatternTable, matchOnly bool) interface{} {
+func identityParser(value string, table *PatternTable, matchOnly bool) any {
 	if matchOnly {
 		return value
 	}
 	return value
 }
 
-func localeParser(value string, table *PatternTable, matchOnly bool) interface{} {
+func localeParser(value string, table *PatternTable, matchOnly bool) any {
 	// Locale validation would go here
 	if matchOnly {
 		return value
@@ -123,7 +123,7 @@ func localeParser(value string, table *PatternTable, matchOnly bool) interface{}
 	return value
 }
 
-func codeLanguageParser(value string, table *PatternTable, matchOnly bool) interface{} {
+func codeLanguageParser(value string, table *PatternTable, matchOnly bool) any {
 	// Code language parsing (cs, vb, fs, etc.)
 	if matchOnly {
 		return value
@@ -131,7 +131,7 @@ func codeLanguageParser(value string, table *PatternTable, matchOnly bool) inter
 	return strings.ToLower(value)
 }
 
-func tfmParser(value string, table *PatternTable, matchOnly bool) interface{} {
+func tfmParser(value string, table *PatternTable, matchOnly bool) any {
 	// Check table first for aliases
 	if table != nil {
 		if replacement, ok := table.TryLookup("tfm", value); ok {
@@ -159,7 +159,7 @@ func tfmParser(value string, table *PatternTable, matchOnly bool) interface{} {
 // Compatibility and comparison tests
 // Reference: ManagedCodeConventions.cs
 
-func tfmCompatibilityTest(criterion, available interface{}) bool {
+func tfmCompatibilityTest(criterion, available any) bool {
 	criterionFW, ok1 := criterion.(*frameworks.NuGetFramework)
 	availableFW, ok2 := available.(*frameworks.NuGetFramework)
 
@@ -177,7 +177,7 @@ func tfmCompatibilityTest(criterion, available interface{}) bool {
 	return frameworks.IsCompatible(availableFW, criterionFW)
 }
 
-func tfmCompareTest(criterion, available1, available2 interface{}) int {
+func tfmCompareTest(criterion, available1, available2 any) int {
 	criterionFW, ok := criterion.(*frameworks.NuGetFramework)
 	if !ok {
 		return 0
@@ -207,7 +207,7 @@ func tfmCompareTest(criterion, available1, available2 interface{}) int {
 	return 0
 }
 
-func ridCompatibilityTest(criterion, available interface{}) bool {
+func ridCompatibilityTest(criterion, available any) bool {
 	// Nil criterion means RID-agnostic, compatible with anything
 	if criterion == nil {
 		return available == nil
@@ -250,7 +250,7 @@ func (c *ManagedCodeConventions) definePatternSets() {
 			{
 				Pattern: "lib/{assembly?}",
 				Table:   DotnetAnyTable,
-				Defaults: map[string]interface{}{
+				Defaults: map[string]any{
 					"tfm": frameworks.CommonFrameworks.Net,
 				},
 			},
@@ -267,7 +267,7 @@ func (c *ManagedCodeConventions) definePatternSets() {
 			{
 				Pattern: "lib/{assembly}",
 				Table:   DotnetAnyTable,
-				Defaults: map[string]interface{}{
+				Defaults: map[string]any{
 					"tfm": frameworks.CommonFrameworks.Net,
 				},
 			},
@@ -302,7 +302,7 @@ func (c *ManagedCodeConventions) definePatternSets() {
 			{
 				Pattern: "lib/{assembly?}",
 				Table:   DotnetAnyTable,
-				Defaults: map[string]interface{}{
+				Defaults: map[string]any{
 					"tfm": frameworks.CommonFrameworks.Net,
 				},
 			},
@@ -315,7 +315,7 @@ func (c *ManagedCodeConventions) definePatternSets() {
 			{
 				Pattern: "lib/{assembly}",
 				Table:   DotnetAnyTable,
-				Defaults: map[string]interface{}{
+				Defaults: map[string]any{
 					"tfm": frameworks.CommonFrameworks.Net,
 				},
 			},

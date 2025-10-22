@@ -1,6 +1,7 @@
 package assets
 
 import (
+	"slices"
 	"testing"
 )
 
@@ -357,14 +358,7 @@ func TestLoadDefaultRuntimeGraph(t *testing.T) {
 	expectedRIDs := []string{"win10-x64", "win10", "win-x64", "win81-x64", "win", "any", "base"}
 
 	for _, expectedRID := range expectedRIDs {
-		found := false
-		for _, rid := range expansion {
-			if rid == expectedRID {
-				found = true
-				break
-			}
-		}
-		if !found {
+		if !slices.Contains(expansion, expectedRID) {
 			t.Errorf("Expected RID %v not found in win10-x64 expansion: %v", expectedRID, expansion)
 		}
 	}

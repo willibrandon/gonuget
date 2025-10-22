@@ -15,7 +15,7 @@ type PatternDefinition struct {
 
 	// Defaults provides default property values.
 	// Example: {"tfm": &frameworks.NuGetFramework{...}}
-	Defaults map[string]interface{}
+	Defaults map[string]any
 
 	// Table is the token replacement table.
 	// Maps property values to replacements (e.g., "any" -> DotNet framework)
@@ -77,13 +77,13 @@ func NewPatternSet(
 // Reference: ContentModel/ContentItem.cs
 type ContentItem struct {
 	Path       string
-	Properties map[string]interface{}
+	Properties map[string]any
 }
 
 // Add adds or updates a property value.
-func (c *ContentItem) Add(key string, value interface{}) {
+func (c *ContentItem) Add(key string, value any) {
 	if c.Properties == nil {
-		c.Properties = make(map[string]interface{})
+		c.Properties = make(map[string]any)
 	}
 	// Don't overwrite existing properties
 	if _, exists := c.Properties[key]; !exists {

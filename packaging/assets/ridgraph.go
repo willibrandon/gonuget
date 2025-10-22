@@ -3,6 +3,7 @@ package assets
 import (
 	"encoding/json"
 	"fmt"
+	"slices"
 	"sync"
 )
 
@@ -212,13 +213,7 @@ func (g *RuntimeGraph) AreCompatible(targetRID, packageRID string) bool {
 	g.cacheMutex.RUnlock()
 
 	// Expand and check
-	result := false
-	for _, compatRID := range g.ExpandRuntime(targetRID) {
-		if compatRID == packageRID {
-			result = true
-			break
-		}
-	}
+	result := slices.Contains(g.ExpandRuntime(targetRID), packageRID)
 
 	// Cache result
 	g.cacheMutex.Lock()

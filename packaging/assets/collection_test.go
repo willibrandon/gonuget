@@ -1,6 +1,7 @@
 package assets
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/willibrandon/gonuget/frameworks"
@@ -326,14 +327,7 @@ func TestGetLibItems(t *testing.T) {
 
 			if tt.wantPaths != nil {
 				for _, wantPath := range tt.wantPaths {
-					found := false
-					for _, item := range items {
-						if item == wantPath {
-							found = true
-							break
-						}
-					}
-					if !found {
+					if !slices.Contains(items, wantPath) {
 						t.Errorf("want path %s, not found in %v", wantPath, items)
 					}
 				}
@@ -397,14 +391,7 @@ func TestGetRefItems(t *testing.T) {
 
 			if tt.wantPaths != nil {
 				for _, wantPath := range tt.wantPaths {
-					found := false
-					for _, item := range items {
-						if item == wantPath {
-							found = true
-							break
-						}
-					}
-					if !found {
+					if !slices.Contains(items, wantPath) {
 						t.Errorf("want path %s, not found in %v", wantPath, items)
 					}
 				}

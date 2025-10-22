@@ -12,7 +12,7 @@ func TestPatternTable(t *testing.T) {
 		entries      []PatternTableEntry
 		propertyName string
 		tokenName    string
-		wantValue    interface{}
+		wantValue    any
 		wantOK       bool
 	}{
 		{
@@ -70,7 +70,7 @@ func TestPropertyDefinition_TryLookup(t *testing.T) {
 		value     string
 		table     *PatternTable
 		matchOnly bool
-		wantValue interface{}
+		wantValue any
 		wantOK    bool
 	}{
 		{
@@ -110,7 +110,7 @@ func TestPropertyDefinition_TryLookup(t *testing.T) {
 			name: "Parser match",
 			propDef: &PropertyDefinition{
 				Name: "test",
-				Parser: func(value string, table *PatternTable, matchOnly bool) interface{} {
+				Parser: func(value string, table *PatternTable, matchOnly bool) any {
 					if value == "valid" {
 						if matchOnly {
 							return value
@@ -261,8 +261,8 @@ func TestTfmCompatibilityTest(t *testing.T) {
 
 	tests := []struct {
 		name       string
-		criterion  interface{}
-		available  interface{}
+		criterion  any
+		available  any
 		wantCompat bool
 	}{
 		{
@@ -308,9 +308,9 @@ func TestTfmCompareTest(t *testing.T) {
 
 	tests := []struct {
 		name       string
-		criterion  interface{}
-		available1 interface{}
-		available2 interface{}
+		criterion  any
+		available1 any
+		available2 any
 		wantResult int // -1 if available1 is better, 1 if available2 is better, 0 if equal
 	}{
 		{

@@ -5,7 +5,7 @@ import "github.com/willibrandon/gonuget/frameworks"
 // SelectionCriteriaEntry represents a single criteria entry with properties.
 // Reference: ContentModel/SelectionCriteriaEntry.cs
 type SelectionCriteriaEntry struct {
-	Properties map[string]interface{}
+	Properties map[string]any
 }
 
 // SelectionCriteria contains ordered list of criteria entries for asset selection.
@@ -27,12 +27,12 @@ type SelectionCriteriaBuilder struct {
 func NewSelectionCriteriaBuilder(properties map[string]*PropertyDefinition) *SelectionCriteriaBuilder {
 	return &SelectionCriteriaBuilder{
 		properties:   properties,
-		currentEntry: SelectionCriteriaEntry{Properties: make(map[string]interface{})},
+		currentEntry: SelectionCriteriaEntry{Properties: make(map[string]any)},
 	}
 }
 
 // Add sets a property value and returns builder for chaining.
-func (b *SelectionCriteriaBuilder) Add(key string, value interface{}) *SelectionCriteriaBuilder {
+func (b *SelectionCriteriaBuilder) Add(key string, value any) *SelectionCriteriaBuilder {
 	b.currentEntry.Properties[key] = value
 	return b
 }
@@ -41,7 +41,7 @@ func (b *SelectionCriteriaBuilder) Add(key string, value interface{}) *Selection
 func (b *SelectionCriteriaBuilder) NextEntry() *SelectionCriteriaBuilder {
 	if len(b.currentEntry.Properties) > 0 {
 		b.entries = append(b.entries, b.currentEntry)
-		b.currentEntry = SelectionCriteriaEntry{Properties: make(map[string]interface{})}
+		b.currentEntry = SelectionCriteriaEntry{Properties: make(map[string]any)}
 	}
 	return b
 }

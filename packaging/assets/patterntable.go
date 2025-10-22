@@ -7,28 +7,28 @@ import (
 // PatternTableEntry defines a token replacement.
 // Reference: ContentModel/PatternTableEntry.cs
 type PatternTableEntry struct {
-	PropertyName string      // Property this entry applies to (e.g., "tfm")
-	Name         string      // Token name to replace (e.g., "any")
-	Value        interface{} // Replacement value
+	PropertyName string // Property this entry applies to (e.g., "tfm")
+	Name         string // Token name to replace (e.g., "any")
+	Value        any    // Replacement value
 }
 
 // PatternTable is a token replacement table organized by property.
 // Reference: ContentModel/PatternTable.cs
 type PatternTable struct {
 	// table maps propertyName -> tokenName -> replacement value
-	table map[string]map[string]interface{}
+	table map[string]map[string]any
 }
 
 // NewPatternTable creates a pattern table from entries.
 func NewPatternTable(entries []PatternTableEntry) *PatternTable {
 	pt := &PatternTable{
-		table: make(map[string]map[string]interface{}),
+		table: make(map[string]map[string]any),
 	}
 
 	for _, entry := range entries {
 		byProp, ok := pt.table[entry.PropertyName]
 		if !ok {
-			byProp = make(map[string]interface{})
+			byProp = make(map[string]any)
 			pt.table[entry.PropertyName] = byProp
 		}
 		byProp[entry.Name] = entry.Value
@@ -38,7 +38,7 @@ func NewPatternTable(entries []PatternTableEntry) *PatternTable {
 }
 
 // TryLookup attempts to find a replacement value for a token.
-func (pt *PatternTable) TryLookup(propertyName, name string) (interface{}, bool) {
+func (pt *PatternTable) TryLookup(propertyName, name string) (any, bool) {
 	if pt == nil {
 		return nil, false
 	}

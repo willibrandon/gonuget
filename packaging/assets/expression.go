@@ -1,6 +1,7 @@
 package assets
 
 import (
+	"maps"
 	"strings"
 )
 
@@ -8,7 +9,7 @@ import (
 // Reference: ContentModel/Infrastructure/Parser.cs PatternExpression
 type PatternExpression struct {
 	segments []Segment
-	defaults map[string]interface{}
+	defaults map[string]any
 	table    *PatternTable
 }
 
@@ -38,13 +39,11 @@ type TokenSegment struct {
 func NewPatternExpression(pattern *PatternDefinition) *PatternExpression {
 	expr := &PatternExpression{
 		table:    pattern.Table,
-		defaults: make(map[string]interface{}),
+		defaults: make(map[string]any),
 	}
 
 	// Copy defaults
-	for k, v := range pattern.Defaults {
-		expr.defaults[k] = v
-	}
+	maps.Copy(expr.defaults, pattern.Defaults)
 
 	// Parse pattern into segments
 	expr.initialize(pattern.Pattern, pattern.PreserveRawValues)
@@ -184,7 +183,7 @@ func (ts *TokenSegment) TryMatch(item **ContentItem, path string, properties map
 		if *item == nil {
 			*item = &ContentItem{
 				Path:       path,
-				Properties: make(map[string]interface{}),
+				Properties: make(map[string]any),
 			}
 		}
 		(*item).Properties[ts.name] = tokenValue
@@ -204,7 +203,7 @@ func (ts *TokenSegment) TryMatch(item **ContentItem, path string, properties map
 		if *item == nil {
 			*item = &ContentItem{
 				Path:       path,
-				Properties: make(map[string]interface{}),
+				Properties: make(map[string]any),
 			}
 		}
 

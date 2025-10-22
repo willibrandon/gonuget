@@ -186,7 +186,7 @@ func TestPatternExpression_Defaults(t *testing.T) {
 	patternDef := &PatternDefinition{
 		Pattern: "lib/{assembly}",
 		Table:   DotnetAnyTable,
-		Defaults: map[string]interface{}{
+		Defaults: map[string]any{
 			"tfm": net45,
 		},
 	}
@@ -298,7 +298,7 @@ func TestTokenSegment_TryMatch(t *testing.T) {
 		start     int
 		wantEnd   int
 		wantMatch bool
-		wantValue interface{}
+		wantValue any
 	}{
 		{
 			name:      "Match assembly token",
