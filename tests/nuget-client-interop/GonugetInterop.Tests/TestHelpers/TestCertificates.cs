@@ -55,7 +55,7 @@ public static class TestCertificates
 
         // Export and re-import to ensure private key is included
         var pfxBytes = cert.Export(X509ContentType.Pfx, "test");
-        return new X509Certificate2(pfxBytes, "test", X509KeyStorageFlags.Exportable);
+        return X509CertificateLoader.LoadPkcs12(pfxBytes, "test", X509KeyStorageFlags.Exportable);
     }
 
     /// <summary>
@@ -109,6 +109,6 @@ public static class TestCertificates
         var cert = request.CreateSelfSigned(notBefore, notAfter);
 
         var pfxBytes = cert.Export(X509ContentType.Pfx, "test");
-        return new X509Certificate2(pfxBytes, "test", X509KeyStorageFlags.Exportable);
+        return X509CertificateLoader.LoadPkcs12(pfxBytes, "test", X509KeyStorageFlags.Exportable);
     }
 }

@@ -25,6 +25,11 @@ jobs:
         go-version: '1.21'
         cache: false
 
+    - name: Set up .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '9.0.x'
+
     - name: Build
       run: go build ./...
 
@@ -53,3 +58,15 @@ jobs:
       run: |
         go test -coverprofile=coverage.out -covermode=atomic ./...
         go tool cover -func=coverage.out
+
+    - name: Build interop CLI
+      shell: bash
+      run: |
+        cd cmd/nuget-interop-test
+        go build -o ../../tests/nuget-client-interop/gonuget-interop-test
+
+    - name: Run NuGet.Client interop tests
+      shell: bash
+      run: |
+        cd tests/nuget-client-interop
+        make test

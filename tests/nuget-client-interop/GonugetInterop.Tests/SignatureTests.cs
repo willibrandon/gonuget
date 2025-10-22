@@ -438,6 +438,7 @@ public class SignatureTests : IDisposable
 
         // Assert
         Assert.False(result.Valid);
+        Assert.NotNull(result.Errors);
         Assert.NotEmpty(result.Errors);
     }
 
@@ -461,6 +462,7 @@ public class SignatureTests : IDisposable
 
         // Assert
         Assert.False(result.Valid);
+        Assert.NotNull(result.Errors);
         Assert.Contains(result.Errors, e => e.Contains("timestamp"));
     }
 
@@ -664,6 +666,7 @@ public class SignatureTests : IDisposable
         var result = GonugetBridge.VerifySignature(signature, allowUntrustedRoot: true);
 
         // Assert
+        Assert.NotNull(result.SignerSubject);
         Assert.NotEmpty(result.SignerSubject);
         Assert.Contains("CN=Gonuget Test Signing", result.SignerSubject);
     }
@@ -729,6 +732,7 @@ public class SignatureTests : IDisposable
         var result = GonugetBridge.VerifySignature(signature, allowUntrustedRoot: true);
 
         // Assert - Should have warnings about expired certificate
+        Assert.NotNull(result.Warnings);
         Assert.NotEmpty(result.Warnings);
     }
 
