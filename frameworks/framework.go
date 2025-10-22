@@ -200,7 +200,7 @@ func MustParseFramework(tfm string) *NuGetFramework {
 // parseFrameworkIdentifier parses the framework identifier and version.
 func parseFrameworkIdentifier(fw *NuGetFramework, s string) error {
 	// Check prefixes in order from longest to shortest to avoid greedy matching
-	// (e.g., "netstandard" before "net")
+	// (e.g., "netstandard" before "net", "netcore" before "net")
 	prefixes := []struct {
 		prefix   string
 		fullName string
@@ -208,7 +208,8 @@ func parseFrameworkIdentifier(fw *NuGetFramework, s string) error {
 		{"netframework", ".NETFramework"},
 		{"netstandard", ".NETStandard"},
 		{"netcoreapp", ".NETCoreApp"},
-		{"net", ""}, // Special handling for "net" prefix
+		{"netcore", "NetCore"}, // Legacy .NET Core (netcore45, netcore50, etc.)
+		{"net", ""},            // Special handling for "net" prefix
 	}
 
 	for _, p := range prefixes {
@@ -253,11 +254,12 @@ func parseFrameworkVersion(s string, framework string) (FrameworkVersion, error)
 	// For .NET Framework, version might be like "48" meaning "4.8"
 	// For .NET Core/Standard, it's like "3.1" or "2.1"
 	// For .NET 5+, it's like "6.0" or "8.0"
+	// For legacy NetCore (netcore45, netcore50), uses compact format like "50" = 5.0
 
-	if framework == "net" {
-		// .NET Framework uses compact format (e.g., "48" = 4.8)
+	if framework == "net" || framework == "netcore" {
+		// .NET Framework and legacy NetCore use compact format (e.g., "48" = 4.8, "50" = 5.0)
 		if len(s) <= 4 && !strings.Contains(s, ".") {
-			// Compact format: "48" → 4.8, "472" → 4.7.2, "4721" → 4.7.2.1
+			// Compact format: "48" → 4.8, "472" → 4.7.2, "4721" → 4.7.2.1, "50" → 5.0
 			return parseCompactVersion(s)
 		}
 	}

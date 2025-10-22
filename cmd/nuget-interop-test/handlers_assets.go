@@ -9,6 +9,8 @@ import (
 )
 
 // FindRuntimeAssembliesHandler finds runtime assemblies from package paths.
+// If targetFramework is provided, uses asset selection (best match only).
+// If targetFramework is empty, uses pattern matching (all matches).
 type FindRuntimeAssembliesHandler struct{}
 
 func (h *FindRuntimeAssembliesHandler) ErrorCode() string { return "ASSET_RT_001" }
@@ -24,31 +26,41 @@ func (h *FindRuntimeAssembliesHandler) Handle(data json.RawMessage) (interface{}
 		return nil, fmt.Errorf("paths is required")
 	}
 
-	// Create conventions
 	conventions := assets.NewManagedCodeConventions()
+	resp := NewFindAssembliesResponse()
 
-	// Match paths against runtime assembly patterns
-	var items []ContentItemData
-	for _, path := range req.Paths {
-		for _, expr := range conventions.RuntimeAssemblies.PathExpressions {
-			if item := expr.Match(path, conventions.Properties); item != nil {
-				// Filter by target framework if specified
-				if req.TargetFramework != "" {
-					if !matchesTargetFramework(item, req.TargetFramework) {
-						continue
-					}
+	if req.TargetFramework != "" {
+		// Asset selection mode: Find best matching assemblies for target framework
+		targetFw, err := frameworks.ParseFramework(req.TargetFramework)
+		if err != nil {
+			return nil, fmt.Errorf("parse target framework: %w", err)
+		}
+
+		paths := assets.GetLibItems(req.Paths, targetFw, conventions)
+		for _, path := range paths {
+			resp.Items = append(resp.Items, ContentItemData{
+				Path:       path,
+				Properties: make(map[string]interface{}),
+			})
+		}
+	} else {
+		// Pattern matching mode: Match all paths against runtime assembly patterns
+		for _, path := range req.Paths {
+			for _, expr := range conventions.RuntimeAssemblies.PathExpressions {
+				if item := expr.Match(path, conventions.Properties); item != nil {
+					resp.Items = append(resp.Items, contentItemToData(item))
+					break // Only match first pattern
 				}
-
-				items = append(items, contentItemToData(item))
-				break // Only match first pattern
 			}
 		}
 	}
 
-	return FindAssembliesResponse{Items: items}, nil
+	return resp, nil
 }
 
 // FindCompileAssembliesHandler finds compile reference assemblies from package paths.
+// If targetFramework is provided, uses asset selection (best match only, ref/ takes precedence over lib/).
+// If targetFramework is empty, uses pattern matching (all matches from both ref/ and lib/).
 type FindCompileAssembliesHandler struct{}
 
 func (h *FindCompileAssembliesHandler) ErrorCode() string { return "ASSET_CP_001" }
@@ -64,48 +76,49 @@ func (h *FindCompileAssembliesHandler) Handle(data json.RawMessage) (interface{}
 		return nil, fmt.Errorf("paths is required")
 	}
 
-	// Create conventions
 	conventions := assets.NewManagedCodeConventions()
+	resp := NewFindAssembliesResponse()
 
-	// Match paths against compile assembly patterns (ref/ + lib/)
-	var items []ContentItemData
-	for _, path := range req.Paths {
-		// Try ref/ patterns first
-		matched := false
-		for _, expr := range conventions.CompileRefAssemblies.PathExpressions {
-			if item := expr.Match(path, conventions.Properties); item != nil {
-				// Filter by target framework if specified
-				if req.TargetFramework != "" {
-					if !matchesTargetFramework(item, req.TargetFramework) {
-						continue
-					}
-				}
-
-				items = append(items, contentItemToData(item))
-				matched = true
-				break
-			}
+	if req.TargetFramework != "" {
+		// Asset selection mode: Find best matching assemblies (ref/ takes precedence)
+		targetFw, err := frameworks.ParseFramework(req.TargetFramework)
+		if err != nil {
+			return nil, fmt.Errorf("parse target framework: %w", err)
 		}
 
-		// If not matched, try lib/ patterns
-		if !matched {
-			for _, expr := range conventions.CompileLibAssemblies.PathExpressions {
+		paths := assets.GetRefItems(req.Paths, targetFw, conventions)
+		for _, path := range paths {
+			resp.Items = append(resp.Items, ContentItemData{
+				Path:       path,
+				Properties: make(map[string]interface{}),
+			})
+		}
+	} else {
+		// Pattern matching mode: Match all paths against compile assembly patterns (ref/ + lib/)
+		for _, path := range req.Paths {
+			// Try ref/ patterns first
+			matched := false
+			for _, expr := range conventions.CompileRefAssemblies.PathExpressions {
 				if item := expr.Match(path, conventions.Properties); item != nil {
-					// Filter by target framework if specified
-					if req.TargetFramework != "" {
-						if !matchesTargetFramework(item, req.TargetFramework) {
-							continue
-						}
-					}
-
-					items = append(items, contentItemToData(item))
+					resp.Items = append(resp.Items, contentItemToData(item))
+					matched = true
 					break
+				}
+			}
+
+			// If not matched, try lib/ patterns
+			if !matched {
+				for _, expr := range conventions.CompileLibAssemblies.PathExpressions {
+					if item := expr.Match(path, conventions.Properties); item != nil {
+						resp.Items = append(resp.Items, contentItemToData(item))
+						break
+					}
 				}
 			}
 		}
 	}
 
-	return FindAssembliesResponse{Items: items}, nil
+	return resp, nil
 }
 
 // ParseAssetPathHandler parses a single asset path and extracts properties.
@@ -169,31 +182,6 @@ func (h *ParseAssetPathHandler) Handle(data json.RawMessage) (interface{}, error
 	}
 
 	return resp, nil
-}
-
-// Helper functions
-
-// matchesTargetFramework checks if a content item's framework matches the target.
-func matchesTargetFramework(item *assets.ContentItem, targetFramework string) bool {
-	// Get the item's framework
-	tfmValue, hasTfm := item.Properties["tfm"]
-	if !hasTfm {
-		return false
-	}
-
-	itemFw, ok := tfmValue.(*frameworks.NuGetFramework)
-	if !ok {
-		return false
-	}
-
-	// Parse target framework
-	targetFw, err := frameworks.ParseFramework(targetFramework)
-	if err != nil {
-		return false
-	}
-
-	// Check compatibility
-	return frameworks.IsCompatible(itemFw, targetFw)
 }
 
 // contentItemToData converts a ContentItem to ContentItemData for JSON serialization.

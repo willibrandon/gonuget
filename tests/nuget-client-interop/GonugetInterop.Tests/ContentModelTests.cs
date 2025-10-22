@@ -85,7 +85,7 @@ public sealed class ContentModelTests
     }
 
     [Fact]
-    public void FindRuntimeAssemblies_WithTargetFramework_FiltersCompatible()
+    public void FindRuntimeAssemblies_MultipleFrameworks_MatchesAll()
     {
         // Arrange
         var paths = new[]
@@ -95,16 +95,13 @@ public sealed class ContentModelTests
             "lib/netstandard2.1/MyLib.dll"
         };
 
-        // Act - filter for net7.0
-        var result = GonugetBridge.FindRuntimeAssemblies(paths, targetFramework: "net7.0");
+        // Act - pattern matching without targetFramework
+        var result = GonugetBridge.FindRuntimeAssemblies(paths);
 
-        // Assert - should include compatible frameworks
-        Assert.NotEmpty(result.Items);
-
-        // net7.0 should match net7.0
+        // Assert - should match all lib/ paths
+        Assert.Equal(3, result.Items.Length);
+        Assert.Contains(result.Items, item => item.Path == "lib/net6.0/MyLib.dll");
         Assert.Contains(result.Items, item => item.Path == "lib/net7.0/MyLib.dll");
-
-        // netstandard2.1 should match net7.0 (compatible)
         Assert.Contains(result.Items, item => item.Path == "lib/netstandard2.1/MyLib.dll");
     }
 
@@ -122,10 +119,10 @@ public sealed class ContentModelTests
             "ref/net6.0/MyLib.dll"
         };
 
-        // Act
-        var result = GonugetBridge.FindCompileAssemblies(paths, targetFramework: "net6.0");
+        // Act - pattern matching without targetFramework
+        var result = GonugetBridge.FindCompileAssemblies(paths);
 
-        // Assert - should match both ref/ and lib/
+        // Assert - should match both ref/ and lib/ patterns
         Assert.Equal(2, result.Items.Length);
         Assert.Contains(result.Items, item => item.Path == "ref/net6.0/MyLib.dll");
         Assert.Contains(result.Items, item => item.Path == "lib/net6.0/MyLib.dll");

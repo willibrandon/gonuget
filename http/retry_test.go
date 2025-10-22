@@ -236,13 +236,13 @@ func TestParseRetryAfter(t *testing.T) {
 		},
 		{
 			name:        "HTTP-date RFC1123",
-			headerValue: time.Now().Add(30 * time.Second).Format(time.RFC1123),
+			headerValue: time.Now().UTC().Add(30 * time.Second).Format(time.RFC1123),
 			wantMin:     29 * time.Second,
 			wantMax:     31 * time.Second,
 		},
 		{
 			name:        "HTTP-date in past",
-			headerValue: time.Now().Add(-30 * time.Second).Format(time.RFC1123),
+			headerValue: time.Now().UTC().Add(-30 * time.Second).Format(time.RFC1123),
 			wantMin:     0,
 			wantMax:     0,
 		},

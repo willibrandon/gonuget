@@ -215,6 +215,11 @@ type FindAssembliesResponse struct {
 	Items []ContentItemData `json:"items"`
 }
 
+// NewFindAssembliesResponse creates a response with an empty items array.
+func NewFindAssembliesResponse() FindAssembliesResponse {
+	return FindAssembliesResponse{Items: []ContentItemData{}}
+}
+
 // ParseAssetPathRequest parses a single asset path.
 type ParseAssetPathRequest struct {
 	Path string `json:"path"`
