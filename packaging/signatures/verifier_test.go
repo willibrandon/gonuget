@@ -456,13 +456,13 @@ func TestVerifySignature_UntrustedRootAllowed(t *testing.T) {
 
 	result := VerifySignature(sig, opts)
 
-	if result.IsValid {
-		t.Error("expected signature to be invalid (untrusted root causes chain failure)")
+	if !result.IsValid {
+		t.Error("expected signature to be valid when AllowUntrustedRoot is true")
 	}
 
 	// Should have warnings about untrusted root
 	if len(result.Warnings) == 0 {
-		t.Log("Note: warnings may not be added if chain validation fails completely")
+		t.Error("expected warning about untrusted root certificate")
 	}
 }
 
