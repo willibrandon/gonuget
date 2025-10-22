@@ -103,14 +103,15 @@ func VerifySignature(sig *PrimarySignature, opts VerificationOptions) Verificati
 	result.TrustedRoot = chainResult.TrustedRoot
 
 	if !chainResult.IsValid {
-		result.IsValid = false
-		result.Errors = append(result.Errors, chainResult.Errors...)
-
 		if !opts.AllowUntrustedRoot {
+			// Only fail if untrusted roots are not allowed
+			result.IsValid = false
+			result.Errors = append(result.Errors, chainResult.Errors...)
 			return result
 		}
 
 		// Continue with untrusted root if allowed
+		// Don't set IsValid=false, just add a warning
 		result.Warnings = append(result.Warnings, "Signature has untrusted root certificate")
 	}
 

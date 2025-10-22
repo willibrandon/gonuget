@@ -202,9 +202,15 @@ func createSignerInfo(contentHash []byte, opts SigningOptions) (*SignerInfo, err
 		}
 	} else {
 		// Use IssuerAndSerialNumber
+		// Marshal serial number as ASN.1 INTEGER
+		serialBytes, err := asn1.Marshal(opts.Certificate.SerialNumber)
+		if err != nil {
+			return nil, fmt.Errorf("marshal serial number: %w", err)
+		}
+
 		issuerAndSerial := IssuerAndSerialNumber{
 			Issuer:       asn1.RawValue{FullBytes: opts.Certificate.RawIssuer},
-			SerialNumber: asn1.RawValue{FullBytes: opts.Certificate.SerialNumber.Bytes()},
+			SerialNumber: asn1.RawValue{FullBytes: serialBytes},
 		}
 		sidBytes, err := asn1.Marshal(issuerAndSerial)
 		if err != nil {

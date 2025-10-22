@@ -128,22 +128,30 @@ func findSignerCertificate(signerInfo SignerInfo, certs []*x509.Certificate) (*x
 				return cert, nil
 			}
 		}
-	} else {
-		// Try IssuerAndSerialNumber (SEQUENCE)
-		var issuerAndSerial IssuerAndSerialNumber
-		if _, err := asn1.Unmarshal(signerInfo.SID.FullBytes, &issuerAndSerial); err == nil {
-			// Parse serial number
-			var serialNumber *big.Int
-			if _, err := asn1.Unmarshal(issuerAndSerial.SerialNumber.FullBytes, &serialNumber); err != nil {
-				return nil, fmt.Errorf("parse serial number: %w", err)
-			}
 
-			// Find certificate with matching serial number
-			for _, cert := range certs {
-				if cert.SerialNumber.Cmp(serialNumber) == 0 {
-					return cert, nil
-				}
-			}
+		// Try matching by issuer and serial as fallback
+		// Sometimes SubjectKeyId extension is not present
+		return findByIssuerAndSerial(signerInfo, certs)
+	}
+
+	// Try IssuerAndSerialNumber (SEQUENCE)
+	return findByIssuerAndSerial(signerInfo, certs)
+}
+
+// findByIssuerAndSerial finds certificate by issuer and serial number
+func findByIssuerAndSerial(signerInfo SignerInfo, certs []*x509.Certificate) (*x509.Certificate, error) {
+	var issuerAndSerial IssuerAndSerialNumber
+	if _, err := asn1.Unmarshal(signerInfo.SID.FullBytes, &issuerAndSerial); err != nil {
+		return nil, fmt.Errorf("parse issuer and serial: %w", err)
+	}
+
+	// Serial number is already parsed as RawValue, construct big.Int from Bytes
+	serialNumber := new(big.Int).SetBytes(issuerAndSerial.SerialNumber.Bytes)
+
+	// Find certificate with matching serial number
+	for _, cert := range certs {
+		if cert.SerialNumber.Cmp(serialNumber) == 0 {
+			return cert, nil
 		}
 	}
 
