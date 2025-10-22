@@ -194,3 +194,34 @@ type BuildPackageResponse struct {
 	// PackageBytes is the ZIP package content.
 	PackageBytes []byte `json:"packageBytes"`
 }
+
+// ContentItemData represents a content item with path and properties.
+type ContentItemData struct {
+	Path       string                 `json:"path"`
+	Properties map[string]interface{} `json:"properties"`
+}
+
+// FindAssembliesRequest finds assemblies matching patterns and framework.
+type FindAssembliesRequest struct {
+	// Paths are package file paths to match (e.g., "lib/net6.0/MyLib.dll").
+	Paths []string `json:"paths"`
+
+	// TargetFramework is optional framework filter (e.g., "net8.0").
+	TargetFramework string `json:"targetFramework,omitempty"`
+}
+
+// FindAssembliesResponse contains matched assembly items.
+type FindAssembliesResponse struct {
+	Items []ContentItemData `json:"items"`
+}
+
+// ParseAssetPathRequest parses a single asset path.
+type ParseAssetPathRequest struct {
+	Path string `json:"path"`
+}
+
+// ParseAssetPathResponse contains the parsed path properties.
+type ParseAssetPathResponse struct {
+	// Item is nil if path didn't match any pattern.
+	Item *ContentItemData `json:"item"`
+}

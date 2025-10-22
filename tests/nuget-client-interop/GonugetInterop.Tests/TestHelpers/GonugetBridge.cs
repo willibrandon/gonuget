@@ -202,6 +202,60 @@ public static class GonugetBridge
     }
 
     /// <summary>
+    /// Finds runtime assemblies matching package paths for a target framework.
+    /// </summary>
+    /// <param name="paths">Package file paths (e.g., "lib/net6.0/MyLib.dll").</param>
+    /// <param name="targetFramework">Target framework (e.g., "net8.0").</param>
+    /// <returns>List of matched content items with their properties.</returns>
+    public static FindAssembliesResponse FindRuntimeAssemblies(
+        string[] paths,
+        string? targetFramework = null)
+    {
+        var request = new
+        {
+            action = "find_runtime_assemblies",
+            data = new { paths, targetFramework }
+        };
+
+        return Execute<FindAssembliesResponse>(request);
+    }
+
+    /// <summary>
+    /// Finds compile reference assemblies matching package paths for a target framework.
+    /// </summary>
+    /// <param name="paths">Package file paths (e.g., "ref/net6.0/MyLib.dll").</param>
+    /// <param name="targetFramework">Target framework (e.g., "net8.0").</param>
+    /// <returns>List of matched content items with their properties.</returns>
+    public static FindAssembliesResponse FindCompileAssemblies(
+        string[] paths,
+        string? targetFramework = null)
+    {
+        var request = new
+        {
+            action = "find_compile_assemblies",
+            data = new { paths, targetFramework }
+        };
+
+        return Execute<FindAssembliesResponse>(request);
+    }
+
+    /// <summary>
+    /// Parses a single asset path and extracts its properties (tfm, assembly, rid, etc.).
+    /// </summary>
+    /// <param name="path">The asset path to parse (e.g., "lib/net6.0/MyLib.dll").</param>
+    /// <returns>Parsed asset properties including framework, assembly name, runtime ID, etc.</returns>
+    public static ParseAssetPathResponse ParseAssetPath(string path)
+    {
+        var request = new
+        {
+            action = "parse_asset_path",
+            data = new { path }
+        };
+
+        return Execute<ParseAssetPathResponse>(request);
+    }
+
+    /// <summary>
     /// Executes a request against the gonuget CLI and deserializes the response.
     /// </summary>
     private static TResponse Execute<TResponse>(object request)

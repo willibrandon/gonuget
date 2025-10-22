@@ -78,6 +78,14 @@ func main() {
 	case "build_package":
 		handler = &BuildPackageHandler{}
 
+	// Asset selection operations
+	case "find_runtime_assemblies":
+		handler = &FindRuntimeAssembliesHandler{}
+	case "find_compile_assemblies":
+		handler = &FindCompileAssembliesHandler{}
+	case "parse_asset_path":
+		handler = &ParseAssetPathHandler{}
+
 	default:
 		sendError("ACT_001", "Unknown action", fmt.Sprintf("action=%s", req.Action))
 		os.Exit(1)

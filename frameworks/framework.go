@@ -115,6 +115,18 @@ func (fw *NuGetFramework) IsAny() bool {
 	return fw.Framework == "Any"
 }
 
+// Equals checks if two frameworks are equal.
+func (fw *NuGetFramework) Equals(other *NuGetFramework) bool {
+	if fw == nil || other == nil {
+		return fw == other
+	}
+	return fw.Framework == other.Framework &&
+		fw.Version.Compare(other.Version) == 0 &&
+		fw.Platform == other.Platform &&
+		fw.PlatformVersion.Compare(other.PlatformVersion) == 0 &&
+		fw.Profile == other.Profile
+}
+
 // format creates a formatted TFM string.
 func (fw *NuGetFramework) format() string {
 	// Implementation for formatting back to TFM string
