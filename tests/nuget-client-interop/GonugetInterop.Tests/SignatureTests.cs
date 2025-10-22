@@ -14,7 +14,7 @@ namespace GonugetInterop.Tests;
 /// Validates that gonuget-created signatures can be verified by NuGet.Client
 /// and vice versa.
 /// </summary>
-public class SignatureTests : IDisposable
+public sealed class SignatureTests : IDisposable
 {
     private readonly string _tempDir;
     private readonly X509Certificate2 _testCert;
@@ -48,6 +48,7 @@ public class SignatureTests : IDisposable
         {
             Directory.Delete(_tempDir, recursive: true);
         }
+        GC.SuppressFinalize(this);
     }
 
     #region Gonuget → NuGet.Client Signature Creation Tests
@@ -196,7 +197,7 @@ public class SignatureTests : IDisposable
                 hashAlgorithm: "SHA256"));
 
         Assert.Equal("SIGN_001", exception.Code);
-        Assert.Contains("signatureType", exception.Message);
+        Assert.Contains("signatureType", exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -215,7 +216,7 @@ public class SignatureTests : IDisposable
                 hashAlgorithm: "MD5"));
 
         Assert.Equal("SIGN_001", exception.Code);
-        Assert.Contains("hashAlgorithm", exception.Message);
+        Assert.Contains("hashAlgorithm", exception.Message, StringComparison.Ordinal);
     }
 
     #endregion
@@ -349,7 +350,7 @@ public class SignatureTests : IDisposable
             GonugetBridge.ParseSignature(Array.Empty<byte>()));
 
         Assert.Equal("PARSE_001", exception.Code);
-        Assert.Contains("signature is required", exception.Message);
+        Assert.Contains("signature is required", exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -390,7 +391,7 @@ public class SignatureTests : IDisposable
         // Assert
         Assert.True(result.Valid);
         Assert.True(result.Errors == null || result.Errors.Length == 0);
-        Assert.Contains("Gonuget Test Signing", result.SignerSubject);
+        Assert.Contains("Gonuget Test Signing", result.SignerSubject, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -463,7 +464,7 @@ public class SignatureTests : IDisposable
         // Assert
         Assert.False(result.Valid);
         Assert.NotNull(result.Errors);
-        Assert.Contains(result.Errors, e => e.Contains("timestamp"));
+        Assert.Contains(result.Errors, e => e.Contains("timestamp", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -668,7 +669,7 @@ public class SignatureTests : IDisposable
         // Assert
         Assert.NotNull(result.SignerSubject);
         Assert.NotEmpty(result.SignerSubject);
-        Assert.Contains("CN=Gonuget Test Signing", result.SignerSubject);
+        Assert.Contains("CN=Gonuget Test Signing", result.SignerSubject, StringComparison.Ordinal);
     }
 
     #endregion
@@ -680,7 +681,7 @@ public class SignatureTests : IDisposable
     {
         // Arrange - 10MB of data hashed
         var largeData = new byte[10 * 1024 * 1024];
-        Random.Shared.NextBytes(largeData);
+        RandomNumberGenerator.Fill(largeData);
         var packageHash = SHA256.HashData(largeData);
 
         // Act
@@ -716,7 +717,7 @@ public class SignatureTests : IDisposable
     public void GonugetVerify_SignatureWithWarnings_ReturnsWarnings()
     {
         // Arrange - Create expired certificate
-        var expiredCert = TestCertificates.CreateExpiredCertificate();
+        using var expiredCert = TestCertificates.CreateExpiredCertificate();
         var expiredCertPath = Path.Combine(_tempDir, "expired-cert.pfx");
         TestCertificates.ExportToPfx(expiredCert, expiredCertPath, "test");
 

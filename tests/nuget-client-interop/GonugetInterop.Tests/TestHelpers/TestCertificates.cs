@@ -63,6 +63,7 @@ public static class TestCertificates
     /// </summary>
     public static void ExportCertificateToPem(X509Certificate2 cert, string path)
     {
+        ArgumentNullException.ThrowIfNull(cert);
         var pem = PemEncoding.Write("CERTIFICATE".ToCharArray(), cert.RawData);
         File.WriteAllText(path, new string(pem));
     }
@@ -85,6 +86,7 @@ public static class TestCertificates
     /// </summary>
     public static void ExportToPfx(X509Certificate2 cert, string path, string password)
     {
+        ArgumentNullException.ThrowIfNull(cert);
         var pfxBytes = cert.Export(X509ContentType.Pfx, password);
         File.WriteAllBytes(path, pfxBytes);
     }

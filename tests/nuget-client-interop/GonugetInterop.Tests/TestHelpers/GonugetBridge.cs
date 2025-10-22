@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Text;
@@ -85,6 +86,122 @@ public static class GonugetBridge
     }
 
     /// <summary>
+    /// Compares two NuGet version strings and returns the comparison result.
+    /// </summary>
+    /// <param name="version1">The first version string to compare.</param>
+    /// <param name="version2">The second version string to compare.</param>
+    /// <returns>-1 if version1 &lt; version2, 0 if equal, 1 if version1 &gt; version2.</returns>
+    public static CompareVersionsResponse CompareVersions(string version1, string version2)
+    {
+        var request = new
+        {
+            action = "compare_versions",
+            data = new { version1, version2 }
+        };
+
+        return Execute<CompareVersionsResponse>(request);
+    }
+
+    /// <summary>
+    /// Parses a NuGet version string into its components.
+    /// </summary>
+    /// <param name="version">The version string to parse (e.g., "1.0.0-beta.1+git.abc123").</param>
+    /// <returns>Parsed version components including major, minor, patch, release label, and metadata.</returns>
+    public static ParseVersionResponse ParseVersion(string version)
+    {
+        var request = new
+        {
+            action = "parse_version",
+            data = new { version }
+        };
+
+        return Execute<ParseVersionResponse>(request);
+    }
+
+    /// <summary>
+    /// Checks if a package framework is compatible with a project framework.
+    /// </summary>
+    /// <param name="packageFramework">The framework the package supports (e.g., "net6.0").</param>
+    /// <param name="projectFramework">The project's target framework (e.g., "net8.0").</param>
+    /// <returns>Compatibility result indicating if the project can use the package.</returns>
+    public static CheckFrameworkCompatResponse CheckFrameworkCompat(
+        string packageFramework,
+        string projectFramework)
+    {
+        var request = new
+        {
+            action = "check_framework_compat",
+            data = new { packageFramework, projectFramework }
+        };
+
+        return Execute<CheckFrameworkCompatResponse>(request);
+    }
+
+    /// <summary>
+    /// Parses a framework identifier (TFM) into its components.
+    /// </summary>
+    /// <param name="framework">The framework identifier to parse (e.g., "net8.0", "netstandard2.1").</param>
+    /// <returns>Parsed framework components including identifier, version, profile, and platform.</returns>
+    public static ParseFrameworkResponse ParseFramework(string framework)
+    {
+        var request = new
+        {
+            action = "parse_framework",
+            data = new { framework }
+        };
+
+        return Execute<ParseFrameworkResponse>(request);
+    }
+
+    /// <summary>
+    /// Reads package metadata and structure from a .nupkg file.
+    /// </summary>
+    /// <param name="packageBytes">The complete package file as a byte array (ZIP format).</param>
+    /// <returns>Package metadata including ID, version, authors, dependencies, and signature information.</returns>
+    public static ReadPackageResponse ReadPackage(byte[] packageBytes)
+    {
+        var request = new
+        {
+            action = "read_package",
+            data = new { packageBytes }
+        };
+
+        return Execute<ReadPackageResponse>(request);
+    }
+
+    /// <summary>
+    /// Builds a minimal NuGet package from metadata and files.
+    /// </summary>
+    /// <param name="id">The package identifier (e.g., "MyPackage").</param>
+    /// <param name="version">The package version (e.g., "1.0.0").</param>
+    /// <param name="authors">Optional package authors.</param>
+    /// <param name="description">Optional package description.</param>
+    /// <param name="files">Optional files to include (relative path -> content bytes).</param>
+    /// <returns>The complete package as a byte array (ZIP format).</returns>
+    public static BuildPackageResponse BuildPackage(
+        string id,
+        string version,
+        string[]? authors = null,
+        string? description = null,
+        Dictionary<string, byte[]>? files = null)
+    {
+        var request = new
+        {
+            action = "build_package",
+            data = new
+            {
+                id,
+                version,
+                authors = authors ?? Array.Empty<string>(),
+                description = description ?? "",
+                files = files ?? new Dictionary<string, byte[]>()
+            }
+        };
+
+        return Execute<BuildPackageResponse>(request);
+    }
+
+    /// <summary>
     /// Executes a request against the gonuget CLI and deserializes the response.
     /// </summary>
     private static TResponse Execute<TResponse>(object request)
@@ -103,11 +220,7 @@ public static class GonugetBridge
             ?? throw new InvalidOperationException("Failed to start gonuget process");
 
         // Send request as JSON
-        var requestJson = JsonSerializer.Serialize(request, new JsonSerializerOptions
-        {
-            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
-        });
+        var requestJson = JsonSerializer.Serialize(request, s_serializerOptions);
 
         process.StandardInput.WriteLine(requestJson);
         process.StandardInput.Close();
@@ -120,14 +233,12 @@ public static class GonugetBridge
 
         if (!string.IsNullOrEmpty(errorOutput))
         {
-            throw new Exception($"gonuget stderr: {errorOutput}");
+            throw new InvalidOperationException($"gonuget stderr: {errorOutput}");
         }
 
         // Parse response envelope
-        var envelope = JsonSerializer.Deserialize<ResponseEnvelope>(outputJson, new JsonSerializerOptions
-        {
-            PropertyNamingPolicy = JsonNamingPolicy.CamelCase
-        }) ?? throw new Exception("Failed to deserialize response");
+        var envelope = JsonSerializer.Deserialize<ResponseEnvelope>(outputJson, s_deserializerOptions)
+            ?? throw new InvalidOperationException("Failed to deserialize response");
 
         if (!envelope.Success)
         {
@@ -137,9 +248,9 @@ public static class GonugetBridge
 
         // Deserialize data payload
         return JsonSerializer.Deserialize<TResponse>(
-            JsonSerializer.Serialize(envelope.Data),
-            new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase }
-        ) ?? throw new Exception("Failed to deserialize response data");
+            JsonSerializer.Serialize(envelope.Data, s_serializerOptions),
+            s_deserializerOptions
+        ) ?? throw new InvalidOperationException("Failed to deserialize response data");
     }
 
     /// <summary>
@@ -164,57 +275,30 @@ public static class GonugetBridge
             "Run 'go build -o gonuget-interop-test ./cmd/nuget-interop-test' before running tests.");
     }
 
-    // Response types
-    private class ResponseEnvelope
+    // Internal response envelope types
+    private sealed class ResponseEnvelope
     {
         public bool Success { get; set; }
         public object? Data { get; set; }
         public ErrorInfo? Error { get; set; }
     }
 
-    private class ErrorInfo
+    private sealed class ErrorInfo
     {
         public string Code { get; set; } = "";
         public string Message { get; set; } = "";
         public string? Details { get; set; }
     }
 
-    public class SignPackageResponse
+    // Cached JSON serializer options for performance
+    private static readonly JsonSerializerOptions s_serializerOptions = new()
     {
-        public byte[] Signature { get; set; } = Array.Empty<byte>();
-    }
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+    };
 
-    public class ParseSignatureResponse
+    private static readonly JsonSerializerOptions s_deserializerOptions = new()
     {
-        public string Type { get; set; } = "";
-        public string HashAlgorithm { get; set; } = "";
-        public string SignerCertHash { get; set; } = "";
-        public int TimestampCount { get; set; }
-        public string[]? TimestampTimes { get; set; }
-        public int Certificates { get; set; }
-    }
-
-    public class VerifySignatureResponse
-    {
-        public bool Valid { get; set; }
-        public string[]? Errors { get; set; }
-        public string[]? Warnings { get; set; }
-        public string? SignerSubject { get; set; }
-    }
-}
-
-/// <summary>
-/// Exception thrown when gonuget returns an error.
-/// </summary>
-public class GonugetException : Exception
-{
-    public string Code { get; }
-    public string? Details { get; }
-
-    public GonugetException(string code, string message, string? details = null)
-        : base($"[{code}] {message}")
-    {
-        Code = code;
-        Details = details;
-    }
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+    };
 }
