@@ -46,6 +46,25 @@ type FrameworkVersion struct {
 	Revision int
 }
 
+// String returns the string representation of the framework version.
+// It trims trailing zero components to match NuGet.Client behavior:
+//   - 4.7.2.0 → "4.7.2"
+//   - 6.0.0.0 → "6.0"
+//   - 4.8.0.0 → "4.8"
+//   - 1.0.0.0 → "1.0"
+func (v FrameworkVersion) String() string {
+	if v.Revision > 0 {
+		return fmt.Sprintf("%d.%d.%d.%d", v.Major, v.Minor, v.Build, v.Revision)
+	}
+	if v.Build > 0 {
+		return fmt.Sprintf("%d.%d.%d", v.Major, v.Minor, v.Build)
+	}
+	if v.Minor > 0 {
+		return fmt.Sprintf("%d.%d", v.Major, v.Minor)
+	}
+	return fmt.Sprintf("%d.0", v.Major)
+}
+
 // AnyFramework represents the special "any" framework that matches all target frameworks.
 // Used for dependencies without a target framework group.
 var AnyFramework = NuGetFramework{

@@ -83,16 +83,8 @@ func (h *ParseFrameworkHandler) Handle(data json.RawMessage) (interface{}, error
 		Platform:   fw.Platform,
 	}
 
-	// Format version as string (e.g., "8.0" for .NET 8)
-	if fw.Version.Minor > 0 || fw.Version.Build > 0 || fw.Version.Revision > 0 {
-		if fw.Version.Build > 0 || fw.Version.Revision > 0 {
-			resp.Version = fmt.Sprintf("%d.%d.%d.%d", fw.Version.Major, fw.Version.Minor, fw.Version.Build, fw.Version.Revision)
-		} else {
-			resp.Version = fmt.Sprintf("%d.%d", fw.Version.Major, fw.Version.Minor)
-		}
-	} else {
-		resp.Version = fmt.Sprintf("%d.0", fw.Version.Major)
-	}
+	// Format version as string using the FrameworkVersion.String() method
+	resp.Version = fw.Version.String()
 
 	return resp, nil
 }

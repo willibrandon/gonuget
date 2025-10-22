@@ -14,8 +14,8 @@ build-go: ## Build all Go packages
 # Build the interop test binary
 build-interop: ## Build the gonuget-interop-test binary
 	@echo "Building gonuget-interop-test binary..."
-	@cd cmd/nuget-interop-test && go build -o ../../tests/nuget-client-interop/gonuget-interop-test .
-	@echo "Binary built: tests/nuget-client-interop/gonuget-interop-test"
+	@cd cmd/nuget-interop-test && go build -o ../../gonuget-interop-test .
+	@echo "Binary built: gonuget-interop-test"
 
 # Build .NET test project
 build-dotnet: build-interop ## Build .NET interop test project (depends on interop binary)
@@ -62,7 +62,6 @@ clean: ## Clean all build artifacts
 	@echo "Cleaning .NET build artifacts..."
 	@cd tests/nuget-client-interop/GonugetInterop.Tests && dotnet clean
 	@echo "Removing gonuget-interop-test binary..."
-	@rm -f tests/nuget-client-interop/gonuget-interop-test
 	@rm -f gonuget-interop-test
 	@echo "Clean complete"
 
