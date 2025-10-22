@@ -1,4 +1,4 @@
-.PHONY: build build-go build-dotnet build-interop test test-go test-dotnet test-interop clean help
+.PHONY: build build-go build-dotnet build-interop test test-go test-go-unit test-dotnet test-interop clean help
 
 # Default target
 .DEFAULT_GOAL := help
@@ -23,12 +23,17 @@ build-dotnet: build-interop ## Build .NET interop test project (depends on inter
 	@cd tests/nuget-client-interop/GonugetInterop.Tests && dotnet build
 
 # Run all tests
-test: test-go test-interop ## Run all tests (Go + .NET interop)
+test: test-go test-interop ## Run all tests (Go unit + integration + .NET interop)
 
-# Run Go tests
-test-go: ## Run Go unit tests
-	@echo "Running Go tests..."
+# Run Go tests (unit + integration)
+test-go: ## Run all Go tests (unit + integration tests that hit nuget.org)
+	@echo "Running Go tests (unit + integration)..."
 	@go test ./... -v
+
+# Run Go unit tests only (skip integration tests)
+test-go-unit: ## Run only Go unit tests (skip integration tests that hit nuget.org)
+	@echo "Running Go unit tests only (skipping integration)..."
+	@go test ./... -v -short
 
 # Run .NET interop tests
 test-interop: build-interop build-dotnet ## Run .NET interop tests

@@ -623,42 +623,8 @@ func TestBuilderValidate(t *testing.T) {
 			},
 			wantErr: true,
 		},
-		{
-			name: "invalid - no description",
-			setup: func() *PackageBuilder {
-				b := NewPackageBuilder()
-				b.SetID("MyPackage")
-				b.SetVersion(version.MustParse("1.0.0"))
-				b.SetAuthors("Test Author")
-				_ = b.AddFileFromBytes("lib/net6.0/MyLib.dll", []byte("test"))
-				return b
-			},
-			wantErr: true,
-		},
-		{
-			name: "invalid - no authors",
-			setup: func() *PackageBuilder {
-				b := NewPackageBuilder()
-				b.SetID("MyPackage")
-				b.SetVersion(version.MustParse("1.0.0"))
-				b.SetDescription("Test package")
-				_ = b.AddFileFromBytes("lib/net6.0/MyLib.dll", []byte("test"))
-				return b
-			},
-			wantErr: true,
-		},
-		{
-			name: "invalid - empty package",
-			setup: func() *PackageBuilder {
-				b := NewPackageBuilder()
-				b.SetID("MyPackage")
-				b.SetVersion(version.MustParse("1.0.0"))
-				b.SetDescription("Test package")
-				b.SetAuthors("Test Author")
-				return b
-			},
-			wantErr: true,
-		},
+		// Note: Description and Authors are NOT required (matches NuGet.Client behavior)
+		// Note: NuGet.Client allows completely empty packages
 		{
 			name: "invalid - self dependency",
 			setup: func() *PackageBuilder {

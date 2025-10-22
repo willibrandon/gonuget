@@ -919,23 +919,7 @@ func TestBuilderSave_ValidationErrors(t *testing.T) {
 			},
 			errorSubstr: "package version is required",
 		},
-		{
-			name: "missing description",
-			setupFunc: func(b *PackageBuilder) {
-				b.SetID("TestPackage")
-				b.SetVersion(version.MustParse("1.0.0"))
-			},
-			errorSubstr: "package description is required",
-		},
-		{
-			name: "missing authors",
-			setupFunc: func(b *PackageBuilder) {
-				b.SetID("TestPackage")
-				b.SetVersion(version.MustParse("1.0.0"))
-				b.SetDescription("Test")
-			},
-			errorSubstr: "package authors are required",
-		},
+		// Note: Description and Authors are NOT required (matches NuGet.Client behavior)
 	}
 
 	for _, tt := range tests {

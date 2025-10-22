@@ -541,19 +541,8 @@ func (b *PackageBuilder) Validate() error {
 		return fmt.Errorf("package version is required")
 	}
 
-	// Validate required metadata
-	if b.metadata.Description == "" {
-		return fmt.Errorf("package description is required")
-	}
-
-	if len(b.metadata.Authors) == 0 {
-		return fmt.Errorf("package authors are required")
-	}
-
-	// Validate package is not empty
-	if len(b.files) == 0 && len(b.metadata.DependencyGroups) == 0 && len(b.metadata.FrameworkReferenceGroups) == 0 {
-		return fmt.Errorf("package must contain files, dependencies, or framework references")
-	}
+	// Note: NuGet.Client does NOT require description or authors
+	// Note: NuGet.Client allows completely empty packages
 
 	// Validate dependencies
 	if err := ValidateDependencies(b.metadata.ID, b.metadata.Version, b.metadata.DependencyGroups); err != nil {

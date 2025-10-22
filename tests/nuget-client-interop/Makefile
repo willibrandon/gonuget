@@ -1,4 +1,13 @@
 # Makefile for NuGet.Client Interop Tests
+#
+# This Makefile provides convenient targets for working specifically with the
+# interop test subsystem. For full project orchestration (including Go tests),
+# use the root Makefile at ../../Makefile
+#
+# Quick reference:
+#   Root Makefile: make test           - Run ALL tests (Go + .NET interop)
+#   This Makefile: make test           - Run ONLY .NET interop tests
+#   This Makefile: make test-verbose   - Run interop tests with detailed output
 
 .PHONY: help
 help:

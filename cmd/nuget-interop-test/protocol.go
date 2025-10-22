@@ -172,8 +172,8 @@ type ReadPackageRequest struct {
 type ReadPackageResponse struct {
 	ID            string   `json:"id"`
 	Version       string   `json:"version"`
-	Authors       []string `json:"authors,omitempty"`
-	Description   string   `json:"description,omitempty"`
+	Authors       []string `json:"authors"`                // Always serialize, even if empty
+	Description   string   `json:"description"`            // Always serialize, even if empty
 	Dependencies  []string `json:"dependencies,omitempty"` // Formatted as "id:version"
 	FileCount     int      `json:"fileCount"`
 	HasSignature  bool     `json:"hasSignature"`
