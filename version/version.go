@@ -373,14 +373,9 @@ func compareLabel(a, b string) int {
 		return 1 // alphanumeric > numeric
 	}
 
-	// Both alphanumeric, compare lexicographically
-	if a < b {
-		return -1
-	}
-	if a > b {
-		return 1
-	}
-	return 0
+	// Both alphanumeric, compare lexicographically (case-insensitive per NuGet spec)
+	// NuGet follows SemVer 2.0.1 which specifies case-insensitive comparison
+	return strings.Compare(strings.ToLower(a), strings.ToLower(b))
 }
 
 // parseAsInt tries to parse string as int.

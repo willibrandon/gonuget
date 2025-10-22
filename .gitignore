@@ -70,3 +70,5 @@ TestResults/
 
 # Interop test binary
 gonuget-interop-test
+tests/nuget-client-interop/gonuget-interop-test
+cmd/nuget-interop-test/nuget-interop-test
