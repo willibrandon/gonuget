@@ -230,3 +230,31 @@ type ParseAssetPathResponse struct {
 	// Item is nil if path didn't match any pattern.
 	Item *ContentItemData `json:"item"`
 }
+
+// ExpandRuntimeRequest expands a runtime identifier to compatible RIDs.
+type ExpandRuntimeRequest struct {
+	// RID is the runtime identifier to expand (e.g., "win10-x64").
+	RID string `json:"rid"`
+}
+
+// ExpandRuntimeResponse contains the expanded runtime identifiers.
+type ExpandRuntimeResponse struct {
+	// ExpandedRuntimes is the array of compatible RIDs in priority order.
+	// The first element is the original RID, followed by compatible RIDs (nearest first).
+	ExpandedRuntimes []string `json:"expandedRuntimes"`
+}
+
+// AreRuntimesCompatibleRequest checks if two RIDs are compatible.
+type AreRuntimesCompatibleRequest struct {
+	// TargetRID is the target runtime (criteria).
+	TargetRID string `json:"targetRid"`
+
+	// PackageRID is the package runtime (provided).
+	PackageRID string `json:"packageRid"`
+}
+
+// AreRuntimesCompatibleResponse contains the compatibility result.
+type AreRuntimesCompatibleResponse struct {
+	// Compatible is true if the package RID is compatible with the target RID.
+	Compatible bool `json:"compatible"`
+}

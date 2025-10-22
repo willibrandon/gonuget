@@ -256,6 +256,39 @@ public static class GonugetBridge
     }
 
     /// <summary>
+    /// Expands a runtime identifier to all compatible RIDs in priority order.
+    /// </summary>
+    /// <param name="rid">The runtime identifier to expand (e.g., "win10-x64").</param>
+    /// <returns>Array of compatible RIDs in priority order (nearest first).</returns>
+    public static ExpandRuntimeResponse ExpandRuntime(string rid)
+    {
+        var request = new
+        {
+            action = "expand_runtime",
+            data = new { rid }
+        };
+
+        return Execute<ExpandRuntimeResponse>(request);
+    }
+
+    /// <summary>
+    /// Checks if two runtime identifiers are compatible.
+    /// </summary>
+    /// <param name="targetRid">The target runtime (criteria).</param>
+    /// <param name="packageRid">The package runtime (provided).</param>
+    /// <returns>True if the package RID is compatible with the target RID.</returns>
+    public static AreRuntimesCompatibleResponse AreRuntimesCompatible(string targetRid, string packageRid)
+    {
+        var request = new
+        {
+            action = "are_runtimes_compatible",
+            data = new { targetRid, packageRid }
+        };
+
+        return Execute<AreRuntimesCompatibleResponse>(request);
+    }
+
+    /// <summary>
     /// Executes a request against the gonuget CLI and deserializes the response.
     /// </summary>
     private static TResponse Execute<TResponse>(object request)

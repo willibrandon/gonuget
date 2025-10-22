@@ -86,6 +86,12 @@ func main() {
 	case "parse_asset_path":
 		handler = &ParseAssetPathHandler{}
 
+	// RID (Runtime Identifier) operations
+	case "expand_runtime":
+		handler = &ExpandRuntimeHandler{}
+	case "are_runtimes_compatible":
+		handler = &AreRuntimesCompatibleHandler{}
+
 	default:
 		sendError("ACT_001", "Unknown action", fmt.Sprintf("action=%s", req.Action))
 		os.Exit(1)

@@ -207,3 +207,60 @@ func contentItemToData(item *assets.ContentItem) ContentItemData {
 
 	return data
 }
+
+// ExpandRuntimeHandler expands a runtime identifier to all compatible RIDs.
+type ExpandRuntimeHandler struct{}
+
+func (h *ExpandRuntimeHandler) ErrorCode() string { return "RID_EXP_001" }
+
+func (h *ExpandRuntimeHandler) Handle(data json.RawMessage) (interface{}, error) {
+	var req ExpandRuntimeRequest
+	if err := json.Unmarshal(data, &req); err != nil {
+		return nil, fmt.Errorf("parse request: %w", err)
+	}
+
+	// Validate required fields
+	if req.RID == "" {
+		return nil, fmt.Errorf("rid is required")
+	}
+
+	// Load default runtime graph
+	graph := assets.LoadDefaultRuntimeGraph()
+
+	// Expand the RID
+	expandedRIDs := graph.ExpandRuntime(req.RID)
+
+	return ExpandRuntimeResponse{
+		ExpandedRuntimes: expandedRIDs,
+	}, nil
+}
+
+// AreRuntimesCompatibleHandler checks if two runtime identifiers are compatible.
+type AreRuntimesCompatibleHandler struct{}
+
+func (h *AreRuntimesCompatibleHandler) ErrorCode() string { return "RID_COMPAT_001" }
+
+func (h *AreRuntimesCompatibleHandler) Handle(data json.RawMessage) (interface{}, error) {
+	var req AreRuntimesCompatibleRequest
+	if err := json.Unmarshal(data, &req); err != nil {
+		return nil, fmt.Errorf("parse request: %w", err)
+	}
+
+	// Validate required fields
+	if req.TargetRID == "" {
+		return nil, fmt.Errorf("targetRid is required")
+	}
+	if req.PackageRID == "" {
+		return nil, fmt.Errorf("packageRid is required")
+	}
+
+	// Load default runtime graph
+	graph := assets.LoadDefaultRuntimeGraph()
+
+	// Check compatibility
+	compatible := graph.AreCompatible(req.TargetRID, req.PackageRID)
+
+	return AreRuntimesCompatibleResponse{
+		Compatible: compatible,
+	}, nil
+}

@@ -208,9 +208,27 @@ func tfmCompareTest(criterion, available1, available2 interface{}) int {
 }
 
 func ridCompatibilityTest(criterion, available interface{}) bool {
-	// RID compatibility will be implemented in M3.13
-	// For now, exact match
-	return criterion == available
+	// Nil criterion means RID-agnostic, compatible with anything
+	if criterion == nil {
+		return available == nil
+	}
+
+	// Nil available means RID-agnostic, only compatible with nil criterion
+	if available == nil {
+		return criterion == nil
+	}
+
+	// Both are strings - use default RID graph for compatibility
+	criterionStr, ok1 := criterion.(string)
+	availableStr, ok2 := available.(string)
+
+	if !ok1 || !ok2 {
+		return criterion == available
+	}
+
+	// Load default RID graph for compatibility checking
+	graph := LoadDefaultRuntimeGraph()
+	return graph.AreCompatible(criterionStr, availableStr)
 }
 
 func (c *ManagedCodeConventions) definePatternSets() {
