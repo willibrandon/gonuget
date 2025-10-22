@@ -8,632 +8,948 @@
 
 ## M3.11: Asset Selection - Pattern Engine
 
-**Estimated Time**: 2 hours
-**Dependencies**: M1.4 (frameworks)
+**Estimated Time**: 3 hours
+**Dependencies**: M1.9 (framework parsing), M1.11 (framework compatibility)
 
 ### Overview
 
-Implement the pattern-based asset selection engine that matches package files to target frameworks and runtime identifiers using property-based pattern definitions.
+Implement the pattern-based asset selection engine that matches package files to target frameworks and runtime identifiers. This system uses property-based pattern definitions with a sophisticated parsing infrastructure that mirrors NuGet.Client's ContentModel system.
+
+**Key Concepts**:
+- **Patterns**: Path templates with property placeholders (e.g., `lib/{tfm}/{assembly}`)
+- **PatternTable**: Token replacement table for aliasing (e.g., `"any"` → specific framework)
+- **PatternExpression**: Compiled pattern with optimized matching logic
+- **ContentPropertyDefinition**: Property parser with compatibility and comparison tests
+- **PatternSet**: Collection of group and path patterns for an asset type
 
 ### Files to Create/Modify
 
-- `packaging/assets/patterns.go` - Pattern definition and matching
+- `packaging/assets/pattern.go` - Pattern definition and PatternSet
+- `packaging/assets/patterntable.go` - Token replacement tables
+- `packaging/assets/expression.go` - Pattern expression (compiled pattern)
+- `packaging/assets/property.go` - Property definition with parsers
 - `packaging/assets/conventions.go` - Managed code conventions
-- `packaging/assets/patterns_test.go` - Pattern matching tests
+- `packaging/assets/pattern_test.go` - Pattern tests
+- `packaging/assets/expression_test.go` - Expression matching tests
 
 ### Reference Implementation
 
 **NuGet.Client Reference**:
-- `NuGet.Packaging/ContentModel/PatternSet.cs`
-- `NuGet.Packaging/ContentModel/PatternDefinition.cs`
-- `NuGet.Packaging/ContentModel/ManagedCodeConventions.cs` (549+ lines)
+- `NuGet.Packaging/ContentModel/ContentQueryDefinition.cs` - **PatternSet and PatternDefinition**
+- `NuGet.Packaging/ContentModel/ContentPropertyDefinition.cs` - Property definitions
+- `NuGet.Packaging/ContentModel/PatternTable.cs` - Token replacement
+- `NuGet.Packaging/ContentModel/PatternTableEntry.cs` - Table entries
+- `NuGet.Packaging/ContentModel/Infrastructure/Parser.cs` - Pattern expressions
+- `NuGet.Packaging/ContentModel/ManagedCodeConventions.cs` - Conventions (549 lines)
 
-**Pattern Definition** (PatternDefinition.cs):
-```csharp
-public class PatternDefinition {
-    public string Pattern { get; }
-    public IDictionary<string, object> Defaults { get; }
-    public IDictionary<string, ContentPropertyDefinition> Table { get; }
+**Critical Correction**: The guide previously referenced `PatternSet.cs` and `PatternDefinition.cs` as separate files. These classes are **actually defined in `ContentQueryDefinition.cs`**.
 
-    // Example: "lib/{tfm}/{assembly}"
-    // Extracts tfm and assembly properties from path
-}
+### Architecture Overview
+
 ```
+PatternSet
+  ├─ GroupPatterns []PatternDefinition   (directory-level matching)
+  ├─ PathPatterns []PatternDefinition    (file-level matching)
+  ├─ GroupExpressions []PatternExpression (compiled patterns)
+  ├─ PathExpressions []PatternExpression
+  └─ PropertyDefinitions map[string]PropertyDefinition
 
-**Pattern Matching** (ManagedCodeConventions.cs:480-510):
-```csharp
-private static bool TargetFrameworkName_CompatibilityTest(object criteria, object available) {
-    var criteriaFrameworkName = criteria as NuGetFramework;
-    var availableFrameworkName = available as NuGetFramework;
+PatternDefinition
+  ├─ Pattern string                      ("lib/{tfm}/{assembly}")
+  ├─ Defaults map[string]interface{}     (default property values)
+  ├─ Table *PatternTable                 (token replacement)
+  └─ PreserveRawValues bool              (performance optimization)
 
-    if (Object.Equals(AnyFramework.AnyFramework, availableFrameworkName)) {
-        return true;
-    }
+PatternExpression
+  ├─ Segments []Segment                  (literal + token segments)
+  ├─ Defaults map[string]interface{}
+  └─ Table *PatternTable
 
-    return NuGetFrameworkUtility.IsCompatibleWithFallbackCheck(criteriaFrameworkName, availableFrameworkName);
-}
+PropertyDefinition
+  ├─ Name string
+  ├─ Parser func(value, table, matchOnly)
+  ├─ CompatibilityTest func(criterion, available) bool
+  ├─ CompareTest func(criterion, a1, a2) int
+  ├─ FileExtensions []string
+  └─ AllowSubFolders bool
 ```
 
 ### Implementation Details
 
-**1. Pattern Structures**:
+**1. Pattern Definition and PatternSet** (`packaging/assets/pattern.go`):
 
 ```go
-// packaging/assets/patterns.go
-
 package assets
 
 import (
-    "fmt"
-    "path"
-    "regexp"
-    "strings"
-
-    "github.com/willibrandon/gonuget/frameworks"
+	"github.com/willibrandon/gonuget/frameworks"
 )
 
-// PatternDefinition defines a file path pattern with placeholders
+// PatternDefinition defines a file path pattern with property placeholders.
+// Reference: ContentQueryDefinition.cs PatternDefinition
 type PatternDefinition struct {
-    // Pattern is the path pattern with placeholders
-    // Example: "lib/{tfm}/{assembly}"
-    Pattern string
+	// Pattern is the path template with property placeholders.
+	// Example: "lib/{tfm}/{assembly}"
+	// Optional properties end with '?': "lib/{any?}"
+	Pattern string
 
-    // Defaults provides default values for properties
-    Defaults map[string]interface{}
+	// Defaults provides default property values.
+	// Example: {"tfm": &frameworks.NuGetFramework{...}}
+	Defaults map[string]interface{}
 
-    // PropertyTable maps property names to their definitions
-    PropertyTable map[string]PropertyDefinition
+	// Table is the token replacement table.
+	// Maps property values to replacements (e.g., "any" -> DotNet framework)
+	Table *PatternTable
+
+	// PreserveRawValues indicates whether to preserve unparsed string values.
+	// Performance optimization for grouping operations.
+	PreserveRawValues bool
 }
 
-// PropertyDefinition defines how a property is parsed and compared
-type PropertyDefinition struct {
-    // Name is the property name (e.g., "tfm", "rid", "assembly")
-    Name string
-
-    // Parser converts string to typed value
-    Parser PropertyParser
-
-    // CompatibilityTest checks if criterion is compatible with available value
-    CompatibilityTest CompatibilityTestFunc
-
-    // CompareTest determines which of two available values is nearer to criterion
-    // Returns: -1 if first is nearer, 1 if second is nearer, 0 if equal
-    CompareTest CompareTestFunc
-}
-
-// PropertyParser converts a string value to a typed value
-type PropertyParser func(value string) (interface{}, error)
-
-// CompatibilityTestFunc tests if a criterion is compatible with an available value
-type CompatibilityTestFunc func(criterion, available interface{}) bool
-
-// CompareTestFunc compares two available values against a criterion
-type CompareTestFunc func(criterion, available1, available2 interface{}) int
-
-// PatternMatch represents a matched pattern with extracted properties
-type PatternMatch struct {
-    Pattern    *PatternDefinition
-    Path       string
-    Properties map[string]interface{}
-}
-
-// PatternSet groups multiple patterns for a specific asset type
+// PatternSet groups multiple patterns for a specific asset type.
+// Reference: ContentQueryDefinition.cs PatternSet
 type PatternSet struct {
-    // GroupPatterns match directory-level patterns
-    GroupPatterns []*PatternDefinition
+	// GroupPatterns match directory-level patterns.
+	// Used for grouping items by common properties.
+	GroupPatterns []*PatternDefinition
 
-    // PathPatterns match file-level patterns
-    PathPatterns []*PatternDefinition
+	// PathPatterns match individual file paths.
+	// Used for selecting specific assets.
+	PathPatterns []*PatternDefinition
 
-    // Properties available for this pattern set
-    Properties map[string]PropertyDefinition
+	// GroupExpressions are compiled group patterns (for performance).
+	GroupExpressions []*PatternExpression
+
+	// PathExpressions are compiled path patterns (for performance).
+	PathExpressions []*PatternExpression
+
+	// PropertyDefinitions available for this pattern set.
+	PropertyDefinitions map[string]*PropertyDefinition
+}
+
+// NewPatternSet creates a pattern set with compiled expressions.
+func NewPatternSet(
+	properties map[string]*PropertyDefinition,
+	groupPatterns []*PatternDefinition,
+	pathPatterns []*PatternDefinition,
+) *PatternSet {
+	ps := &PatternSet{
+		GroupPatterns:       groupPatterns,
+		PathPatterns:        pathPatterns,
+		PropertyDefinitions: properties,
+	}
+
+	// Compile expressions
+	ps.GroupExpressions = make([]*PatternExpression, len(groupPatterns))
+	for i, pattern := range groupPatterns {
+		ps.GroupExpressions[i] = NewPatternExpression(pattern)
+	}
+
+	ps.PathExpressions = make([]*PatternExpression, len(pathPatterns))
+	for i, pattern := range pathPatterns {
+		ps.PathExpressions[i] = NewPatternExpression(pattern)
+	}
+
+	return ps
+}
+
+// ContentItem represents a matched path with extracted properties.
+// Reference: ContentModel/ContentItem.cs
+type ContentItem struct {
+	Path       string
+	Properties map[string]interface{}
+}
+
+// Add adds or updates a property value.
+func (c *ContentItem) Add(key string, value interface{}) {
+	if c.Properties == nil {
+		c.Properties = make(map[string]interface{})
+	}
+	// Don't overwrite existing properties
+	if _, exists := c.Properties[key]; !exists {
+		c.Properties[key] = value
+	}
 }
 ```
 
-**2. Pattern Matching Engine**:
+**2. PatternTable** (`packaging/assets/patterntable.go`):
 
 ```go
-// MatchPattern matches a file path against a pattern definition
-func MatchPattern(filePath string, pattern *PatternDefinition) (*PatternMatch, error) {
-    // Normalize path
-    normalizedPath := strings.ReplaceAll(filePath, "\\", "/")
-    normalizedPath = strings.ToLower(normalizedPath)
+package assets
 
-    // Convert pattern to regex
-    regex, propertyNames := patternToRegex(pattern.Pattern)
-
-    // Match path
-    matches := regex.FindStringSubmatch(normalizedPath)
-    if matches == nil {
-        return nil, fmt.Errorf("path does not match pattern")
-    }
-
-    // Extract properties
-    properties := make(map[string]interface{})
-
-    // Apply defaults
-    for key, value := range pattern.Defaults {
-        properties[key] = value
-    }
-
-    // Extract matched properties
-    for i, propName := range propertyNames {
-        if i+1 < len(matches) {
-            value := matches[i+1]
-
-            // Parse property value
-            if propDef, ok := pattern.PropertyTable[propName]; ok {
-                if propDef.Parser != nil {
-                    parsed, err := propDef.Parser(value)
-                    if err != nil {
-                        return nil, fmt.Errorf("parse property %s: %w", propName, err)
-                    }
-                    properties[propName] = parsed
-                } else {
-                    properties[propName] = value
-                }
-            } else {
-                properties[propName] = value
-            }
-        }
-    }
-
-    return &PatternMatch{
-        Pattern:    pattern,
-        Path:       filePath,
-        Properties: properties,
-    }, nil
+// PatternTableEntry defines a token replacement.
+// Reference: ContentModel/PatternTableEntry.cs
+type PatternTableEntry struct {
+	PropertyName string      // Property this entry applies to (e.g., "tfm")
+	Name         string      // Token name to replace (e.g., "any")
+	Value        interface{} // Replacement value
 }
 
-func patternToRegex(pattern string) (*regexp.Regexp, []string) {
-    // Convert pattern with {property} placeholders to regex
-    // Example: "lib/{tfm}/{assembly}" -> "lib/([^/]+)/([^/]+)"
-
-    var propertyNames []string
-    regexPattern := pattern
-
-    // Find all {property} placeholders
-    placeholderRegex := regexp.MustCompile(`\{([^}?]+)\??}`)
-    matches := placeholderRegex.FindAllStringSubmatch(pattern, -1)
-
-    for _, match := range matches {
-        propName := match[1]
-        propertyNames = append(propertyNames, propName)
-
-        // Replace {property} with capture group
-        // {property?} means optional
-        if strings.HasSuffix(match[0], "?}") {
-            regexPattern = strings.Replace(regexPattern, match[0], "([^/]*)", 1)
-        } else {
-            regexPattern = strings.Replace(regexPattern, match[0], "([^/]+)", 1)
-        }
-    }
-
-    // Escape other regex special characters
-    regexPattern = "^" + regexPattern + "$"
-
-    return regexp.MustCompile(strings.ToLower(regexPattern)), propertyNames
+// PatternTable is a token replacement table organized by property.
+// Reference: ContentModel/PatternTable.cs
+type PatternTable struct {
+	// table maps propertyName -> tokenName -> replacement value
+	table map[string]map[string]interface{}
 }
 
-// FindBestMatch finds the best matching pattern for criterion
-func FindBestMatch(criterion map[string]interface{}, matches []*PatternMatch, properties map[string]PropertyDefinition) *PatternMatch {
-    if len(matches) == 0 {
-        return nil
-    }
+// NewPatternTable creates a pattern table from entries.
+func NewPatternTable(entries []PatternTableEntry) *PatternTable {
+	pt := &PatternTable{
+		table: make(map[string]map[string]interface{}),
+	}
 
-    if len(matches) == 1 {
-        return matches[0]
-    }
+	for _, entry := range entries {
+		byProp, ok := pt.table[entry.PropertyName]
+		if !ok {
+			byProp = make(map[string]interface{})
+			pt.table[entry.PropertyName] = byProp
+		}
+		byProp[entry.Name] = entry.Value
+	}
 
-    // Filter to compatible matches
-    compatible := filterCompatible(criterion, matches, properties)
-    if len(compatible) == 0 {
-        return nil
-    }
-
-    // Find nearest match
-    best := compatible[0]
-    for i := 1; i < len(compatible); i++ {
-        if isNearer(criterion, compatible[i], best, properties) {
-            best = compatible[i]
-        }
-    }
-
-    return best
+	return pt
 }
 
-func filterCompatible(criterion map[string]interface{}, matches []*PatternMatch, properties map[string]PropertyDefinition) []*PatternMatch {
-    var compatible []*PatternMatch
+// TryLookup attempts to find a replacement value for a token.
+func (pt *PatternTable) TryLookup(propertyName, name string) (interface{}, bool) {
+	if pt == nil {
+		return nil, false
+	}
 
-    for _, match := range matches {
-        isCompatible := true
+	byProp, ok := pt.table[propertyName]
+	if !ok {
+		return nil, false
+	}
 
-        for propName, criterionValue := range criterion {
-            propDef, ok := properties[propName]
-            if !ok {
-                continue
-            }
-
-            matchValue, ok := match.Properties[propName]
-            if !ok {
-                continue
-            }
-
-            // Test compatibility
-            if propDef.CompatibilityTest != nil {
-                if !propDef.CompatibilityTest(criterionValue, matchValue) {
-                    isCompatible = false
-                    break
-                }
-            }
-        }
-
-        if isCompatible {
-            compatible = append(compatible, match)
-        }
-    }
-
-    return compatible
+	value, ok := byProp[name]
+	return value, ok
 }
 
-func isNearer(criterion map[string]interface{}, candidate, current *PatternMatch, properties map[string]PropertyDefinition) bool {
-    // Compare all properties
-    for propName, criterionValue := range criterion {
-        propDef, ok := properties[propName]
-        if !ok || propDef.CompareTest == nil {
-            continue
-        }
+// Standard pattern tables used by ManagedCodeConventions.
+// Reference: ManagedCodeConventions.cs lines 51-65
 
-        candidateValue := candidate.Properties[propName]
-        currentValue := current.Properties[propName]
+// DotnetAnyTable maps "any" to DotNet framework.
+var DotnetAnyTable = NewPatternTable([]PatternTableEntry{
+	{
+		PropertyName: "tfm",
+		Name:         "any",
+		Value:        frameworks.CommonFrameworks.DotNet,
+	},
+})
 
-        result := propDef.CompareTest(criterionValue, candidateValue, currentValue)
-        if result < 0 {
-            return true // Candidate is nearer
-        } else if result > 0 {
-            return false // Current is nearer
-        }
-        // Equal, continue to next property
-    }
+// AnyTable maps "any" to AnyFramework.
+var AnyTable = NewPatternTable([]PatternTableEntry{
+	{
+		PropertyName: "tfm",
+		Name:         "any",
+		Value:        frameworks.AnyFramework,
+	},
+})
+```
 
-    return false
+**3. Property Definition** (`packaging/assets/property.go`):
+
+```go
+package assets
+
+// PropertyParser parses a property value from a string.
+// Reference: ContentPropertyDefinition.cs Parser
+//
+// Parameters:
+//   - value: substring to parse (no allocation)
+//   - table: pattern table for token replacement
+//   - matchOnly: if true, skip value actualization (performance optimization)
+//
+// Returns parsed value or nil if doesn't match.
+type PropertyParser func(value string, table *PatternTable, matchOnly bool) interface{}
+
+// CompatibilityTest checks if criterion is compatible with available value.
+// Reference: ContentPropertyDefinition.cs CompatibilityTest
+type CompatibilityTest func(criterion, available interface{}) bool
+
+// CompareTest determines which of two available values is nearer to criterion.
+// Reference: ContentPropertyDefinition.cs CompareTest
+// Returns: -1 if available1 is nearer, 1 if available2 is nearer, 0 if equal
+type CompareTest func(criterion, available1, available2 interface{}) int
+
+// PropertyDefinition defines how a property is parsed and compared.
+// Reference: ContentModel/ContentPropertyDefinition.cs
+type PropertyDefinition struct {
+	// Name is the property identifier (e.g., "tfm", "rid", "assembly")
+	Name string
+
+	// FileExtensions for file-based properties (e.g., [".dll", ".exe"])
+	FileExtensions []string
+
+	// AllowSubFolders allows file extensions to match in subdirectories
+	AllowSubFolders bool
+
+	// Parser converts string value to typed value
+	Parser PropertyParser
+
+	// CompatibilityTest checks if criterion is satisfied by available value
+	CompatibilityTest CompatibilityTest
+
+	// CompareTest finds the nearest candidate
+	CompareTest CompareTest
+}
+
+// TryLookup attempts to parse a value using this property definition.
+// Reference: ContentPropertyDefinition.cs TryLookup (lines 91-132)
+func (pd *PropertyDefinition) TryLookup(name string, table *PatternTable, matchOnly bool) (interface{}, bool) {
+	if name == "" {
+		return nil, false
+	}
+
+	// Check file extensions first
+	if len(pd.FileExtensions) > 0 {
+		hasSlash := containsSlash(name)
+		if pd.AllowSubFolders || !hasSlash {
+			for _, ext := range pd.FileExtensions {
+				if endsWithIgnoreCase(name, ext) {
+					if matchOnly {
+						return nil, true // Match found, value not needed
+					}
+					return name, true
+				}
+			}
+		}
+	}
+
+	// Try parser
+	if pd.Parser != nil {
+		value := pd.Parser(name, table, matchOnly)
+		if value != nil {
+			return value, true
+		}
+	}
+
+	return nil, false
+}
+
+// IsCriteriaSatisfied checks if criterion is satisfied by candidate value.
+// Reference: ContentPropertyDefinition.cs IsCriteriaSatisfied
+func (pd *PropertyDefinition) IsCriteriaSatisfied(criteriaValue, candidateValue interface{}) bool {
+	if pd.CompatibilityTest == nil {
+		// Default: exact equality
+		return criteriaValue == candidateValue
+	}
+	return pd.CompatibilityTest(criteriaValue, candidateValue)
+}
+
+// Compare compares two candidate values against a criterion.
+// Reference: ContentPropertyDefinition.cs Compare (lines 161-182)
+func (pd *PropertyDefinition) Compare(criteriaValue, candidateValue1, candidateValue2 interface{}) int {
+	// Check if one value is more compatible than the other
+	betterCoverageFromValue1 := pd.IsCriteriaSatisfied(candidateValue1, candidateValue2)
+	betterCoverageFromValue2 := pd.IsCriteriaSatisfied(candidateValue2, candidateValue1)
+
+	if betterCoverageFromValue1 && !betterCoverageFromValue2 {
+		return -1
+	}
+	if betterCoverageFromValue2 && !betterCoverageFromValue1 {
+		return 1
+	}
+
+	// Tie - use external compare test
+	if pd.CompareTest != nil {
+		return pd.CompareTest(criteriaValue, candidateValue1, candidateValue2)
+	}
+
+	// No tie breaker
+	return 0
+}
+
+func containsSlash(s string) bool {
+	for _, ch := range s {
+		if ch == '/' || ch == '\\' {
+			return true
+		}
+	}
+	return false
+}
+
+func endsWithIgnoreCase(s, suffix string) bool {
+	if len(s) < len(suffix) {
+		return false
+	}
+	return strings.EqualFold(s[len(s)-len(suffix):], suffix)
 }
 ```
 
-**3. Managed Code Conventions**:
+**4. Pattern Expression** (`packaging/assets/expression.go`):
 
 ```go
-// packaging/assets/conventions.go
-
 package assets
 
 import (
-    "strings"
-
-    "github.com/willibrandon/gonuget/frameworks"
+	"strings"
 )
 
-// ManagedCodeConventions defines standard .NET package conventions
-type ManagedCodeConventions struct {
-    Properties map[string]PropertyDefinition
-
-    // Asset pattern sets
-    RuntimeAssemblies           *PatternSet
-    CompileTimeAssemblies       *PatternSet
-    ResourceAssemblies          *PatternSet
-    NativeLibraries             *PatternSet
-    MSBuildFiles                *PatternSet
-    MSBuildTransitiveFiles      *PatternSet
-    ContentFiles                *PatternSet
-    ToolsAssemblies             *PatternSet
+// PatternExpression is a compiled pattern with optimized matching.
+// Reference: ContentModel/Infrastructure/Parser.cs PatternExpression
+type PatternExpression struct {
+	segments []Segment
+	defaults map[string]interface{}
+	table    *PatternTable
 }
 
-// NewManagedCodeConventions creates standard managed code conventions
-// Reference: ManagedCodeConventions.cs
+// Segment represents a pattern segment (literal or token).
+type Segment interface {
+	// TryMatch attempts to match this segment against path.
+	// Returns true and end index if match succeeds.
+	TryMatch(item **ContentItem, path string, properties map[string]*PropertyDefinition, startIndex int) (int, bool)
+}
+
+// LiteralSegment matches exact text.
+type LiteralSegment struct {
+	text string
+}
+
+// TokenSegment matches a property placeholder.
+type TokenSegment struct {
+	name             string
+	delimiter        byte
+	matchOnly        bool
+	table            *PatternTable
+	preserveRawValue bool
+}
+
+// NewPatternExpression compiles a pattern definition into an expression.
+// Reference: PatternExpression constructor (lines 18-23)
+func NewPatternExpression(pattern *PatternDefinition) *PatternExpression {
+	expr := &PatternExpression{
+		table:    pattern.Table,
+		defaults: make(map[string]interface{}),
+	}
+
+	// Copy defaults
+	for k, v := range pattern.Defaults {
+		expr.defaults[k] = v
+	}
+
+	// Parse pattern into segments
+	expr.initialize(pattern.Pattern, pattern.PreserveRawValues)
+
+	return expr
+}
+
+// initialize parses pattern string into literal and token segments.
+// Reference: PatternExpression.Initialize (lines 25-65)
+func (pe *PatternExpression) initialize(pattern string, preserveRawValues bool) {
+	scanIndex := 0
+
+	for scanIndex < len(pattern) {
+		// Find next token
+		beginToken := len(pattern)
+		endToken := len(pattern)
+
+		for i := scanIndex; i < len(pattern); i++ {
+			ch := pattern[i]
+			if beginToken == len(pattern) {
+				if ch == '{' {
+					beginToken = i
+				}
+			} else if ch == '}' {
+				endToken = i
+				break
+			}
+		}
+
+		// Add literal segment if any
+		if scanIndex != beginToken {
+			pe.segments = append(pe.segments, &LiteralSegment{
+				text: pattern[scanIndex:beginToken],
+			})
+		}
+
+		// Add token segment if any
+		if beginToken != endToken {
+			var delimiter byte
+			if endToken+1 < len(pattern) {
+				delimiter = pattern[endToken+1]
+			}
+
+			matchOnly := pattern[endToken-1] == '?'
+
+			beginName := beginToken + 1
+			endName := endToken
+			if matchOnly {
+				endName--
+			}
+
+			tokenName := pattern[beginName:endName]
+			pe.segments = append(pe.segments, &TokenSegment{
+				name:             tokenName,
+				delimiter:        delimiter,
+				matchOnly:        matchOnly,
+				table:            pe.table,
+				preserveRawValue: preserveRawValues,
+			})
+		}
+
+		scanIndex = endToken + 1
+	}
+}
+
+// Match attempts to match path against this expression.
+// Reference: PatternExpression.Match (lines 67-109)
+func (pe *PatternExpression) Match(path string, propertyDefinitions map[string]*PropertyDefinition) *ContentItem {
+	var item *ContentItem
+	startIndex := 0
+
+	for _, segment := range pe.segments {
+		endIndex, ok := segment.TryMatch(&item, path, propertyDefinitions, startIndex)
+		if !ok {
+			return nil
+		}
+		startIndex = endIndex
+	}
+
+	// Check if we consumed the entire path
+	if startIndex != len(path) {
+		return nil
+	}
+
+	// Apply defaults
+	if item == nil {
+		item = &ContentItem{
+			Path:       path,
+			Properties: pe.defaults,
+		}
+	} else {
+		for key, value := range pe.defaults {
+			item.Add(key, value)
+		}
+	}
+
+	return item
+}
+
+// TryMatch for LiteralSegment (lines 119-136)
+func (ls *LiteralSegment) TryMatch(item **ContentItem, path string, properties map[string]*PropertyDefinition, startIndex int) (int, bool) {
+	if startIndex+len(ls.text) > len(path) {
+		return 0, false
+	}
+
+	// Case-insensitive comparison
+	pathSegment := path[startIndex : startIndex+len(ls.text)]
+	if !strings.EqualFold(pathSegment, ls.text) {
+		return 0, false
+	}
+
+	return startIndex + len(ls.text), true
+}
+
+// TryMatch for TokenSegment (lines 167-261)
+func (ts *TokenSegment) TryMatch(item **ContentItem, path string, properties map[string]*PropertyDefinition, startIndex int) (int, bool) {
+	// Find end of this token (until delimiter or end of path)
+	endIndex := startIndex
+	if ts.delimiter != 0 {
+		for endIndex < len(path) && path[endIndex] != ts.delimiter {
+			endIndex++
+		}
+	} else {
+		endIndex = len(path)
+	}
+
+	if endIndex == startIndex && !ts.matchOnly {
+		// Empty value for non-optional token
+		return 0, false
+	}
+
+	// Get property definition
+	propDef, ok := properties[ts.name]
+	if !ok {
+		// Unknown property, treat as string
+		tokenValue := path[startIndex:endIndex]
+		if *item == nil {
+			*item = &ContentItem{
+				Path:       path,
+				Properties: make(map[string]interface{}),
+			}
+		}
+		(*item).Properties[ts.name] = tokenValue
+		return endIndex, true
+	}
+
+	// Try to parse value
+	tokenValue := path[startIndex:endIndex]
+	value, matched := propDef.TryLookup(tokenValue, ts.table, ts.matchOnly)
+
+	if !matched {
+		return 0, false
+	}
+
+	// Store value if not match-only
+	if !ts.matchOnly && value != nil {
+		if *item == nil {
+			*item = &ContentItem{
+				Path:       path,
+				Properties: make(map[string]interface{}),
+			}
+		}
+
+		// Store parsed value
+		(*item).Properties[ts.name] = value
+
+		// Store raw value if preserving
+		if ts.preserveRawValue {
+			(*item).Properties[ts.name+"_raw"] = tokenValue
+		}
+	}
+
+	return endIndex, true
+}
+```
+
+**5. Managed Code Conventions** (`packaging/assets/conventions.go`):
+
+```go
+package assets
+
+import (
+	"github.com/willibrandon/gonuget/frameworks"
+)
+
+// ManagedCodeConventions defines standard .NET package conventions.
+// Reference: ContentModel/ManagedCodeConventions.cs
+type ManagedCodeConventions struct {
+	// Properties available for pattern matching
+	Properties map[string]*PropertyDefinition
+
+	// Pattern sets for different asset types
+	RuntimeAssemblies      *PatternSet
+	CompileRefAssemblies   *PatternSet
+	CompileLibAssemblies   *PatternSet
+	NativeLibraries        *PatternSet
+	ResourceAssemblies     *PatternSet
+	MSBuildFiles           *PatternSet
+	MSBuildMultiTargeting  *PatternSet
+	ContentFiles           *PatternSet
+	ToolsAssemblies        *PatternSet
+}
+
+// NewManagedCodeConventions creates standard managed code conventions.
+// Reference: ManagedCodeConventions constructor (lines 77-103)
 func NewManagedCodeConventions() *ManagedCodeConventions {
-    conventions := &ManagedCodeConventions{
-        Properties: make(map[string]PropertyDefinition),
-    }
+	conventions := &ManagedCodeConventions{
+		Properties: make(map[string]*PropertyDefinition),
+	}
 
-    // Define properties
-    conventions.defineProperties()
+	// Define properties
+	conventions.defineProperties()
 
-    // Define pattern sets
-    conventions.definePatternSets()
+	// Define pattern sets
+	conventions.definePatternSets()
 
-    return conventions
+	return conventions
 }
 
 func (c *ManagedCodeConventions) defineProperties() {
-    // Target Framework Moniker (TFM) property
-    c.Properties["tfm"] = PropertyDefinition{
-        Name:              "tfm",
-        Parser:            parseTFM,
-        CompatibilityTest: tfmCompatibilityTest,
-        CompareTest:       tfmCompareTest,
-    }
+	// Assembly property - matches .dll, .winmd, .exe files
+	// Reference: ManagedCodeConventions.cs lines 25-27
+	c.Properties["assembly"] = &PropertyDefinition{
+		Name:           "assembly",
+		Parser:         allowEmptyFolderParser,
+		FileExtensions: []string{".dll", ".winmd", ".exe"},
+	}
 
-    // Runtime Identifier (RID) property
-    c.Properties["rid"] = PropertyDefinition{
-        Name:              "rid",
-        Parser:            parseRID,
-        CompatibilityTest: ridCompatibilityTest,
-        CompareTest:       ridCompareTest,
-    }
+	// MSBuild property - matches .targets, .props files
+	c.Properties["msbuild"] = &PropertyDefinition{
+		Name:           "msbuild",
+		Parser:         allowEmptyFolderParser,
+		FileExtensions: []string{".targets", ".props"},
+	}
 
-    // Assembly name property (simple string)
-    c.Properties["assembly"] = PropertyDefinition{
-        Name:   "assembly",
-        Parser: func(value string) (interface{}, error) { return value, nil },
-    }
+	// Satellite assembly property - matches .resources.dll
+	c.Properties["satelliteAssembly"] = &PropertyDefinition{
+		Name:           "satelliteAssembly",
+		Parser:         allowEmptyFolderParser,
+		FileExtensions: []string{".resources.dll"},
+	}
 
-    // Locale property
-    c.Properties["locale"] = PropertyDefinition{
-        Name:   "locale",
-        Parser: func(value string) (interface{}, error) { return value, nil },
-    }
+	// Locale property - matches any string
+	c.Properties["locale"] = &PropertyDefinition{
+		Name:   "locale",
+		Parser: localeParser,
+	}
 
-    // Any property (matches anything)
-    c.Properties["any"] = PropertyDefinition{
-        Name:   "any",
-        Parser: func(value string) (interface{}, error) { return value, nil },
-    }
+	// Any property - matches any string
+	c.Properties["any"] = &PropertyDefinition{
+		Name:   "any",
+		Parser: identityParser,
+	}
+
+	// Target Framework Moniker (TFM) property
+	// Reference: ManagedCodeConventions.cs lines 94-98
+	c.Properties["tfm"] = &PropertyDefinition{
+		Name:              "tfm",
+		Parser:            tfmParser,
+		CompatibilityTest: tfmCompatibilityTest,
+		CompareTest:       tfmCompareTest,
+	}
+
+	// Runtime Identifier (RID) property
+	c.Properties["rid"] = &PropertyDefinition{
+		Name:              "rid",
+		Parser:            identityParser,
+		CompatibilityTest: ridCompatibilityTest,
+	}
+
+	// Code language property
+	c.Properties["codeLanguage"] = &PropertyDefinition{
+		Name:   "codeLanguage",
+		Parser: codeLanguageParser,
+	}
 }
 
-func parseTFM(value string) (interface{}, error) {
-    return frameworks.ParseFramework(value)
+// Property parsers
+// Reference: ManagedCodeConventions.cs lines 256-397
+
+func allowEmptyFolderParser(value string, table *PatternTable, matchOnly bool) interface{} {
+	if matchOnly {
+		return value // Return something non-nil to indicate match
+	}
+	return value
 }
 
-func parseRID(value string) (interface{}, error) {
-    // RID parsing will be implemented in M3.13
-    return value, nil
+func identityParser(value string, table *PatternTable, matchOnly bool) interface{} {
+	if matchOnly {
+		return value
+	}
+	return value
 }
 
-// tfmCompatibilityTest checks if criterion TFM is compatible with available TFM
-// Reference: ManagedCodeConventions.cs TargetFrameworkName_CompatibilityTest
+func localeParser(value string, table *PatternTable, matchOnly bool) interface{} {
+	// Locale validation would go here
+	if matchOnly {
+		return value
+	}
+	return value
+}
+
+func codeLanguageParser(value string, table *PatternTable, matchOnly bool) interface{} {
+	// Code language parsing (cs, vb, fs, etc.)
+	if matchOnly {
+		return value
+	}
+	return strings.ToLower(value)
+}
+
+func tfmParser(value string, table *PatternTable, matchOnly bool) interface{} {
+	// Check table first for aliases
+	if table != nil {
+		if replacement, ok := table.TryLookup("tfm", value); ok {
+			return replacement
+		}
+	}
+
+	// Parse framework
+	if matchOnly {
+		// Don't parse, just check validity
+		_, err := frameworks.ParseFramework(value)
+		if err != nil {
+			return nil
+		}
+		return value
+	}
+
+	fw, err := frameworks.ParseFramework(value)
+	if err != nil {
+		return nil
+	}
+	return fw
+}
+
+// Compatibility and comparison tests
+// Reference: ManagedCodeConventions.cs lines 400-527
+
 func tfmCompatibilityTest(criterion, available interface{}) bool {
-    criterionFW, ok1 := criterion.(*frameworks.NuGetFramework)
-    availableFW, ok2 := available.(*frameworks.NuGetFramework)
+	criterionFW, ok1 := criterion.(*frameworks.NuGetFramework)
+	availableFW, ok2 := available.(*frameworks.NuGetFramework)
 
-    if !ok1 || !ok2 {
-        return false
-    }
+	if !ok1 || !ok2 {
+		return false
+	}
 
-    // AnyFramework is always compatible
-    if availableFW.IsAny() {
-        return true
-    }
+	// AnyFramework is always compatible
+	if availableFW.IsAny() {
+		return true
+	}
 
-    // Use framework compatibility check with fallback
-    return frameworks.IsCompatible(criterionFW, availableFW)
+	return frameworks.IsCompatible(criterionFW, availableFW)
 }
 
-// tfmCompareTest determines which TFM is nearest
-// Reference: ManagedCodeConventions.cs TargetFrameworkName_NearestCompareTest
 func tfmCompareTest(criterion, available1, available2 interface{}) int {
-    criterionFW, ok := criterion.(*frameworks.NuGetFramework)
-    if !ok {
-        return 0
-    }
+	criterionFW, ok := criterion.(*frameworks.NuGetFramework)
+	if !ok {
+		return 0
+	}
 
-    fw1, ok1 := available1.(*frameworks.NuGetFramework)
-    fw2, ok2 := available2.(*frameworks.NuGetFramework)
+	fw1, ok1 := available1.(*frameworks.NuGetFramework)
+	fw2, ok2 := available2.(*frameworks.NuGetFramework)
 
-    if !ok1 || !ok2 {
-        return 0
-    }
+	if !ok1 || !ok2 {
+		return 0
+	}
 
-    // Use framework reducer to find nearest
-    reducer := frameworks.NewFrameworkReducer()
-    nearest := reducer.GetNearest(criterionFW, []*frameworks.NuGetFramework{fw1, fw2})
+	// Use framework reducer to find nearest
+	reducer := frameworks.NewFrameworkReducer()
+	nearest := reducer.GetNearest(criterionFW, []*frameworks.NuGetFramework{fw1, fw2})
 
-    if nearest == nil {
-        return 0
-    }
+	if nearest == nil {
+		return 0
+	}
 
-    if nearest == fw1 {
-        return -1
-    } else if nearest == fw2 {
-        return 1
-    }
+	if nearest.Equals(fw1) {
+		return -1
+	} else if nearest.Equals(fw2) {
+		return 1
+	}
 
-    return 0
+	return 0
 }
 
 func ridCompatibilityTest(criterion, available interface{}) bool {
-    // RID compatibility will be implemented in M3.13
-    // For now, exact match
-    return criterion == available
-}
-
-func ridCompareTest(criterion, available1, available2 interface{}) int {
-    // RID comparison will be implemented in M3.13
-    return 0
+	// RID compatibility will be implemented in M3.13
+	// For now, exact match
+	return criterion == available
 }
 
 func (c *ManagedCodeConventions) definePatternSets() {
-    // Runtime assemblies (lib/ folder)
-    // Reference: ManagedCodeConventions.cs RuntimeAssemblies
-    c.RuntimeAssemblies = &PatternSet{
-        Properties: c.Properties,
-        GroupPatterns: []*PatternDefinition{
-            {
-                Pattern:       "runtimes/{rid}/lib/{tfm}/{any?}",
-                PropertyTable: c.Properties,
-            },
-            {
-                Pattern:       "lib/{tfm}/{any?}",
-                PropertyTable: c.Properties,
-            },
-            {
-                Pattern: "lib/{assembly?}",
-                Defaults: map[string]interface{}{
-                    "tfm": &frameworks.NuGetFramework{Framework: ".NETFramework", Version: frameworks.Version{Major: 0}},
-                },
-                PropertyTable: c.Properties,
-            },
-        },
-        PathPatterns: []*PatternDefinition{
-            {
-                Pattern:       "runtimes/{rid}/lib/{tfm}/{assembly}",
-                PropertyTable: c.Properties,
-            },
-            {
-                Pattern:       "lib/{tfm}/{assembly}",
-                PropertyTable: c.Properties,
-            },
-            {
-                Pattern: "lib/{assembly}",
-                Defaults: map[string]interface{}{
-                    "tfm": &frameworks.NuGetFramework{Framework: ".NETFramework", Version: frameworks.Version{Major: 0}},
-                },
-                PropertyTable: c.Properties,
-            },
-        },
-    }
+	// Define pattern sets for each asset type
+	// Reference: ManagedCodeConventions.cs ManagedCodePatterns (lines 478-606)
 
-    // Compile-time assemblies (ref/ folder)
-    c.CompileTimeAssemblies = &PatternSet{
-        Properties: c.Properties,
-        GroupPatterns: []*PatternDefinition{
-            {
-                Pattern:       "ref/{tfm}/{any?}",
-                PropertyTable: c.Properties,
-            },
-        },
-        PathPatterns: []*PatternDefinition{
-            {
-                Pattern:       "ref/{tfm}/{assembly}",
-                PropertyTable: c.Properties,
-            },
-        },
-    }
+	// RuntimeAssemblies: lib/ folder
+	c.RuntimeAssemblies = NewPatternSet(
+		c.Properties,
+		[]*PatternDefinition{
+			{
+				Pattern: "runtimes/{rid}/lib/{tfm}/{any?}",
+				Table:   DotnetAnyTable,
+			},
+			{
+				Pattern: "lib/{tfm}/{any?}",
+				Table:   DotnetAnyTable,
+			},
+			{
+				Pattern: "lib/{assembly?}",
+				Table:   DotnetAnyTable,
+				Defaults: map[string]interface{}{
+					"tfm": frameworks.CommonFrameworks.Net,
+				},
+			},
+		},
+		[]*PatternDefinition{
+			{
+				Pattern: "runtimes/{rid}/lib/{tfm}/{assembly}",
+				Table:   DotnetAnyTable,
+			},
+			{
+				Pattern: "lib/{tfm}/{assembly}",
+				Table:   DotnetAnyTable,
+			},
+			{
+				Pattern: "lib/{assembly}",
+				Table:   DotnetAnyTable,
+				Defaults: map[string]interface{}{
+					"tfm": frameworks.CommonFrameworks.Net,
+				},
+			},
+		},
+	)
 
-    // Resource assemblies (satellite assemblies)
-    c.ResourceAssemblies = &PatternSet{
-        Properties: c.Properties,
-        GroupPatterns: []*PatternDefinition{
-            {
-                Pattern:       "runtimes/{rid}/lib/{tfm}/{locale}/{any?}",
-                PropertyTable: c.Properties,
-            },
-            {
-                Pattern:       "lib/{tfm}/{locale}/{any?}",
-                PropertyTable: c.Properties,
-            },
-        },
-        PathPatterns: []*PatternDefinition{
-            {
-                Pattern:       "runtimes/{rid}/lib/{tfm}/{locale}/{assembly}",
-                PropertyTable: c.Properties,
-            },
-            {
-                Pattern:       "lib/{tfm}/{locale}/{assembly}",
-                PropertyTable: c.Properties,
-            },
-        },
-    }
+	// CompileRefAssemblies: ref/ folder
+	c.CompileRefAssemblies = NewPatternSet(
+		c.Properties,
+		[]*PatternDefinition{
+			{
+				Pattern: "ref/{tfm}/{any?}",
+				Table:   DotnetAnyTable,
+			},
+		},
+		[]*PatternDefinition{
+			{
+				Pattern: "ref/{tfm}/{assembly}",
+				Table:   DotnetAnyTable,
+			},
+		},
+	)
 
-    // Native libraries
-    c.NativeLibraries = &PatternSet{
-        Properties: c.Properties,
-        GroupPatterns: []*PatternDefinition{
-            {
-                Pattern:       "runtimes/{rid}/native/{any?}",
-                PropertyTable: c.Properties,
-            },
-        },
-        PathPatterns: []*PatternDefinition{
-            {
-                Pattern:       "runtimes/{rid}/native/{any}",
-                PropertyTable: c.Properties,
-            },
-        },
-    }
+	// CompileLibAssemblies: lib/ folder for compile
+	c.CompileLibAssemblies = NewPatternSet(
+		c.Properties,
+		[]*PatternDefinition{
+			{
+				Pattern: "lib/{tfm}/{any?}",
+				Table:   DotnetAnyTable,
+			},
+			{
+				Pattern: "lib/{assembly?}",
+				Table:   DotnetAnyTable,
+				Defaults: map[string]interface{}{
+					"tfm": frameworks.CommonFrameworks.Net,
+				},
+			},
+		},
+		[]*PatternDefinition{
+			{
+				Pattern: "lib/{tfm}/{assembly}",
+				Table:   DotnetAnyTable,
+			},
+			{
+				Pattern: "lib/{assembly}",
+				Table:   DotnetAnyTable,
+				Defaults: map[string]interface{}{
+					"tfm": frameworks.CommonFrameworks.Net,
+				},
+			},
+		},
+	)
 
-    // MSBuild files (build/ folder)
-    c.MSBuildFiles = &PatternSet{
-        Properties: c.Properties,
-        GroupPatterns: []*PatternDefinition{
-            {
-                Pattern:       "build/{tfm}/{any?}",
-                PropertyTable: c.Properties,
-            },
-            {
-                Pattern: "build/{any?}",
-                Defaults: map[string]interface{}{
-                    "tfm": &frameworks.NuGetFramework{Framework: "any", Version: frameworks.Version{Major: 0}},
-                },
-                PropertyTable: c.Properties,
-            },
-        },
-    }
-
-    // MSBuild transitive files (buildTransitive/ folder)
-    c.MSBuildTransitiveFiles = &PatternSet{
-        Properties: c.Properties,
-        GroupPatterns: []*PatternDefinition{
-            {
-                Pattern:       "buildTransitive/{tfm}/{any?}",
-                PropertyTable: c.Properties,
-            },
-        },
-    }
-
-    // Content files
-    c.ContentFiles = &PatternSet{
-        Properties: c.Properties,
-        GroupPatterns: []*PatternDefinition{
-            {
-                Pattern:       "contentFiles/{any}/{tfm}/{any?}",
-                PropertyTable: c.Properties,
-            },
-        },
-    }
-
-    // Tools assemblies
-    c.ToolsAssemblies = &PatternSet{
-        Properties: c.Properties,
-        GroupPatterns: []*PatternDefinition{
-            {
-                Pattern:       "tools/{any?}",
-                PropertyTable: c.Properties,
-            },
-        },
-    }
+	// Additional pattern sets...
+	// (NativeLibraries, ResourceAssemblies, MSBuildFiles, etc.)
 }
 ```
 
 ### Verification Steps
 
 ```bash
-# 1. Run pattern matching tests
+# 1. Test pattern table
+go test ./packaging/assets -v -run TestPatternTable
+
+# 2. Test property definitions
+go test ./packaging/assets -v -run TestPropertyDefinition
+
+# 3. Test pattern expression parsing
+go test ./packaging/assets -v -run TestPatternExpression
+
+# 4. Test pattern matching
 go test ./packaging/assets -v -run TestPatternMatch
 
-# 2. Test TFM compatibility
-go test ./packaging/assets -v -run TestTFMCompatibility
+# 5. Test managed code conventions
+go test ./packaging/assets -v -run TestManagedCodeConventions
 
-# 3. Test pattern sets
-go test ./packaging/assets -v -run TestPatternSets
-
-# 4. Test with real package paths
+# 6. Test with real package paths
 go test ./packaging/assets -v -run TestRealPackagePaths
 
-# 5. Check test coverage
+# 7. Check test coverage
 go test ./packaging/assets -cover
 ```
 
 ### Acceptance Criteria
 
-- [ ] Pattern definition with placeholders ({tfm}, {rid}, {assembly})
-- [ ] Pattern to regex conversion
-- [ ] Property extraction from paths
-- [ ] Property parsing (TFM, RID, strings)
-- [ ] Compatibility testing per property
-- [ ] Nearest match selection
-- [ ] Managed code conventions (lib/, ref/, runtimes/)
-- [ ] Pattern sets for all asset types
-- [ ] Default value support
+- [ ] PatternDefinition with pattern, defaults, and table
+- [ ] PatternTable for token replacement
+- [ ] PropertyDefinition with parser, compatibility test, and compare test
+- [ ] PatternExpression compilation (literal and token segments)
+- [ ] Pattern matching with property extraction
+- [ ] TFM compatibility and comparison
+- [ ] ManagedCodeConventions with all pattern sets
+- [ ] RuntimeAssemblies patterns (lib/, runtimes/)
+- [ ] CompileRefAssemblies patterns (ref/)
+- [ ] MSBuildFiles patterns (build/)
 - [ ] 90%+ test coverage
 
 ### Commit Message
@@ -641,20 +957,26 @@ go test ./packaging/assets -cover
 ```
 feat(packaging): implement asset selection pattern engine
 
-Add pattern-based asset selection:
-- Pattern definitions with property placeholders
-- Regex-based pattern matching
-- Property extraction and parsing
-- TFM compatibility and comparison
+Add NuGet.Client-compatible pattern system:
+- PatternDefinition with placeholders and defaults
+- PatternTable for token replacement (e.g., "any" -> DotNet)
+- PropertyDefinition with parsers and compatibility tests
+- PatternExpression with compiled segment matching
 - Managed code conventions (lib/, ref/, build/, runtimes/)
-- Pattern sets for all asset types
+- TFM compatibility and nearest-match selection
 
-Reference: NuGet.Packaging/ContentModel/PatternSet.cs
-Reference: ManagedCodeConventions.cs
+Reference: NuGet.Packaging/ContentModel/
+- ContentQueryDefinition.cs (PatternSet, PatternDefinition)
+- ContentPropertyDefinition.cs
+- PatternTable.cs
+- Infrastructure/Parser.cs (PatternExpression)
+- ManagedCodeConventions.cs
+
+Chunk: M3.11
+Status: ✓ Complete
 ```
 
 ---
-
 ## M3.12: Asset Selection - Framework Resolution
 
 **Estimated Time**: 1.5 hours
