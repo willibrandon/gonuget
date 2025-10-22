@@ -979,326 +979,445 @@ Status: ✓ Complete
 ---
 ## M3.12: Asset Selection - Framework Resolution
 
-**Estimated Time**: 1.5 hours
-**Dependencies**: M3.11, M1.4
+**Estimated Time**: 2.5 hours
+**Dependencies**: M3.11, M1.4 (FrameworkReducer)
 
 ### Overview
 
-Implement framework-based asset selection that uses the pattern engine and framework reducer to select the most appropriate assets for a target framework.
+Implement framework-based asset selection using ContentModel's `FindBestItemGroup` pattern. This matches NuGet.Client's approach in `ContentItemCollection` and `LockFileUtils`, NOT the simplified pattern shown in earlier guides.
+
+**Critical Architecture Notes**:
+1. **NO explicit GetLibItems/GetRefItems methods** - NuGet.Client uses `FindBestItemGroup`
+2. Asset selection is performed by `ContentItemCollection.FindBestItemGroup()` in NuGet.Packaging
+3. `LockFileUtils.GetLockFileItems()` orchestrates pattern matching and group selection
+4. Framework resolution uses `PropertyDefinition.Compare()` with `FrameworkReducer.GetNearest()`
 
 ### Files to Create/Modify
 
-- `packaging/assets/selector.go` - Asset selection logic
-- `packaging/assets/selector_test.go` - Asset selection tests
-- `packaging/reader.go` - Add asset selection methods
+- `packaging/assets/collection.go` - ContentItemCollection with FindBestItemGroup
+- `packaging/assets/selection.go` - SelectionCriteria and SelectionCriteriaBuilder
+- `packaging/assets/collection_test.go` - Asset selection tests
+- `packaging/reader.go` - Add GetContentItems and selection helpers
 
 ### Reference Implementation
 
-**NuGet.Client Reference**:
-- `NuGet.Packaging/LockFileBuilder.cs` GetLibItems, GetRefItems
-- `NuGet.Frameworks/FrameworkReducer.cs` GetNearest
+**NuGet.Client Reference (CORRECTED)**:
+- `NuGet.Packaging/ContentModel/ContentItemCollection.cs` - **FindBestItemGroup** (Lines 136-241)
+- `NuGet.Commands/RestoreCommand/Utility/LockFileUtils.cs` - **GetLockFileItems** (Lines 663-713)
+- `NuGet.Commands/RestoreCommand/LockFileBuilder.cs` - **CreateLockFile** orchestration
+- `NuGet.Frameworks/FrameworkReducer.cs` - **GetNearest** (Lines 42-67)
+- `NuGet.Packaging/ContentModel/ManagedCodeConventions.cs` - Criteria building (Lines 377-405)
 
 ### Implementation Details
 
-**1. Asset Selector**:
+**Architecture**: Following NuGet.Client's ContentModel pattern:
+1. `ContentItemCollection` - Stores assets and performs matching
+2. `PopulateItemGroups` - Groups assets by framework/RID properties
+3. `FindBestItemGroup` - Selects best matching group using property comparison
+4. `SelectionCriteria` - Defines ordered criteria for matching
+
+**1. Selection Criteria** (`packaging/assets/selection.go`):
 
 ```go
-// packaging/assets/selector.go
-
 package assets
 
-import (
-    "strings"
+import "github.com/willibrandon/gonuget/frameworks"
 
-    "github.com/willibrandon/gonuget/frameworks"
-)
-
-// AssetSelector selects package assets based on target framework
-type AssetSelector struct {
-    conventions *ManagedCodeConventions
+// SelectionCriteriaEntry represents a single criteria entry with properties
+// Reference: ContentModel/SelectionCriteriaEntry.cs
+type SelectionCriteriaEntry struct {
+	Properties map[string]interface{}
 }
 
-// NewAssetSelector creates a new asset selector
-func NewAssetSelector() *AssetSelector {
-    return &AssetSelector{
-        conventions: NewManagedCodeConventions(),
-    }
-}
-
-// SelectionCriteria defines asset selection criteria
+// SelectionCriteria contains ordered list of criteria entries
+// Reference: ContentModel/SelectionCriteria.cs
 type SelectionCriteria struct {
-    TargetFramework  *frameworks.NuGetFramework
-    RuntimeIdentifier string
+	Entries []SelectionCriteriaEntry
 }
 
-// AssetGroup represents a group of assets for a specific framework/RID
-type AssetGroup struct {
-    TargetFramework  *frameworks.NuGetFramework
-    RuntimeIdentifier string
-    Items            []string
+// SelectionCriteriaBuilder builds selection criteria with fluent API
+// Reference: ContentModel/SelectionCriteriaBuilder.cs
+type SelectionCriteriaBuilder struct {
+	properties   map[string]*PropertyDefinition
+	currentEntry SelectionCriteriaEntry
+	entries      []SelectionCriteriaEntry
 }
 
-// SelectRuntimeAssemblies selects runtime assemblies (lib/ folder) for target framework
-func (s *AssetSelector) SelectRuntimeAssemblies(files []string, criteria SelectionCriteria) *AssetGroup {
-    return s.selectAssets(files, s.conventions.RuntimeAssemblies, criteria)
+// NewSelectionCriteriaBuilder creates a new criteria builder
+func NewSelectionCriteriaBuilder(properties map[string]*PropertyDefinition) *SelectionCriteriaBuilder {
+	return &SelectionCriteriaBuilder{
+		properties:   properties,
+		currentEntry: SelectionCriteriaEntry{Properties: make(map[string]interface{})},
+	}
 }
 
-// SelectCompileAssemblies selects compile-time assemblies (ref/ folder)
-func (s *AssetSelector) SelectCompileAssemblies(files []string, criteria SelectionCriteria) *AssetGroup {
-    return s.selectAssets(files, s.conventions.CompileTimeAssemblies, criteria)
+// Add sets a property value and returns builder for chaining
+func (b *SelectionCriteriaBuilder) Add(key string, value interface{}) *SelectionCriteriaBuilder {
+	b.currentEntry.Properties[key] = value
+	return b
 }
 
-// SelectNativeLibraries selects native libraries for RID
-func (s *AssetSelector) SelectNativeLibraries(files []string, criteria SelectionCriteria) *AssetGroup {
-    return s.selectAssets(files, s.conventions.NativeLibraries, criteria)
+// NextEntry finalizes current entry and starts new one
+func (b *SelectionCriteriaBuilder) NextEntry() *SelectionCriteriaBuilder {
+	if len(b.currentEntry.Properties) > 0 {
+		b.entries = append(b.entries, b.currentEntry)
+		b.currentEntry = SelectionCriteriaEntry{Properties: make(map[string]interface{})}
+	}
+	return b
 }
 
-// SelectBuildFiles selects MSBuild files
-func (s *AssetSelector) SelectBuildFiles(files []string, criteria SelectionCriteria) *AssetGroup {
-    return s.selectAssets(files, s.conventions.MSBuildFiles, criteria)
+// Build finalizes and returns the criteria
+func (b *SelectionCriteriaBuilder) Build() *SelectionCriteria {
+	if len(b.currentEntry.Properties) > 0 {
+		b.entries = append(b.entries, b.currentEntry)
+	}
+	return &SelectionCriteria{Entries: b.entries}
 }
 
-func (s *AssetSelector) selectAssets(files []string, patternSet *PatternSet, criteria SelectionCriteria) *AssetGroup {
-    // Build criterion map
-    criterionMap := make(map[string]interface{})
-    if criteria.TargetFramework != nil {
-        criterionMap["tfm"] = criteria.TargetFramework
-    }
-    if criteria.RuntimeIdentifier != "" {
-        criterionMap["rid"] = criteria.RuntimeIdentifier
-    }
-
-    // Match all files against patterns
-    var matches []*PatternMatch
-    for _, file := range files {
-        for _, pattern := range patternSet.PathPatterns {
-            match, err := MatchPattern(file, pattern)
-            if err == nil {
-                matches = append(matches, match)
-            }
-        }
-    }
-
-    if len(matches) == 0 {
-        return &AssetGroup{
-            TargetFramework: criteria.TargetFramework,
-            RuntimeIdentifier: criteria.RuntimeIdentifier,
-            Items: []string{},
-        }
-    }
-
-    // Group matches by framework
-    groups := groupMatchesByFramework(matches)
-
-    // Find best matching group
-    bestGroup := selectBestGroup(groups, criterionMap, patternSet.Properties)
-
-    if bestGroup == nil {
-        return &AssetGroup{
-            TargetFramework: criteria.TargetFramework,
-            RuntimeIdentifier: criteria.RuntimeIdentifier,
-            Items: []string{},
-        }
-    }
-
-    return bestGroup
+// ForFramework creates criteria for framework-only matching (no RID)
+// Reference: ManagedCodeConventions.cs ForFramework (Lines 410-417)
+func ForFramework(framework *frameworks.NuGetFramework, properties map[string]*PropertyDefinition) *SelectionCriteria {
+	builder := NewSelectionCriteriaBuilder(properties)
+	builder.Add("tfm", framework)
+	builder.Add("rid", nil) // Explicitly no RID
+	return builder.Build()
 }
 
-func groupMatchesByFramework(matches []*PatternMatch) map[string][]*PatternMatch {
-    groups := make(map[string][]*PatternMatch)
+// ForFrameworkAndRuntime creates criteria with RID fallback
+// Reference: ManagedCodeConventions.cs ForFrameworkAndRuntime (Lines 377-405)
+func ForFrameworkAndRuntime(framework *frameworks.NuGetFramework, runtimeIdentifier string, properties map[string]*PropertyDefinition) *SelectionCriteria {
+	builder := NewSelectionCriteriaBuilder(properties)
 
-    for _, match := range matches {
-        // Get framework from match
-        var groupKey string
-        if tfm, ok := match.Properties["tfm"]; ok {
-            if fw, ok := tfm.(*frameworks.NuGetFramework); ok {
-                groupKey = fw.GetShortFolderName()
-            }
-        }
+	if runtimeIdentifier != "" {
+		// First try: RID-specific assets
+		builder.Add("tfm", framework)
+		builder.Add("rid", runtimeIdentifier)
+		builder.NextEntry()
+	}
 
-        if groupKey == "" {
-            groupKey = "any"
-        }
+	// Fallback: RID-agnostic assets
+	builder.Add("tfm", framework)
+	builder.Add("rid", nil)
 
-        groups[groupKey] = append(groups[groupKey], match)
-    }
-
-    return groups
-}
-
-func selectBestGroup(groups map[string][]*PatternMatch, criterion map[string]interface{}, properties map[string]PropertyDefinition) *AssetGroup {
-    if len(groups) == 0 {
-        return nil
-    }
-
-    // Get criterion framework
-    var criterionFW *frameworks.NuGetFramework
-    if tfm, ok := criterion["tfm"]; ok {
-        criterionFW, _ = tfm.(*frameworks.NuGetFramework)
-    }
-
-    // Collect framework keys
-    var frameworks []*frameworks.NuGetFramework
-    groupByFramework := make(map[string][]*PatternMatch)
-
-    for key, matches := range groups {
-        // Extract framework from first match
-        if len(matches) > 0 {
-            if tfm, ok := matches[0].Properties["tfm"]; ok {
-                if fw, ok := tfm.(*frameworks.NuGetFramework); ok {
-                    frameworks = append(frameworks, fw)
-                    groupByFramework[fw.GetShortFolderName()] = matches
-                }
-            }
-        }
-    }
-
-    // Find nearest framework
-    var nearestFW *frameworks.NuGetFramework
-    if criterionFW != nil {
-        reducer := frameworks.NewFrameworkReducer()
-        nearestFW = reducer.GetNearest(criterionFW, frameworks)
-    } else if len(frameworks) > 0 {
-        nearestFW = frameworks[0]
-    }
-
-    if nearestFW == nil {
-        return nil
-    }
-
-    // Get matches for nearest framework
-    matches := groupByFramework[nearestFW.GetShortFolderName()]
-    if len(matches) == 0 {
-        return nil
-    }
-
-    // Extract file paths
-    var items []string
-    for _, match := range matches {
-        items = append(items, match.Path)
-    }
-
-    return &AssetGroup{
-        TargetFramework: nearestFW,
-        Items:           items,
-    }
-}
-
-// GetLibItems is a helper to get runtime assemblies with DLL/EXE filtering
-func (s *AssetSelector) GetLibItems(files []string, targetFramework *frameworks.NuGetFramework) []string {
-    criteria := SelectionCriteria{
-        TargetFramework: targetFramework,
-    }
-
-    group := s.SelectRuntimeAssemblies(files, criteria)
-    if group == nil {
-        return []string{}
-    }
-
-    // Filter to DLL/EXE files
-    var assemblies []string
-    for _, item := range group.Items {
-        ext := strings.ToLower(strings.TrimPrefix(path.Ext(item), "."))
-        if ext == "dll" || ext == "exe" || ext == "winmd" {
-            assemblies = append(assemblies, item)
-        }
-    }
-
-    return assemblies
-}
-
-// GetRefItems is a helper to get compile-time assemblies
-func (s *AssetSelector) GetRefItems(files []string, targetFramework *frameworks.NuGetFramework) []string {
-    criteria := SelectionCriteria{
-        TargetFramework: targetFramework,
-    }
-
-    group := s.SelectCompileAssemblies(files, criteria)
-    if group == nil {
-        return []string{}
-    }
-
-    return group.Items
+	return builder.Build()
 }
 ```
 
-**2. Add to PackageReader**:
+**2. ContentItemCollection and FindBestItemGroup** (`packaging/assets/collection.go`):
 
 ```go
-// packaging/reader.go additions
+package assets
+
+import "github.com/willibrandon/gonuget/frameworks"
+
+// ContentItemCollection manages package assets and performs selection
+// Reference: ContentModel/ContentItemCollection.cs
+type ContentItemCollection struct {
+	Assets []*ContentItem
+}
+
+// NewContentItemCollection creates a collection from file paths
+func NewContentItemCollection(paths []string) *ContentItemCollection {
+	assets := make([]*ContentItem, len(paths))
+	for i, path := range paths {
+		assets[i] = &ContentItem{Path: path, Properties: make(map[string]interface{})}
+	}
+	return &ContentItemCollection{Assets: assets}
+}
+
+// PopulateItemGroups groups assets by their properties
+// Reference: ContentItemCollection.cs PopulateItemGroups (Lines 84-134)
+func (c *ContentItemCollection) PopulateItemGroups(patternSet *PatternSet) []*ContentItemGroup {
+	if len(c.Assets) == 0 {
+		return nil
+	}
+
+	groupAssets := make(map[string]*ContentItemGroup)
+
+	for _, asset := range c.Assets {
+		// Try each group pattern
+		for _, groupExpr := range patternSet.GroupExpressions {
+			item := groupExpr.Match(asset.Path, patternSet.Properties)
+			if item != nil {
+				// Create group key from properties
+				groupKey := buildGroupKey(item.Properties)
+
+				if _, exists := groupAssets[groupKey]; !exists {
+					groupAssets[groupKey] = &ContentItemGroup{
+						Properties: item.Properties,
+						Items:      []*ContentItem{},
+					}
+				}
+
+				// Find matching items using path patterns
+				for _, pathExpr := range patternSet.PathExpressions {
+					pathItem := pathExpr.Match(asset.Path, patternSet.Properties)
+					if pathItem != nil {
+						groupAssets[groupKey].Items = append(groupAssets[groupKey].Items, pathItem)
+						break
+					}
+				}
+				break
+			}
+		}
+	}
+
+	// Convert map to slice
+	groups := make([]*ContentItemGroup, 0, len(groupAssets))
+	for _, group := range groupAssets {
+		if len(group.Items) > 0 {
+			groups = append(groups, group)
+		}
+	}
+
+	return groups
+}
+
+// FindBestItemGroup selects the best matching group for criteria
+// Reference: ContentItemCollection.cs FindBestItemGroup (Lines 136-241)
+func (c *ContentItemCollection) FindBestItemGroup(criteria *SelectionCriteria, patternSets ...*PatternSet) *ContentItemGroup {
+	for _, patternSet := range patternSets {
+		groups := c.PopulateItemGroups(patternSet)
+
+		// Try each criteria entry in order
+		for _, criteriaEntry := range criteria.Entries {
+			var bestGroup *ContentItemGroup
+			bestAmbiguity := false
+
+			for _, itemGroup := range groups {
+				groupIsValid := true
+
+				// Check if group satisfies all criteria properties
+				for key, criteriaValue := range criteriaEntry.Properties {
+					if criteriaValue == nil {
+						// Criteria requires property to NOT exist
+						if _, exists := itemGroup.Properties[key]; exists {
+							groupIsValid = false
+							break
+						}
+					} else {
+						// Criteria requires property to exist and be compatible
+						itemValue, exists := itemGroup.Properties[key]
+						if !exists {
+							groupIsValid = false
+							break
+						}
+
+						propDef, hasDef := patternSet.Properties[key]
+						if !hasDef {
+							groupIsValid = false
+							break
+						}
+
+						// Use property definition's compatibility test
+						if !propDef.IsCriteriaSatisfied(criteriaValue, itemValue) {
+							groupIsValid = false
+							break
+						}
+					}
+				}
+
+				if groupIsValid {
+					if bestGroup == nil {
+						bestGroup = itemGroup
+					} else {
+						// Compare groups to find better match
+						groupComparison := 0
+
+						for key, criteriaValue := range criteriaEntry.Properties {
+							if criteriaValue == nil {
+								continue
+							}
+
+							bestGroupValue := bestGroup.Properties[key]
+							itemGroupValue := itemGroup.Properties[key]
+							propDef := patternSet.Properties[key]
+
+							groupComparison = propDef.Compare(criteriaValue, bestGroupValue, itemGroupValue)
+							if groupComparison != 0 {
+								break
+							}
+						}
+
+						if groupComparison > 0 {
+							// itemGroup is better
+							bestGroup = itemGroup
+							bestAmbiguity = false
+						} else if groupComparison == 0 {
+							// Ambiguous - equal match
+							bestAmbiguity = true
+						}
+					}
+				}
+			}
+
+			if bestGroup != nil {
+				return bestGroup
+			}
+		}
+	}
+
+	return nil
+}
+
+// ContentItemGroup represents assets grouped by properties
+// Reference: ContentModel/ContentItemGroup.cs
+type ContentItemGroup struct {
+	Properties map[string]interface{}
+	Items      []*ContentItem
+}
+
+func buildGroupKey(properties map[string]interface{}) string {
+	// Build stable key from properties
+	key := ""
+	if tfm, ok := properties["tfm"]; ok {
+		if fw, ok := tfm.(*frameworks.NuGetFramework); ok {
+			key += fw.GetShortFolderName() + "|"
+		}
+	}
+	if rid, ok := properties["rid"]; ok {
+		if ridStr, ok := rid.(string); ok {
+			key += ridStr
+		}
+	}
+	return key
+}
+```
+
+**3. Helper Functions for PackageReader** (`packaging/assets/utils.go`):
+
+```go
+package assets
 
 import (
-    "github.com/willibrandon/gonuget/packaging/assets"
+	"path/filepath"
+	"strings"
+
+	"github.com/willibrandon/gonuget/frameworks"
 )
 
-// SelectLibItems selects runtime assemblies for a target framework
-func (r *PackageReader) SelectLibItems(targetFramework *frameworks.NuGetFramework) ([]string, error) {
-    files := r.GetPackageFiles()
+// GetLockFileItems selects assets using criteria and patterns
+// Reference: LockFileUtils.cs GetLockFileItems (Lines 663-713)
+func GetLockFileItems(criteria *SelectionCriteria, collection *ContentItemCollection, patternSets ...*PatternSet) []string {
+	group := collection.FindBestItemGroup(criteria, patternSets...)
+	if group == nil {
+		return []string{}
+	}
 
-    selector := assets.NewAssetSelector()
-    return selector.GetLibItems(files, targetFramework), nil
+	paths := make([]string, len(group.Items))
+	for i, item := range group.Items {
+		paths[i] = item.Path
+	}
+	return paths
 }
 
-// SelectRefItems selects compile-time assemblies for a target framework
-func (r *PackageReader) SelectRefItems(targetFramework *frameworks.NuGetFramework) ([]string, error) {
-    files := r.GetPackageFiles()
-
-    selector := assets.NewAssetSelector()
-    return selector.GetRefItems(files, targetFramework), nil
+// FilterToDllExe filters paths to DLL/EXE/WINMD files
+func FilterToDllExe(paths []string) []string {
+	filtered := make([]string, 0, len(paths))
+	for _, path := range paths {
+		ext := strings.ToLower(filepath.Ext(path))
+		if ext == ".dll" || ext == ".exe" || ext == ".winmd" {
+			filtered = append(filtered, path)
+		}
+	}
+	return filtered
 }
 
-// SelectBestLibItems selects the best runtime assemblies using framework reducer
-func (r *PackageReader) SelectBestLibItems(targetFramework *frameworks.NuGetFramework) ([]string, error) {
-    return r.SelectLibItems(targetFramework)
+// GetLibItems gets runtime assemblies for target framework
+// Reference: LockFileUtils.cs CreateLockFileTargetLibrary (Lines 184-190)
+func GetLibItems(files []string, targetFramework *frameworks.NuGetFramework, conventions *ManagedCodeConventions) []string {
+	collection := NewContentItemCollection(files)
+	criteria := ForFramework(targetFramework, conventions.Properties)
+
+	paths := GetLockFileItems(criteria, collection, conventions.RuntimeAssemblies)
+	return FilterToDllExe(paths)
+}
+
+// GetRefItems gets compile-time reference assemblies
+// Reference: LockFileUtils.cs CreateLockFileTargetLibrary (Lines 177-183)
+func GetRefItems(files []string, targetFramework *frameworks.NuGetFramework, conventions *ManagedCodeConventions) []string {
+	collection := NewContentItemCollection(files)
+	criteria := ForFramework(targetFramework, conventions.Properties)
+
+	// Compile: ref takes precedence over lib
+	return GetLockFileItems(criteria, collection, conventions.CompileRefAssemblies, conventions.CompileLibAssemblies)
 }
 ```
 
 ### Verification Steps
 
 ```bash
-# 1. Run asset selection tests
-go test ./packaging/assets -v -run TestAssetSelection
+# 1. Run ContentItemCollection tests
+go test ./packaging/assets -v -run TestContentItemCollection
 
-# 2. Test framework selection
-go test ./packaging/assets -v -run TestFrameworkSelection
+# 2. Test FindBestItemGroup selection
+go test ./packaging/assets -v -run TestFindBestItemGroup
 
-# 3. Test with real packages
-go test ./packaging/assets -v -run TestSelectFromRealPackage
+# 3. Test SelectionCriteria building
+go test ./packaging/assets -v -run TestSelectionCriteria
 
-# 4. Test edge cases
-go test ./packaging/assets -v -run TestAssetSelectionEdgeCases
+# 4. Test framework resolution with FrameworkReducer
+go test ./packaging/assets -v -run TestFrameworkResolution
 
-# 5. Check test coverage
+# 5. Test GetLibItems/GetRefItems helpers
+go test ./packaging/assets -v -run TestGetLibItems
+go test ./packaging/assets -v -run TestGetRefItems
+
+# 6. Test RID fallback behavior
+go test ./packaging/assets -v -run TestRIDFallback
+
+# 7. Run interop tests against NuGet.Client
+cd tests/nuget-client-interop/GonugetInterop.Tests
+dotnet test --filter "FullyQualifiedName~ContentModelTests"
+
+# 8. Check test coverage (target: 90%+)
 go test ./packaging/assets -cover
 ```
 
 ### Acceptance Criteria
 
-- [ ] Select runtime assemblies for target framework
-- [ ] Select compile-time assemblies for target framework
-- [ ] Select native libraries for RID
-- [ ] Select MSBuild files
-- [ ] Use framework reducer for nearest match
-- [ ] Group assets by framework
-- [ ] Filter to DLL/EXE files
-- [ ] Handle missing assets gracefully
-- [ ] Integration with PackageReader
+- [ ] Implement `SelectionCriteria` with ordered entries for fallback
+- [ ] Implement `SelectionCriteriaBuilder` with fluent API
+- [ ] Implement `ForFramework()` helper for framework-only criteria
+- [ ] Implement `ForFrameworkAndRuntime()` with RID fallback
+- [ ] Implement `ContentItemCollection.PopulateItemGroups()`
+- [ ] Implement `ContentItemCollection.FindBestItemGroup()` with property comparison
+- [ ] Use `PropertyDefinition.Compare()` for framework selection
+- [ ] Use `PropertyDefinition.IsCriteriaSatisfied()` for compatibility testing
+- [ ] Implement `GetLockFileItems()` orchestration helper
+- [ ] Implement `FilterToDllExe()` to filter assemblies
+- [ ] Implement `GetLibItems()` for runtime assemblies
+- [ ] Implement `GetRefItems()` for compile-time reference assemblies
+- [ ] Handle ref/ precedence over lib/ for compile assemblies
+- [ ] Handle RID-specific then RID-agnostic fallback
+- [ ] Pass NuGet.Client interop tests (ContentModelTests.cs)
 - [ ] 90%+ test coverage
 
 ### Commit Message
 
 ```
-feat(packaging): implement framework-based asset selection
+feat(packaging): implement ContentModel asset selection with FindBestItemGroup
 
-Add asset selection for target frameworks:
-- Select runtime assemblies (lib/ folder)
-- Select compile-time assemblies (ref/ folder)
-- Select native libraries by RID
-- Select MSBuild files
-- Use FrameworkReducer for nearest match
-- Integration with PackageReader
+Add NuGet ContentModel asset selection matching NuGet.Client architecture:
+- ContentItemCollection with PopulateItemGroups and FindBestItemGroup
+- SelectionCriteria with ordered fallback entries (RID-specific → RID-agnostic)
+- SelectionCriteriaBuilder with fluent API
+- ForFramework and ForFrameworkAndRuntime helper functions
+- PropertyDefinition.Compare for framework precedence
+- PropertyDefinition.IsCriteriaSatisfied for compatibility testing
+- GetLockFileItems orchestration helper
+- GetLibItems for runtime assemblies (lib/ folder)
+- GetRefItems for compile assemblies (ref/ precedence over lib/)
+- FilterToDllExe for assembly filtering
+- Integration with FrameworkReducer for nearest compatible framework
 
-Reference: LockFileBuilder.cs GetLibItems
+This replaces the simplified AssetSelector pattern with the actual
+ContentItemCollection.FindBestItemGroup pattern used in NuGet.Client.
+
+Reference:
+- ContentItemCollection.cs (Lines 136-241) - FindBestItemGroup
+- LockFileUtils.cs (Lines 663-713) - GetLockFileItems
+- ManagedCodeConventions.cs (Lines 377-405) - Criteria building
 ```
 
 ---
