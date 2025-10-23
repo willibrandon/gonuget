@@ -239,25 +239,31 @@ func (dc *DiskCache) Set(sourceURL string, cacheKey string, data io.Reader, vali
 	// On Windows, rename fails if destination exists. Try remove then rename.
 	// This is the NuGet.Client pattern but has a race condition window.
 	// However, it's necessary for Windows compatibility.
-	if fileExists(cacheFile) && !isFileAlreadyOpen(cacheFile) {
-		_ = os.Remove(cacheFile)
-		// Retry rename after removal
-		if err := os.Rename(newFile, cacheFile); err != nil {
-			// If it still fails, check if another goroutine won the race
-			if fileExists(cacheFile) {
-				// Another goroutine completed successfully, clean up our temp file
-				_ = os.Remove(newFile)
-				return nil
+	if fileExists(cacheFile) {
+		// File exists - check if it's open
+		if !isFileAlreadyOpen(cacheFile) {
+			_ = os.Remove(cacheFile)
+			// Retry rename after removal
+			if err := os.Rename(newFile, cacheFile); err != nil {
+				// If it still fails, check if another goroutine won the race
+				if fileExists(cacheFile) {
+					// Another goroutine completed successfully, clean up our temp file
+					_ = os.Remove(newFile)
+					return nil
+				}
+				// Neither us nor another goroutine succeeded - this is an error
+				return fmt.Errorf("move cache file: %w", err)
 			}
-			// Neither us nor another goroutine succeeded - this is an error
-			return fmt.Errorf("move cache file: %w", err)
+			return nil // Our retry succeeded
 		}
-		return nil // Our retry succeeded
+		// File exists but is open - clean up temp and let the other writer finish
+		_ = os.Remove(newFile)
+		return nil
 	}
 
-	// File exists but is open, or doesn't exist - clean up temp and let it be
+	// File doesn't exist and rename failed - this is an error
 	_ = os.Remove(newFile)
-	return nil
+	return fmt.Errorf("rename failed and destination does not exist: %w", err)
 }
 
 // fileExists checks if a file exists.
