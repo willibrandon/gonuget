@@ -178,24 +178,21 @@ func readCacheFile(maxAge time.Duration, cacheFile string) (io.ReadCloser, bool)
 func (dc *DiskCache) Set(sourceURL string, cacheKey string, data io.Reader, validate func(io.ReadSeeker) error) error {
 	cacheFile, _ := dc.GetCachePath(sourceURL, cacheKey)
 
-	// Create unique temp file for this operation to avoid collisions
-	newFile := cacheFile + fmt.Sprintf("-new.%d", time.Now().UnixNano())
-
-	// Get directory paths
-	newFileDir := filepath.Dir(newFile)
+	// Create cache directory first
 	cacheFileDir := filepath.Dir(cacheFile)
-
-	// Create new file directory
-	if err := os.MkdirAll(newFileDir, 0755); err != nil {
+	if err := os.MkdirAll(cacheFileDir, 0755); err != nil {
 		return fmt.Errorf("create cache directory: %w", err)
 	}
 
-	// Phase 1: Write to temporary file
-	// Use O_RDWR to allow validation reading after writing
-	tempFile, err := os.OpenFile(newFile, os.O_CREATE|os.O_RDWR|os.O_TRUNC, 0644)
+	// Create truly unique temp file for this operation to avoid collisions
+	// Use CreateTemp to ensure uniqueness even when multiple goroutines start simultaneously
+	tempFile, err := os.CreateTemp(cacheFileDir, filepath.Base(cacheFile)+"-new.*")
 	if err != nil {
 		return fmt.Errorf("create temp file: %w", err)
 	}
+	newFile := tempFile.Name()
+
+	// Temp file is already open from CreateTemp
 	defer func() { _ = tempFile.Close() }()
 
 	// Copy data to temp file
@@ -222,13 +219,6 @@ func (dc *DiskCache) Set(sourceURL string, cacheKey string, data io.Reader, vali
 	// This matches NuGet.Client's two-phase update pattern:
 	// 1. Delete old file (if not already open)
 	// 2. Move new file to cache location
-
-	// Create cache file directory if different from new file directory
-	if cacheFileDir != newFileDir {
-		if err := os.MkdirAll(cacheFileDir, 0755); err != nil {
-			return fmt.Errorf("create final cache directory: %w", err)
-		}
-	}
 
 	// Try atomic rename first (works on Unix, may fail on Windows if destination exists)
 	err = os.Rename(newFile, cacheFile)
