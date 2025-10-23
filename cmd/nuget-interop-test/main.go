@@ -105,6 +105,8 @@ func main() {
 		handler = &SanitizeCacheFilenameHandler{}
 	case "generate_cache_paths":
 		handler = &GenerateCachePathsHandler{}
+	case "validate_cache_file":
+		handler = &ValidateCacheFileHandler{}
 
 	default:
 		sendError("ACT_001", "Unknown action", fmt.Sprintf("action=%s", req.Action))

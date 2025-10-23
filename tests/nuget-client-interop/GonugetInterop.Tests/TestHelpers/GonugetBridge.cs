@@ -357,6 +357,26 @@ public static class GonugetBridge
     }
 
     /// <summary>
+    /// Validates whether a cache file is still valid based on its age and the maximum allowed age.
+    /// Matches NuGet.Client's CachingUtility.ReadCacheFile() TTL validation logic.
+    /// </summary>
+    /// <param name="cacheDirectory">The root cache directory path.</param>
+    /// <param name="sourceURL">The source URL for the cached resource.</param>
+    /// <param name="cacheKey">The cache key for the file.</param>
+    /// <param name="maxAgeSeconds">The maximum age in seconds before the cache is considered expired.</param>
+    /// <returns>True if the file exists and is within the TTL, false if missing or expired.</returns>
+    public static ValidateCacheFileResponse ValidateCacheFile(string cacheDirectory, string sourceURL, string cacheKey, long maxAgeSeconds)
+    {
+        var request = new
+        {
+            action = "validate_cache_file",
+            data = new { cacheDirectory, sourceURL, cacheKey, maxAgeSeconds }
+        };
+
+        return Execute<ValidateCacheFileResponse>(request);
+    }
+
+    /// <summary>
     /// Executes a request against the gonuget CLI and deserializes the response.
     /// </summary>
     private static TResponse Execute<TResponse>(object request)

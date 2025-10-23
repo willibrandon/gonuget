@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/willibrandon/gonuget/cache"
 )
@@ -96,5 +97,51 @@ func (h *GenerateCachePathsHandler) Handle(data json.RawMessage) (interface{}, e
 		BaseFolderName: baseFolderName,
 		CacheFile:      cacheFile,
 		NewFile:        newFile,
+	}, nil
+}
+
+// ValidateCacheFileHandler validates TTL expiration logic for a cache file.
+// This validates that gonuget matches NuGet.Client's CachingUtility.ReadCacheFile() TTL behavior.
+type ValidateCacheFileHandler struct{}
+
+func (h *ValidateCacheFileHandler) ErrorCode() string { return "CACHE_VALIDATE_001" }
+
+func (h *ValidateCacheFileHandler) Handle(data json.RawMessage) (interface{}, error) {
+	var req ValidateCacheFileRequest
+	if err := json.Unmarshal(data, &req); err != nil {
+		return nil, fmt.Errorf("parse request: %w", err)
+	}
+
+	// Validate required fields
+	if req.CacheDirectory == "" {
+		return nil, fmt.Errorf("cacheDirectory is required")
+	}
+	if req.SourceURL == "" {
+		return nil, fmt.Errorf("sourceURL is required")
+	}
+	if req.CacheKey == "" {
+		return nil, fmt.Errorf("cacheKey is required")
+	}
+
+	// Create disk cache instance
+	dc, err := cache.NewDiskCache(req.CacheDirectory, 1024*1024*100) // 100MB max
+	if err != nil {
+		return nil, fmt.Errorf("create disk cache: %w", err)
+	}
+
+	// Try to get the file with the specified max age
+	maxAge := time.Duration(req.MaxAgeSeconds) * time.Second
+	reader, valid, err := dc.Get(req.SourceURL, req.CacheKey, maxAge)
+	if err != nil {
+		return nil, fmt.Errorf("validate cache file: %w", err)
+	}
+
+	// Close reader if we got one
+	if reader != nil {
+		_ = reader.Close()
+	}
+
+	return ValidateCacheFileResponse{
+		Valid: valid,
 	}, nil
 }

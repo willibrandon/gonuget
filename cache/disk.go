@@ -34,7 +34,16 @@ type DiskCache struct {
 }
 
 // NewDiskCache creates a new disk cache.
+// If rootDir is empty, cache operations are disabled (NoCache mode).
 func NewDiskCache(rootDir string, maxSize int64) (*DiskCache, error) {
+	// Empty rootDir means cache disabled (NoCache mode)
+	if rootDir == "" {
+		return &DiskCache{
+			rootDir: "",
+			maxSize: maxSize,
+		}, nil
+	}
+
 	// Create root directory if it doesn't exist
 	if err := os.MkdirAll(rootDir, 0755); err != nil {
 		return nil, fmt.Errorf("create cache directory: %w", err)
@@ -137,7 +146,13 @@ func (dc *DiskCache) GetCachePath(sourceURL string, cacheKey string) (cacheFile 
 
 // Get retrieves a cached file if it exists and is not expired.
 // Returns (reader, true) if found and valid, (nil, false) otherwise.
+// In NoCache mode (empty rootDir), always returns cache miss.
 func (dc *DiskCache) Get(sourceURL string, cacheKey string, maxAge time.Duration) (io.ReadCloser, bool, error) {
+	// NoCache mode: always return miss
+	if dc.rootDir == "" {
+		return nil, false, nil
+	}
+
 	cacheFile, _ := dc.GetCachePath(sourceURL, cacheKey)
 
 	// Check if file exists and is not expired
@@ -175,7 +190,14 @@ func readCacheFile(maxAge time.Duration, cacheFile string) (io.ReadCloser, bool)
 
 // Set writes data to the cache using atomic two-phase update.
 // Matches NuGet.Client's HttpCacheUtility.CreateCacheFileAsync.
+// In NoCache mode (empty rootDir), this is a no-op.
 func (dc *DiskCache) Set(sourceURL string, cacheKey string, data io.Reader, validate func(io.ReadSeeker) error) error {
+	// NoCache mode: discard data and return success
+	if dc.rootDir == "" {
+		_, _ = io.Copy(io.Discard, data)
+		return nil
+	}
+
 	cacheFile, _ := dc.GetCachePath(sourceURL, cacheKey)
 
 	// Create cache directory first

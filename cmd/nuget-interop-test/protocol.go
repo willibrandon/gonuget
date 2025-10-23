@@ -396,3 +396,25 @@ type GenerateCachePathsResponse struct {
 	// NewFile is the full path to the temporary file during atomic writes.
 	NewFile string `json:"newFile"`
 }
+
+// ValidateCacheFileRequest asks gonuget to validate cache file TTL expiration.
+// This validates CachingUtility.ReadCacheFile() TTL logic compatibility.
+type ValidateCacheFileRequest struct {
+	// CacheDirectory is the root cache directory path.
+	CacheDirectory string `json:"cacheDirectory"`
+
+	// SourceURL is the source URL for the cached resource.
+	SourceURL string `json:"sourceURL"`
+
+	// CacheKey is the cache key for the file.
+	CacheKey string `json:"cacheKey"`
+
+	// MaxAgeSeconds is the maximum age in seconds before the cache is considered expired.
+	MaxAgeSeconds int64 `json:"maxAgeSeconds"`
+}
+
+// ValidateCacheFileResponse indicates whether the cache file is valid (not expired).
+type ValidateCacheFileResponse struct {
+	// Valid is true if the file exists and is within the TTL, false if missing or expired.
+	Valid bool `json:"valid"`
+}
