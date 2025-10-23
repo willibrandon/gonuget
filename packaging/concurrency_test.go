@@ -341,9 +341,15 @@ func TestWithFileLock(t *testing.T) {
 	}
 
 	// Verify lock is released after function completes
-	lockPath := targetPath + LockFileExtension
-	if _, err := os.Stat(lockPath); err == nil {
-		t.Errorf("Lock file not cleaned up after WithFileLock()")
+	// Note: On Unix, lock files are intentionally NOT removed (like NuGet.Client)
+	// On Windows, they are removed. We just verify the lock is released by
+	// successfully acquiring it again.
+	unlock2, err := acquireFileLock(ctx, targetPath)
+	if err != nil {
+		t.Errorf("Failed to acquire lock after release: %v", err)
+	}
+	if unlock2 != nil {
+		unlock2()
 	}
 }
 
@@ -363,9 +369,15 @@ func TestWithFileLock_FunctionError(t *testing.T) {
 	}
 
 	// Verify lock is released even after error
-	lockPath := targetPath + LockFileExtension
-	if _, err := os.Stat(lockPath); err == nil {
-		t.Errorf("Lock file not cleaned up after error in WithFileLock()")
+	// Note: On Unix, lock files are intentionally NOT removed (like NuGet.Client)
+	// We just verify the lock is released by successfully acquiring it again.
+	ctx2 := context.Background()
+	unlock2, err2 := acquireFileLock(ctx2, targetPath)
+	if err2 != nil {
+		t.Errorf("Failed to acquire lock after error release: %v", err2)
+	}
+	if unlock2 != nil {
+		unlock2()
 	}
 }
 

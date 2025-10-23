@@ -4,11 +4,9 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
-	"syscall"
 	"time"
 )
 
@@ -71,9 +69,9 @@ func acquireFileLock(ctx context.Context, targetPath string) (unlock func(), err
 		lock, err := tryAcquireLock(lockFilePath)
 		if err == nil {
 			// Lock acquired successfully
+			// Note: releaseLock is platform-specific (Unix vs Windows)
 			unlock := func() {
-				_ = lock.lockFile.Close()
-				_ = os.Remove(lock.lockFilePath)
+				releaseLock(lock)
 			}
 			return unlock, nil
 		}
@@ -83,33 +81,10 @@ func acquireFileLock(ctx context.Context, targetPath string) (unlock func(), err
 	}
 }
 
-// tryAcquireLock attempts to acquire the file lock using flock (Unix) or exclusive file access.
+// tryAcquireLock attempts to acquire the file lock.
+// Platform-specific implementation in concurrency_unix.go and concurrency_windows.go
 // Returns non-nil error if lock is held by another process.
 // Reference: NuGet.Client ConcurrencyUtilities.AcquireFileStream with FileShare.None
-func tryAcquireLock(lockFilePath string) (*FileLock, error) {
-	// Open or create the lock file
-	lockFile, err := os.OpenFile(lockFilePath, os.O_CREATE|os.O_RDWR, 0644)
-	if err != nil {
-		return nil, fmt.Errorf("open lock file: %w", err)
-	}
-
-	// Try to acquire exclusive lock (non-blocking)
-	// syscall.LOCK_EX = exclusive lock
-	// syscall.LOCK_NB = non-blocking (return error if can't acquire immediately)
-	err = syscall.Flock(int(lockFile.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
-	if err != nil {
-		_ = lockFile.Close()
-		if errors.Is(err, syscall.EWOULDBLOCK) || errors.Is(err, syscall.EAGAIN) {
-			return nil, fmt.Errorf("lock held by another process")
-		}
-		return nil, fmt.Errorf("flock error: %w", err)
-	}
-
-	return &FileLock{
-		lockFilePath: lockFilePath,
-		lockFile:     lockFile,
-	}, nil
-}
 
 // generateRandomHex generates a random hex string of specified length.
 func generateRandomHex(length int) string {

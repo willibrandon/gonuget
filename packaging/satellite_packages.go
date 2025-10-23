@@ -79,9 +79,9 @@ func IsSatellitePackage(reader *PackageReader, identity *PackageIdentity) (bool,
 }
 
 // extractSatelliteFilesV2 extracts satellite package files to runtime package directory (V2 layout).
+// Reference: NuGet.Client PackageExtractor.CopySatelliteFilesAsync
 func extractSatelliteFilesV2(
 	packageReader *PackageReader,
-	satelliteIdentity *PackageIdentity,
 	runtimeIdentity *PackageIdentity,
 	pathResolver *PackagePathResolver,
 	saveMode PackageSaveMode,
@@ -108,8 +108,9 @@ func extractSatelliteFilesV2(
 	extractor := NewPackageFileExtractor(fileNames, XMLDocFileSaveModeNone) // Satellites don't use XML doc compression
 
 	for _, file := range files {
-		// Skip OPC metadata (same exclusions as regular extraction)
-		if shouldExcludeFile(file.Name) {
+		// Filter files based on PackageSaveMode (same as NuGet.Client)
+		// Reference: NuGet.Client PackageExtractor.CopySatelliteFilesAsync uses IsPackageFile
+		if !isPackageFile(file.Name, saveMode) {
 			continue
 		}
 
@@ -148,9 +149,9 @@ func extractSatelliteFilesV2(
 }
 
 // extractSatelliteFilesV3 extracts satellite package files to runtime package directory (V3 layout).
+// Reference: NuGet.Client PackageExtractor.CopySatelliteFilesAsync
 func extractSatelliteFilesV3(
 	packageReader *PackageReader,
-	satelliteIdentity *PackageIdentity,
 	runtimeIdentity *PackageIdentity,
 	versionResolver *VersionFolderPathResolver,
 	saveMode PackageSaveMode,
@@ -176,8 +177,9 @@ func extractSatelliteFilesV3(
 	extractor := NewPackageFileExtractor(fileNames, XMLDocFileSaveModeNone)
 
 	for _, file := range files {
-		// Skip OPC metadata
-		if shouldExcludeFile(file.Name) {
+		// Filter files based on PackageSaveMode (same as NuGet.Client)
+		// Reference: NuGet.Client PackageExtractor.CopySatelliteFilesAsync uses IsPackageFile
+		if !isPackageFile(file.Name, saveMode) {
 			continue
 		}
 
@@ -225,6 +227,36 @@ func isRootMetadata(path string) bool {
 	return strings.HasSuffix(lower, ".nuspec") || strings.HasSuffix(lower, ".nupkg")
 }
 
+// isPackageFile determines if a file should be extracted based on PackageSaveMode.
+// Reference: NuGet.Client PackageHelper.IsPackageFile
+func isPackageFile(fileName string, saveMode PackageSaveMode) bool {
+	if fileName == "" || filepath.Base(fileName) == "" {
+		// Ignore directory entries
+		return false
+	}
+
+	// Check if file is .nuspec
+	if strings.HasSuffix(strings.ToLower(fileName), ".nuspec") {
+		return (saveMode & PackageSaveModeNuspec) == PackageSaveModeNuspec
+	}
+
+	// For other files, check if Files mode is enabled
+	if (saveMode & PackageSaveModeFiles) == PackageSaveModeFiles {
+		// Exclude files that should always be skipped
+		if shouldExcludeFile(fileName) {
+			return false
+		}
+		// Exclude NuGet-generated files (.nupkg.sha512, .nupkg.metadata)
+		lower := strings.ToLower(fileName)
+		if strings.HasSuffix(lower, ".nupkg.sha512") || strings.HasSuffix(lower, ".nupkg.metadata") {
+			return false
+		}
+		return true
+	}
+
+	return false
+}
+
 // CopySatelliteFilesIfApplicableV2 checks if the package is a satellite package and copies files to runtime package (V2 layout).
 // Returns true if satellite files were copied, false otherwise.
 func CopySatelliteFilesIfApplicableV2(
@@ -244,7 +276,7 @@ func CopySatelliteFilesIfApplicableV2(
 	}
 
 	// Extract and merge satellite files
-	if err := extractSatelliteFilesV2(packageReader, identity, runtimeIdentity, pathResolver, saveMode, logger); err != nil {
+	if err := extractSatelliteFilesV2(packageReader, runtimeIdentity, pathResolver, saveMode, logger); err != nil {
 		return false, fmt.Errorf("extract satellite files: %w", err)
 	}
 
@@ -273,7 +305,7 @@ func CopySatelliteFilesIfApplicableV3(
 	}
 
 	// Extract and merge satellite files
-	if err := extractSatelliteFilesV3(packageReader, identity, runtimeIdentity, versionResolver, saveMode, logger); err != nil {
+	if err := extractSatelliteFilesV3(packageReader, runtimeIdentity, versionResolver, saveMode, logger); err != nil {
 		return false, fmt.Errorf("extract satellite files: %w", err)
 	}
 
