@@ -342,3 +342,57 @@ type InstallFromSourceV3Response struct {
 	// MetadataPath is the path to the .nupkg.metadata file.
 	MetadataPath string `json:"metadataPath"`
 }
+
+// ComputeCacheHashRequest asks gonuget to compute a cache hash.
+// This validates CachingUtility.ComputeHash() compatibility.
+type ComputeCacheHashRequest struct {
+	// Value is the string to hash (usually a URL or package ID).
+	Value string `json:"value"`
+
+	// AddIdentifiableCharacters appends trailing portion for readability.
+	AddIdentifiableCharacters bool `json:"addIdentifiableCharacters"`
+}
+
+// ComputeCacheHashResponse contains the computed hash string.
+type ComputeCacheHashResponse struct {
+	// Hash is the computed cache hash (40-char hex + optional trailing chars).
+	Hash string `json:"hash"`
+}
+
+// SanitizeCacheFilenameRequest asks gonuget to sanitize a filename.
+// This validates CachingUtility.RemoveInvalidFileNameChars() compatibility.
+type SanitizeCacheFilenameRequest struct {
+	// Value is the filename or path to sanitize.
+	Value string `json:"value"`
+}
+
+// SanitizeCacheFilenameResponse contains the sanitized filename.
+type SanitizeCacheFilenameResponse struct {
+	// Sanitized is the filename with invalid chars replaced and collapsed.
+	Sanitized string `json:"sanitized"`
+}
+
+// GenerateCachePathsRequest asks gonuget to generate cache file paths.
+// This validates HttpCacheUtility.InitializeHttpCacheResult() compatibility.
+type GenerateCachePathsRequest struct {
+	// CacheDirectory is the root cache directory path.
+	CacheDirectory string `json:"cacheDirectory"`
+
+	// SourceURL is the source URL to hash for the folder name.
+	SourceURL string `json:"sourceURL"`
+
+	// CacheKey is the cache key for the file name.
+	CacheKey string `json:"cacheKey"`
+}
+
+// GenerateCachePathsResponse contains the generated cache paths.
+type GenerateCachePathsResponse struct {
+	// BaseFolderName is the hash-based folder name.
+	BaseFolderName string `json:"baseFolderName"`
+
+	// CacheFile is the full path to the cache file.
+	CacheFile string `json:"cacheFile"`
+
+	// NewFile is the full path to the temporary file during atomic writes.
+	NewFile string `json:"newFile"`
+}

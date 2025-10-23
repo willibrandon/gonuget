@@ -306,6 +306,57 @@ public static class GonugetBridge
     }
 
     /// <summary>
+    /// Computes a cache hash for a given value using gonuget's algorithm.
+    /// </summary>
+    /// <param name="value">The string to hash (usually a URL or package ID).</param>
+    /// <param name="addIdentifiableCharacters">Whether to append trailing portion for readability.</param>
+    /// <returns>The computed cache hash (40-char hex + optional trailing chars).</returns>
+    public static ComputeCacheHashResponse ComputeCacheHash(string value, bool addIdentifiableCharacters = true)
+    {
+        var request = new
+        {
+            action = "compute_cache_hash",
+            data = new { value, addIdentifiableCharacters }
+        };
+
+        return Execute<ComputeCacheHashResponse>(request);
+    }
+
+    /// <summary>
+    /// Sanitizes a filename by removing invalid characters using gonuget's algorithm.
+    /// </summary>
+    /// <param name="value">The filename or path to sanitize.</param>
+    /// <returns>The sanitized filename with invalid chars replaced and collapsed.</returns>
+    public static SanitizeCacheFilenameResponse SanitizeCacheFilename(string value)
+    {
+        var request = new
+        {
+            action = "sanitize_cache_filename",
+            data = new { value }
+        };
+
+        return Execute<SanitizeCacheFilenameResponse>(request);
+    }
+
+    /// <summary>
+    /// Generates cache file paths for a source URL and cache key using gonuget's algorithm.
+    /// </summary>
+    /// <param name="cacheDirectory">The root cache directory path.</param>
+    /// <param name="sourceURL">The source URL to hash for the folder name.</param>
+    /// <param name="cacheKey">The cache key for the file name.</param>
+    /// <returns>The generated cache paths (base folder name, cache file, new file).</returns>
+    public static GenerateCachePathsResponse GenerateCachePaths(string cacheDirectory, string sourceURL, string cacheKey)
+    {
+        var request = new
+        {
+            action = "generate_cache_paths",
+            data = new { cacheDirectory, sourceURL, cacheKey }
+        };
+
+        return Execute<GenerateCachePathsResponse>(request);
+    }
+
+    /// <summary>
     /// Executes a request against the gonuget CLI and deserializes the response.
     /// </summary>
     private static TResponse Execute<TResponse>(object request)

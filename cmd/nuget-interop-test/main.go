@@ -98,6 +98,14 @@ func main() {
 	case "are_runtimes_compatible":
 		handler = &AreRuntimesCompatibleHandler{}
 
+	// Cache operations
+	case "compute_cache_hash":
+		handler = &ComputeCacheHashHandler{}
+	case "sanitize_cache_filename":
+		handler = &SanitizeCacheFilenameHandler{}
+	case "generate_cache_paths":
+		handler = &GenerateCachePathsHandler{}
+
 	default:
 		sendError("ACT_001", "Unknown action", fmt.Sprintf("action=%s", req.Action))
 		os.Exit(1)
