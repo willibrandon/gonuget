@@ -1,16 +1,16 @@
 # gonuget Implementation Roadmap
 
 **Version:** 1.0
-**Last Updated:** 2025-10-20
+**Last Updated:** 2025-10-22
 
 ---
 
 ## Quick Navigation
 
-- **Total Chunks:** 87
-- **Completed:** 30/87 (34.5%)
-- **Current Chunk:** M3.1
-- **Estimated Total Time:** ~210 hours (35 weeks @ 6 hrs/week)
+- **Total Chunks:** 88
+- **Completed:** 45/88 (51.1%)
+- **Current Chunk:** M4.1
+- **Estimated Total Time:** ~212 hours (35 weeks @ 6 hrs/week)
 
 ---
 
@@ -55,9 +55,9 @@ Each chunk entry includes:
 
 ### [M3] Package Operations (Weeks 11-14)
 **Goal:** Package reading, creation, validation
-**Chunks:** 14
-**Status:** 0/14 complete (0%)
-**Est. Time:** 32 hours
+**Chunks:** 15
+**Status:** 15/15 complete (100%)
+**Est. Time:** 34 hours
 
 ### [M4] Infrastructure & Resilience (Weeks 15-18)
 **Goal:** Caching, retry, circuit breaker, observability
@@ -325,113 +325,120 @@ Each chunk entry includes:
 
 ## Milestone 3: Package Operations
 
-**Files:** `IMPL-M3-PACKAGING.md`, `IMPL-M3-PACKAGING-CONTINUED.md`, `IMPL-M3-PACKAGING-CONTINUED-2.md`, `IMPL-M3-PACKAGING-CONTINUED-3.md`
-**Chunks:** 14
-**Est. Total Time:** 32 hours
+**Files:** `IMPL-M3-PACKAGING.md`, `IMPL-M3-PACKAGING-CONTINUED.md`, `IMPL-M3-PACKAGING-CONTINUED-2.md`, `IMPL-M3-PACKAGING-CONTINUED-3.md`, `M3.15-FRAMEWORK-FORMATTING.md`
+**Chunks:** 15
+**Est. Total Time:** 34 hours
 
 ### M3.1: Package Reader - ZIP Access
-- **Status:** [ ] Not Started
+- **Status:** [x] Complete
 - **Dependencies:** M1.1
 - **Est. Time:** 2 hours
 - **Verification:** `go test ./packaging -run TestPackageReader`
 - **Commit:** `feat(packaging): add PackageReader with ZIP access`
 
 ### M3.2: Package Reader - Nuspec Parser
-- **Status:** [ ] Not Started
+- **Status:** [x] Complete
 - **Dependencies:** M3.1, M1.12
 - **Est. Time:** 3 hours
 - **Verification:** `go test ./packaging -run TestNuspecReader`
 - **Commit:** `feat(packaging): implement nuspec XML parsing and validation`
 
 ### M3.3: Package Reader - File Access
-- **Status:** [ ] Not Started
+- **Status:** [x] Complete
 - **Dependencies:** M3.1
 - **Est. Time:** 2 hours
 - **Verification:** `go test ./packaging -run TestPackageFiles`
 - **Commit:** `feat(packaging): add package file enumeration and access`
 
 ### M3.4: Package Builder - Core API
-- **Status:** [ ] Not Started
+- **Status:** [x] Complete
 - **Dependencies:** M3.2
 - **Est. Time:** 2 hours
 - **Verification:** `go test ./packaging -run TestPackageBuilder`
 - **Commit:** `feat(packaging): add PackageBuilder core API`
 
 ### M3.5: Package Builder - OPC Compliance
-- **Status:** [ ] Not Started
+- **Status:** [x] Complete
 - **Dependencies:** M3.4
 - **Est. Time:** 2 hours
 - **Verification:** `go test ./packaging -run TestOPCCompliance`
 - **Commit:** `feat(packaging): implement OPC compliance for package creation`
 
 ### M3.6: Package Builder - File Addition and Save
-- **Status:** [ ] Not Started
+- **Status:** [x] Complete
 - **Dependencies:** M3.5
 - **Est. Time:** 2 hours
 - **Verification:** `go test ./packaging -run TestBuildAndSave`
 - **Commit:** `feat(packaging): implement file addition and package save`
 
 ### M3.7: Package Validation Rules
-- **Status:** [ ] Not Started
+- **Status:** [x] Complete
 - **Dependencies:** M3.2, M1.11
 - **Est. Time:** 3 hours
 - **Verification:** `go test ./packaging -run TestValidation`
 - **Commit:** `feat(packaging): add comprehensive package validation rules`
 
 ### M3.8: Package Signature Reader
-- **Status:** [ ] Not Started
+- **Status:** [x] Complete
 - **Dependencies:** M3.1
 - **Est. Time:** 3 hours
 - **Verification:** `go test ./packaging/signing -run TestSignatureReader`
 - **Commit:** `feat(signing): add PKCS#7 signature reader`
 
 ### M3.9: Package Signature Verification
-- **Status:** [ ] Not Started
+- **Status:** [x] Complete
 - **Dependencies:** M3.8
 - **Est. Time:** 3 hours
 - **Verification:** `go test ./packaging/signing -run TestSignatureVerification`
 - **Commit:** `feat(signing): implement signature and certificate chain verification`
 
 ### M3.10: Package Signature Creation
-- **Status:** [ ] Not Started
+- **Status:** [x] Complete
 - **Dependencies:** M3.8
 - **Est. Time:** 2 hours
 - **Verification:** `go test ./packaging/signing -run TestSignatureCreation`
 - **Commit:** `feat(signing): add package signing and timestamp support`
 
 ### M3.11: Asset Selection - Pattern Engine
-- **Status:** [ ] Not Started
+- **Status:** [x] Complete
 - **Dependencies:** M3.1
 - **Est. Time:** 3 hours
 - **Verification:** `go test ./packaging -run TestPatternEngine`
 - **Commit:** `feat(packaging): implement pattern-based asset selection engine`
 
 ### M3.12: Asset Selection - Framework Resolution
-- **Status:** [ ] Not Started
+- **Status:** [x] Complete
 - **Dependencies:** M3.11, M1.11
 - **Est. Time:** 3 hours
 - **Verification:** `go test ./packaging -run TestFrameworkAssets`
 - **Commit:** `feat(packaging): add framework-based asset resolution`
 
 ### M3.13: Asset Selection - RID Resolution
-- **Status:** [ ] Not Started
+- **Status:** [x] Complete
 - **Dependencies:** M3.12
 - **Est. Time:** 2 hours
 - **Verification:** `go test ./packaging -run TestRIDAssets`
 - **Commit:** `feat(packaging): add runtime identifier asset resolution`
 
 ### M3.14: Package Extraction
-- **Status:** [ ] Not Started
+- **Status:** [x] Complete
 - **Dependencies:** M3.3, M3.12
 - **Est. Time:** 2 hours
 - **Verification:** `go test ./packaging -run TestPackageExtractor`
 - **Commit:** `feat(packaging): implement package extraction with asset selection`
 
+### M3.15: Framework Formatting and PCL Parsing
+- **Status:** [x] Complete
+- **Dependencies:** M1.9
+- **Est. Time:** 2 hours
+- **Verification:** `go test ./frameworks -run TestGetShortFolderName`
+- **Commit:** `feat: implement GetShortFolderName with NuGet.Client parity`
+
 ---
 
 ## Milestone 4: Infrastructure & Resilience
 
-**File:** `IMPL-M4-INFRASTRUCTURE.md`
+**Files:** `IMPL-M4-CACHE.md`, `IMPL-M4-RESILIENCE.md`, `IMPL-M4-OBSERVABILITY.md`, `IMPL-M4-HTTP3.md`
 **Chunks:** 15
 **Est. Total Time:** 40 hours
 
