@@ -281,13 +281,28 @@ func cleanDirectory(path string) error {
 }
 
 // cleanupPartialInstall cleans up after failed installation.
+// For concurrent safety, only removes the temp nupkg and the target directory
+// if it's empty. This prevents deleting files from other concurrent installations.
+// Reference: NuGet.Client PackageExtractor.DeleteTargetAndTempPaths
 func cleanupPartialInstall(targetPath, tempNupkg string) {
-	_ = os.Remove(tempNupkg)
-	_ = os.RemoveAll(targetPath)
+	// Remove temp nupkg file
+	if tempNupkg != "" {
+		_ = os.Remove(tempNupkg)
+	}
 
-	// Try to remove parent if empty
-	parent := filepath.Dir(targetPath)
-	_ = os.Remove(parent) // Fails if not empty, which is fine
+	// Remove target directory only if it's empty (non-recursive)
+	// This is safe for concurrent operations because:
+	// 1. If other installations are in progress, the directory won't be empty
+	// 2. os.Remove fails silently if directory is not empty
+	if targetPath != "" {
+		_ = os.Remove(targetPath)
+
+		// Try to remove parent if empty (version directory)
+		parent := filepath.Dir(targetPath)
+		if parent != "" && parent != "." && parent != "/" {
+			_ = os.Remove(parent)
+		}
+	}
 }
 
 // getContentHash returns the content hash for a package.
