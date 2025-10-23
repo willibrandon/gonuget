@@ -77,6 +77,10 @@ func main() {
 		handler = &ReadPackageHandler{}
 	case "build_package":
 		handler = &BuildPackageHandler{}
+	case "extract_package_v2":
+		handler = &ExtractPackageV2Handler{}
+	case "install_from_source_v3":
+		handler = &InstallFromSourceV3Handler{}
 
 	// Asset selection operations
 	case "find_runtime_assemblies":

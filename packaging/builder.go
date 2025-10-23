@@ -621,7 +621,8 @@ func (b *PackageBuilder) writeFile(zipWriter *zip.Writer, file PackageFile) erro
 	}
 
 	// Write from source
-	if file.SourcePath != "" {
+	switch {
+	case file.SourcePath != "":
 		// Read from disk
 		sourceFile, err := os.Open(file.SourcePath)
 		if err != nil {
@@ -632,17 +633,17 @@ func (b *PackageBuilder) writeFile(zipWriter *zip.Writer, file PackageFile) erro
 		if _, err := io.Copy(writer, sourceFile); err != nil {
 			return fmt.Errorf("copy from source: %w", err)
 		}
-	} else if file.Content != nil {
+	case file.Content != nil:
 		// Write from bytes
 		if _, err := writer.Write(file.Content); err != nil {
 			return fmt.Errorf("write content: %w", err)
 		}
-	} else if file.Reader != nil {
+	case file.Reader != nil:
 		// Write from reader
 		if _, err := io.Copy(writer, file.Reader); err != nil {
 			return fmt.Errorf("copy from reader: %w", err)
 		}
-	} else {
+	default:
 		return fmt.Errorf("no content source for file")
 	}
 

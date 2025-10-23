@@ -261,10 +261,8 @@ func TestContentItemCollection_FindBestItemGroup(t *testing.T) {
 				if len(group.Items) != tt.wantItems {
 					t.Errorf("want %d items, got %d", tt.wantItems, len(group.Items))
 				}
-			} else {
-				if group != nil {
-					t.Errorf("want nil group, got %v", group)
-				}
+			} else if group != nil {
+				t.Errorf("want nil group, got %v", group)
 			}
 		})
 	}

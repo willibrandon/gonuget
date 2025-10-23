@@ -217,10 +217,8 @@ func TestSigningOptions_Validate(t *testing.T) {
 				if tc.errorMsg != "" && !contains(err.Error(), tc.errorMsg) {
 					t.Errorf("expected error containing '%s', got '%v'", tc.errorMsg, err)
 				}
-			} else {
-				if err != nil {
-					t.Fatalf("unexpected error: %v", err)
-				}
+			} else if err != nil {
+				t.Fatalf("unexpected error: %v", err)
 			}
 		})
 	}

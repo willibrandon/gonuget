@@ -76,12 +76,19 @@ func parseRangeSyntax(s string) (*VersionRange, error) {
 
 	// Split on comma
 	parts := strings.Split(s, ",")
-	if len(parts) != 2 {
-		return nil, fmt.Errorf("range must have exactly two parts separated by comma")
-	}
 
-	minPart := strings.TrimSpace(parts[0])
-	maxPart := strings.TrimSpace(parts[1])
+	// Handle single-part exact version syntax [1.0.0] -> [1.0.0, 1.0.0]
+	var minPart, maxPart string
+	switch len(parts) {
+	case 1:
+		minPart = strings.TrimSpace(parts[0])
+		maxPart = minPart // Exact version match
+	case 2:
+		minPart = strings.TrimSpace(parts[0])
+		maxPart = strings.TrimSpace(parts[1])
+	default:
+		return nil, fmt.Errorf("range must have one or two parts separated by comma")
+	}
 
 	var minVersion, maxVersion *NuGetVersion
 	var err error

@@ -258,3 +258,74 @@ type AreRuntimesCompatibleResponse struct {
 	// Compatible is true if the package RID is compatible with the target RID.
 	Compatible bool `json:"compatible"`
 }
+
+// ExtractPackageV2Request extracts a package using V2 (packages.config) layout.
+type ExtractPackageV2Request struct {
+	// PackageBytes is the ZIP package content.
+	PackageBytes []byte `json:"packageBytes"`
+
+	// InstallPath is the target directory for extraction.
+	InstallPath string `json:"installPath"`
+
+	// PackageSaveMode controls what to extract (nuspec, files, nupkg).
+	// Bitmask: 1=Nuspec, 2=Nupkg, 4=Files
+	PackageSaveMode int `json:"packageSaveMode"`
+
+	// UseSideBySideLayout controls directory naming (ID.Version vs ID).
+	UseSideBySideLayout bool `json:"useSideBySideLayout"`
+
+	// XMLDocFileSaveMode controls XML doc compression (0=None, 1=Skip, 2=Compress).
+	XMLDocFileSaveMode int `json:"xmlDocFileSaveMode"`
+}
+
+// ExtractPackageV2Response contains extraction results.
+type ExtractPackageV2Response struct {
+	// ExtractedFiles are paths to all extracted files.
+	ExtractedFiles []string `json:"extractedFiles"`
+
+	// FileCount is the number of files extracted.
+	FileCount int `json:"fileCount"`
+}
+
+// InstallFromSourceV3Request installs a package using V3 (PackageReference) layout.
+type InstallFromSourceV3Request struct {
+	// PackageBytes is the ZIP package content.
+	PackageBytes []byte `json:"packageBytes"`
+
+	// ID is the package ID.
+	ID string `json:"id"`
+
+	// Version is the package version.
+	Version string `json:"version"`
+
+	// GlobalPackagesFolder is the target global packages directory.
+	GlobalPackagesFolder string `json:"globalPackagesFolder"`
+
+	// PackageSaveMode controls what to save (nuspec, files, nupkg).
+	// Bitmask: 1=Nuspec, 2=Nupkg, 4=Files
+	PackageSaveMode int `json:"packageSaveMode"`
+
+	// XMLDocFileSaveMode controls XML doc compression (0=None, 1=Skip, 2=Compress).
+	XMLDocFileSaveMode int `json:"xmlDocFileSaveMode"`
+}
+
+// InstallFromSourceV3Response contains installation results.
+type InstallFromSourceV3Response struct {
+	// Installed is true if package was installed (false if already existed).
+	Installed bool `json:"installed"`
+
+	// PackageDirectory is the final package directory path.
+	PackageDirectory string `json:"packageDirectory"`
+
+	// NupkgPath is the path to the .nupkg file (if saved).
+	NupkgPath string `json:"nupkgPath,omitempty"`
+
+	// NuspecPath is the path to the .nuspec file.
+	NuspecPath string `json:"nuspecPath"`
+
+	// HashPath is the path to the .sha512 hash file.
+	HashPath string `json:"hashPath"`
+
+	// MetadataPath is the path to the .nupkg.metadata file.
+	MetadataPath string `json:"metadataPath"`
+}

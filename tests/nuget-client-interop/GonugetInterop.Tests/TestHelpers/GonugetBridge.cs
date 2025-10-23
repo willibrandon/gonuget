@@ -341,6 +341,60 @@ public static class GonugetBridge
     }
 
     /// <summary>
+    /// Extracts a package using V2 (packages.config) layout.
+    /// </summary>
+    public static ExtractPackageV2Response ExtractPackageV2(
+        byte[] packageBytes,
+        string installPath,
+        int packageSaveMode = 7, // Default: Nuspec | Nupkg | Files
+        bool useSideBySideLayout = true,
+        int xmlDocFileSaveMode = 0) // Default: None
+    {
+        var request = new
+        {
+            action = "extract_package_v2",
+            data = new
+            {
+                packageBytes,
+                installPath,
+                packageSaveMode,
+                useSideBySideLayout,
+                xmlDocFileSaveMode
+            }
+        };
+
+        return Execute<ExtractPackageV2Response>(request);
+    }
+
+    /// <summary>
+    /// Installs a package using V3 (PackageReference) layout.
+    /// </summary>
+    public static InstallFromSourceV3Response InstallFromSourceV3(
+        byte[] packageBytes,
+        string id,
+        string version,
+        string globalPackagesFolder,
+        int packageSaveMode = 7, // Default: Nuspec | Nupkg | Files
+        int xmlDocFileSaveMode = 0) // Default: None
+    {
+        var request = new
+        {
+            action = "install_from_source_v3",
+            data = new
+            {
+                packageBytes,
+                id,
+                version,
+                globalPackagesFolder,
+                packageSaveMode,
+                xmlDocFileSaveMode
+            }
+        };
+
+        return Execute<InstallFromSourceV3Response>(request);
+    }
+
+    /// <summary>
     /// Finds the gonuget executable in the test output directory or build location.
     /// </summary>
     private static string FindGonugetExecutable()

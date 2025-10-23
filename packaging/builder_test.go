@@ -872,14 +872,14 @@ func TestBuilderSave(t *testing.T) {
 	var foundNuspec, foundContentTypes, foundRels, foundTestFile bool
 
 	for _, file := range zipReader.File {
-		switch {
-		case file.Name == "TestPackage.nuspec":
+		switch file.Name {
+		case "TestPackage.nuspec":
 			foundNuspec = true
-		case file.Name == OPCContentTypesPath:
+		case OPCContentTypesPath:
 			foundContentTypes = true
-		case file.Name == OPCRelationshipsPath:
+		case OPCRelationshipsPath:
 			foundRels = true
-		case file.Name == "lib/net6.0/test.dll":
+		case "lib/net6.0/test.dll":
 			foundTestFile = true
 		}
 	}
