@@ -215,9 +215,14 @@ func TestMultiTierCache_ClearBothTiers(t *testing.T) {
 	if _, ok := l1.Get(cacheKey); !ok {
 		t.Fatal("L1 should have data before clear")
 	}
-	if _, ok, _ := l2.Get(sourceURL, cacheKey, 30*time.Minute); !ok {
+	reader, ok, err := l2.Get(sourceURL, cacheKey, 30*time.Minute)
+	if err != nil {
+		t.Fatalf("L2.Get() error = %v", err)
+	}
+	if !ok {
 		t.Fatal("L2 should have data before clear")
 	}
+	_ = reader.Close() // Must close before Clear() on Windows
 
 	// Clear
 	err = mtc.Clear()
@@ -231,7 +236,7 @@ func TestMultiTierCache_ClearBothTiers(t *testing.T) {
 	}
 
 	// Get should return miss after clear
-	_, ok, err := mtc.Get(ctx, sourceURL, cacheKey, 30*time.Minute)
+	_, ok, err = mtc.Get(ctx, sourceURL, cacheKey, 30*time.Minute)
 	if err != nil {
 		t.Fatalf("Get() error = %v", err)
 	}
@@ -278,8 +283,11 @@ func TestMultiTierCache_SetWithValidation(t *testing.T) {
 	if _, ok := l1.Get(cacheKey); !ok {
 		t.Error("L1 should have data after successful validation")
 	}
-	if _, ok, _ := l2.Get(sourceURL, cacheKey, 30*time.Minute); !ok {
+	reader, ok, _ := l2.Get(sourceURL, cacheKey, 30*time.Minute)
+	if !ok {
 		t.Error("L2 should have data after successful validation")
+	} else {
+		_ = reader.Close() // Must close reader to avoid file lock on Windows
 	}
 }
 
