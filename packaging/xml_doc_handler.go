@@ -39,7 +39,9 @@ func (e *PackageFileExtractor) identifyXMLDocFiles() {
 	// Build map of assemblies (DLL/EXE files) with lowercase keys for case-insensitive lookup
 	assemblies := make(map[string]bool)
 	for _, file := range e.packageFiles {
-		lower := strings.ToLower(file)
+		// Normalize to forward slashes for consistent path handling
+		normalized := strings.ReplaceAll(file, "\\", "/")
+		lower := strings.ToLower(normalized)
 		if strings.HasSuffix(lower, ".dll") || strings.HasSuffix(lower, ".exe") {
 			assemblies[lower] = true
 		}
@@ -47,7 +49,9 @@ func (e *PackageFileExtractor) identifyXMLDocFiles() {
 
 	// Find XML files in lib/ and ref/ folders with corresponding assemblies
 	for _, file := range e.packageFiles {
-		lower := strings.ToLower(file)
+		// Normalize to forward slashes for consistent path handling
+		normalizedFile := strings.ReplaceAll(file, "\\", "/")
+		lower := strings.ToLower(normalizedFile)
 
 		// Must be XML file
 		if !strings.HasSuffix(lower, ".xml") {
@@ -65,22 +69,27 @@ func (e *PackageFileExtractor) identifyXMLDocFiles() {
 		exePath := baseName + ".exe"
 
 		if assemblies[dllPath] || assemblies[exePath] {
-			e.xmlDocFiles[file] = true
+			e.xmlDocFiles[normalizedFile] = true
 		}
 
 		// Check for resource assemblies (culture-specific)
 		// Pattern: lib/net6.0/ja-jp/MyLib.resources.dll -> lib/net6.0/ja-jp/MyLib.xml
 		if strings.Contains(lower, "/") {
 			parts := strings.Split(lower, "/")
-			if len(parts) >= 2 {
+			if len(parts) >= 3 {
 				// Check if parent directory has assembly
-				parentDir := filepath.Dir(lower)
-				parentBase := filepath.Join(filepath.Dir(parentDir), filepath.Base(baseName))
-				parentDll := parentBase + ".dll"
-				parentExe := parentBase + ".exe"
+				// For "lib/net6.0/ja-jp/mylib.xml", check for "lib/net6.0/mylib.dll"
+				parentParts := parts[:len(parts)-2] // Remove culture dir and filename
+				fileName := parts[len(parts)-1]     // mylib.xml
+				baseName := strings.TrimSuffix(fileName, ".xml")
+
+				// Reconstruct parent path
+				parentPath := strings.Join(append(parentParts, baseName), "/")
+				parentDll := parentPath + ".dll"
+				parentExe := parentPath + ".exe"
 
 				if assemblies[parentDll] || assemblies[parentExe] {
-					e.xmlDocFiles[file] = true
+					e.xmlDocFiles[normalizedFile] = true
 				}
 			}
 		}
@@ -94,8 +103,11 @@ func (e *PackageFileExtractor) ExtractPackageFile(
 	target string,
 	stream io.Reader,
 ) (string, error) {
+	// Normalize source path for lookup (forward slashes)
+	normalizedSource := strings.ReplaceAll(source, "\\", "/")
+
 	// Check if this is an XML doc file
-	isXmlDoc := e.xmlDocFiles[source]
+	isXmlDoc := e.xmlDocFiles[normalizedSource]
 
 	// Handle XML doc save modes
 	if isXmlDoc {

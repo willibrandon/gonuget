@@ -58,7 +58,10 @@ func CreateFile(path string) (*os.File, error) {
 func CopyToFile(stream io.Reader, fileFullPath string) (string, error) {
 	// Check if this is a directory entry (path ends with slash or base is ".")
 	base := filepath.Base(fileFullPath)
-	if base == "" || base == "." || base == string(filepath.Separator) || strings.HasSuffix(fileFullPath, "/") {
+	isDirectory := base == "" || base == "." || base == string(filepath.Separator) ||
+		strings.HasSuffix(fileFullPath, "/") || strings.HasSuffix(fileFullPath, "\\")
+
+	if isDirectory {
 		// Clean the path to ensure directory format
 		dirPath := filepath.Clean(fileFullPath)
 		if err := os.MkdirAll(dirPath, 0755); err != nil {
