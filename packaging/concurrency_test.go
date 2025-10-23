@@ -2,6 +2,7 @@ package packaging
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
@@ -476,15 +477,13 @@ func BenchmarkAcquireFileLock(b *testing.B) {
 	ctx := context.Background()
 
 	b.ResetTimer()
-	i := 0
-	for b.Loop() {
-		targetPath := filepath.Join(tempDir, "bench"+string(rune(i))+".nupkg")
+	for i := range b.N {
+		targetPath := filepath.Join(tempDir, fmt.Sprintf("bench%d.nupkg", i))
 		unlock, err := acquireFileLock(ctx, targetPath)
 		if err != nil {
 			b.Fatalf("acquireFileLock() error = %v", err)
 		}
 		unlock()
-		i++
 	}
 }
 
@@ -492,16 +491,14 @@ func BenchmarkTryAcquireLock(b *testing.B) {
 	tempDir := b.TempDir()
 
 	b.ResetTimer()
-	i := 0
-	for b.Loop() {
-		lockPath := filepath.Join(tempDir, "bench"+string(rune(i))+".lock")
+	for i := range b.N {
+		lockPath := filepath.Join(tempDir, fmt.Sprintf("bench%d.lock", i))
 		lock, err := tryAcquireLock(lockPath)
 		if err != nil {
 			b.Fatalf("tryAcquireLock() error = %v", err)
 		}
 		_ = lock.lockFile.Close()
 		_ = os.Remove(lock.lockFilePath)
-		i++
 	}
 }
 

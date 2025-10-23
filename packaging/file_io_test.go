@@ -2,6 +2,7 @@ package packaging
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -464,15 +465,13 @@ func BenchmarkCreateFile(b *testing.B) {
 	tempDir := b.TempDir()
 
 	b.ResetTimer()
-	i := 0
-	for b.Loop() {
-		filePath := filepath.Join(tempDir, "bench", "file"+string(rune(i))+".txt")
+	for i := range b.N {
+		filePath := filepath.Join(tempDir, "bench", fmt.Sprintf("file%d.txt", i))
 		file, err := CreateFile(filePath)
 		if err != nil {
 			b.Fatalf("CreateFile() error = %v", err)
 		}
 		_ = file.Close()
-		i++
 	}
 }
 
@@ -481,14 +480,12 @@ func BenchmarkCopyToFile(b *testing.B) {
 	content := []byte(strings.Repeat("test content ", 100))
 
 	b.ResetTimer()
-	i := 0
-	for b.Loop() {
-		filePath := filepath.Join(tempDir, "bench"+string(rune(i))+".txt")
+	for i := range b.N {
+		filePath := filepath.Join(tempDir, fmt.Sprintf("bench%d.txt", i))
 		stream := bytes.NewReader(content)
 		_, err := CopyToFile(stream, filePath)
 		if err != nil {
 			b.Fatalf("CopyToFile() error = %v", err)
 		}
-		i++
 	}
 }

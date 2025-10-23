@@ -3,6 +3,7 @@ package packaging
 import (
 	"archive/zip"
 	"bytes"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -544,15 +545,13 @@ func BenchmarkExtractPackageFile_Normal(b *testing.B) {
 	content := []byte("DLL content")
 
 	b.ResetTimer()
-	i := 0
-	for b.Loop() {
-		targetPath := filepath.Join(tempDir, "MyLib"+string(rune(i))+".dll")
+	for i := range b.N {
+		targetPath := filepath.Join(tempDir, fmt.Sprintf("MyLib%d.dll", i))
 		stream := bytes.NewReader(content)
 		_, err := extractor.ExtractPackageFile("lib/net45/MyLib.dll", targetPath, stream)
 		if err != nil {
 			b.Fatalf("ExtractPackageFile() error = %v", err)
 		}
-		i++
 	}
 }
 
@@ -564,15 +563,13 @@ func BenchmarkCompressXmlDoc(b *testing.B) {
 	xmlContent := []byte(strings.Repeat("<member name='Test'><summary>Doc</summary></member>", 100))
 
 	b.ResetTimer()
-	i := 0
-	for b.Loop() {
-		targetPath := filepath.Join(tempDir, "MyLib"+string(rune(i))+".xml")
+	for i := range b.N {
+		targetPath := filepath.Join(tempDir, fmt.Sprintf("MyLib%d.xml", i))
 		stream := bytes.NewReader(xmlContent)
 		_, err := extractor.compressXmlDoc(targetPath, stream)
 		if err != nil {
 			b.Fatalf("compressXmlDoc() error = %v", err)
 		}
-		i++
 	}
 }
 
