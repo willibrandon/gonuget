@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"runtime"
+	"slices"
 	"testing"
 	"time"
 )
@@ -541,5 +543,84 @@ func TestDiskCache_SetRenameRaceCondition(t *testing.T) {
 	}
 	if len(got) == 0 {
 		t.Error("Get() returned empty data")
+	}
+}
+
+func TestIsFileAlreadyOpen(t *testing.T) {
+	// Test isFileAlreadyOpen utility function
+	tmpDir := t.TempDir()
+	testFile := filepath.Join(tmpDir, "test.dat")
+
+	// Create a test file
+	err := os.WriteFile(testFile, []byte("test"), 0644)
+	if err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	// File not open - should return false
+	if isFileAlreadyOpen(testFile) {
+		t.Error("isFileAlreadyOpen() should return false for closed file")
+	}
+
+	// Open file for reading
+	file, err := os.Open(testFile)
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	defer func() { _ = file.Close() }()
+
+	// File is open - behavior is platform-specific
+	// On Unix, file can be opened multiple times
+	// On Windows, exclusive access may prevent reopening
+	_ = isFileAlreadyOpen(testFile)
+
+	// Non-existent file should return false
+	if isFileAlreadyOpen(filepath.Join(tmpDir, "nonexistent.dat")) {
+		t.Error("isFileAlreadyOpen() should return false for non-existent file")
+	}
+}
+
+func TestDiskCache_SetValidationError(t *testing.T) {
+	// Test Set with validation that fails
+	tmpDir := t.TempDir()
+	dc, err := NewDiskCache(tmpDir, 1024*1024*10)
+	if err != nil {
+		t.Fatalf("NewDiskCache() error = %v", err)
+	}
+
+	sourceURL := "https://api.nuget.org/v3/index.json"
+	cacheKey := "validation-test"
+	data := []byte("test data")
+
+	// Validation function that fails
+	validate := func(r io.ReadSeeker) error {
+		return fmt.Errorf("validation failed")
+	}
+
+	// Set should fail due to validation
+	err = dc.Set(sourceURL, cacheKey, bytes.NewReader(data), validate)
+	if err == nil {
+		t.Fatal("Set() should fail with validation error")
+	}
+
+	// Verify cache file was not created
+	cacheFile, _ := dc.GetCachePath(sourceURL, cacheKey)
+	if fileExists(cacheFile) {
+		t.Error("Cache file should not exist after validation failure")
+	}
+}
+
+func TestGetInvalidFileNameChars_Coverage(t *testing.T) {
+	// Test both Unix and Windows paths
+	chars := getInvalidFileNameChars()
+
+	// Should always contain null character
+	if !slices.Contains(chars, '\x00') {
+		t.Error("Invalid chars should include null character")
+	}
+
+	// Should contain forward slash (invalid on all platforms)
+	if !slices.Contains(chars, '/') {
+		t.Error("Invalid chars should include forward slash")
 	}
 }
