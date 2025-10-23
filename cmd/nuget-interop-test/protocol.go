@@ -162,6 +162,19 @@ type ParseFrameworkResponse struct {
 	Platform string `json:"platform,omitempty"`
 }
 
+// FormatFrameworkRequest formats a framework to its short folder name.
+type FormatFrameworkRequest struct {
+	// Framework is the framework to format (e.g., "net6.0-windows", "portable-net45+win8").
+	Framework string `json:"framework"`
+}
+
+// FormatFrameworkResponse contains the formatted short folder name.
+type FormatFrameworkResponse struct {
+	// ShortFolderName is the formatted name (e.g., "net6.0-windows", "portable-net45+win8").
+	// This matches NuGet.Client's GetShortFolderName() output.
+	ShortFolderName string `json:"shortFolderName"`
+}
+
 // ReadPackageRequest reads package structure and metadata.
 type ReadPackageRequest struct {
 	// PackageBytes is the ZIP package content.

@@ -88,3 +88,36 @@ func (h *ParseFrameworkHandler) Handle(data json.RawMessage) (interface{}, error
 
 	return resp, nil
 }
+
+// FormatFrameworkHandler formats a framework to its short folder name representation.
+type FormatFrameworkHandler struct{}
+
+func (h *FormatFrameworkHandler) ErrorCode() string { return "FW_FORMAT_001" }
+
+func (h *FormatFrameworkHandler) Handle(data json.RawMessage) (interface{}, error) {
+	var req FormatFrameworkRequest
+	if err := json.Unmarshal(data, &req); err != nil {
+		return nil, fmt.Errorf("parse request: %w", err)
+	}
+
+	// Validate required fields
+	if req.Framework == "" {
+		return nil, fmt.Errorf("framework is required")
+	}
+
+	// Parse framework
+	fw, err := frameworks.ParseFramework(req.Framework)
+	if err != nil {
+		return nil, fmt.Errorf("parse framework '%s': %w", req.Framework, err)
+	}
+
+	// Get short folder name using default provider
+	provider := frameworks.DefaultFrameworkNameProvider()
+	shortFolderName := fw.GetShortFolderName(provider)
+
+	resp := FormatFrameworkResponse{
+		ShortFolderName: shortFolderName,
+	}
+
+	return resp, nil
+}

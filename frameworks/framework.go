@@ -13,6 +13,7 @@ package frameworks
 
 import (
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -115,6 +116,32 @@ func (fw *NuGetFramework) IsAny() bool {
 	return fw.Framework == "Any"
 }
 
+// IsSpecificFramework returns true if this is a specific framework (not special or unsupported).
+func (fw *NuGetFramework) IsSpecificFramework() bool {
+	return fw.Framework != "" &&
+		fw.Framework != "Any" &&
+		fw.Framework != "Unsupported" &&
+		fw.Framework != "Agnostic" &&
+		strings.ToLower(fw.Framework) != "any" &&
+		strings.ToLower(fw.Framework) != "unsupported" &&
+		strings.ToLower(fw.Framework) != "agnostic"
+}
+
+// IsPCL returns true if this is a Portable Class Library framework.
+func (fw *NuGetFramework) IsPCL() bool {
+	return fw.Framework == ".NETPortable"
+}
+
+// IsNet5Era returns true if this is .NET 5+ (.NETCoreApp with version >= 5).
+func (fw *NuGetFramework) IsNet5Era() bool {
+	return fw.Framework == ".NETCoreApp" && fw.Version.Major >= 5
+}
+
+// IsEmpty returns true if the version is empty (0.0.0.0).
+func (v FrameworkVersion) IsEmpty() bool {
+	return v.Major == 0 && v.Minor == 0 && v.Build == 0 && v.Revision == 0
+}
+
 // Equals checks if two frameworks are equal.
 func (fw *NuGetFramework) Equals(other *NuGetFramework) bool {
 	if fw == nil || other == nil {
@@ -129,9 +156,105 @@ func (fw *NuGetFramework) Equals(other *NuGetFramework) bool {
 
 // format creates a formatted TFM string.
 func (fw *NuGetFramework) format() string {
-	// Implementation for formatting back to TFM string
-	// This is a simplified version
-	return fw.Framework
+	return fw.GetShortFolderName(DefaultFrameworkNameProvider())
+}
+
+// GetShortFolderName returns the short folder name representation of the framework.
+// This matches NuGet.Client's GetShortFolderName implementation.
+func (fw *NuGetFramework) GetShortFolderName(provider FrameworkNameProvider) string {
+	var sb strings.Builder
+
+	// Handle special frameworks
+	if !fw.IsSpecificFramework() {
+		return strings.ToLower(fw.Framework)
+	}
+
+	// Handle PCL - matches NuGet.Client GetShortFolderName behavior
+	// NuGet.Client DOES expand profile numbers to framework lists
+	// Example: "portable-Profile7" -> "portable-net45+win8"
+	if fw.IsPCL() {
+		sb.WriteString("portable-")
+		if fw.Profile != "" {
+			// Try to expand profile to framework list
+			if strings.HasPrefix(fw.Profile, "Profile") {
+				// This is a profile number (e.g., "Profile7")
+				// Try to get the framework list for this profile
+				if frameworks, ok := provider.TryGetPortableFrameworks(fw.Profile, false); ok && len(frameworks) > 0 {
+					// Format each framework and sort alphabetically (case-insensitive)
+					shortNames := make([]string, len(frameworks))
+					for i, f := range frameworks {
+						shortNames[i] = f.GetShortFolderName(provider)
+					}
+					// Sort case-insensitively to match NuGet.Client's OrdinalIgnoreCase
+					sort.Slice(shortNames, func(i, j int) bool {
+						return strings.ToLower(shortNames[i]) < strings.ToLower(shortNames[j])
+					})
+					sb.WriteString(strings.Join(shortNames, "+"))
+					return sb.String()
+				}
+			}
+			// If profile contains a framework list (e.g., "net45+win8"), sort it
+			if strings.Contains(fw.Profile, "+") {
+				parts := strings.Split(fw.Profile, "+")
+				sort.Slice(parts, func(i, j int) bool {
+					return strings.ToLower(parts[i]) < strings.ToLower(parts[j])
+				})
+				sb.WriteString(strings.Join(parts, "+"))
+			} else {
+				// Custom profile or single framework, use as-is (lowercased)
+				sb.WriteString(strings.ToLower(fw.Profile))
+			}
+		}
+		return sb.String()
+	}
+
+	// Get short identifier
+	shortIdentifier := ""
+	if short, ok := provider.TryGetShortIdentifier(fw.Framework); ok {
+		shortIdentifier = short
+	} else {
+		shortIdentifier = strings.ToLower(fw.Framework)
+	}
+
+	// For .NET 5+, use "net" instead of "netcoreapp"
+	if fw.IsNet5Era() {
+		shortIdentifier = "net"
+	}
+
+	sb.WriteString(shortIdentifier)
+
+	// Add version if not empty
+	if !fw.Version.IsEmpty() {
+		versionString := provider.GetVersionString(fw.Framework, fw.Version)
+		sb.WriteString(versionString)
+	}
+
+	// Add profile if present (like "-client" for .NET Framework)
+	if fw.Profile != "" {
+		if shortProfile, ok := provider.TryGetShortProfile(fw.Framework, fw.Profile); ok {
+			if shortProfile != "" {
+				sb.WriteString("-")
+				sb.WriteString(shortProfile)
+			}
+		} else {
+			sb.WriteString("-")
+			sb.WriteString(strings.ToLower(fw.Profile))
+		}
+	}
+
+	// Add platform if present (like "-windows10.0")
+	if fw.Platform != "" {
+		sb.WriteString("-")
+		sb.WriteString(strings.ToLower(fw.Platform))
+
+		if !fw.PlatformVersion.IsEmpty() {
+			// Format platform version - NuGet.Client uses standard .NET version string formatting
+			// which omits trailing zeros (e.g., "10.0.19041.0" becomes "10.0.19041")
+			sb.WriteString(fw.PlatformVersion.String())
+		}
+	}
+
+	return sb.String()
 }
 
 // ParseFramework parses a TFM string into a NuGetFramework.
@@ -209,7 +332,27 @@ func parseFrameworkIdentifier(fw *NuGetFramework, s string) error {
 		{"netstandard", ".NETStandard"},
 		{"netcoreapp", ".NETCoreApp"},
 		{"netcore", "NetCore"}, // Legacy .NET Core (netcore45, netcore50, etc.)
-		{"net", ""},            // Special handling for "net" prefix
+
+		// Legacy PCL frameworks (used in portable profiles)
+		{"windowsphone", "WindowsPhone"}, // wp, wpa
+		{"windows", "Windows"},           // win, win8, win81, etc.
+		{"silverlight", "Silverlight"},   // sl
+		{"monoandroid", "MonoAndroid"},
+		{"monotouch", "MonoTouch"},
+		{"monomac", "MonoMac"},
+		{"xamarin", "Xamarin"},
+		{"tizen", "Tizen"},
+		{"dnxcore", "DNXCore"},
+		{"dnx", "DNX"},
+		{"uap", "UAP"},
+
+		// Short forms for legacy PCL frameworks
+		{"wpa", "WindowsPhoneApp"}, // wpa81
+		{"wp", "WindowsPhone"},     // wp8, wp7
+		{"win", "Windows"},         // win8, win81, win10
+		{"sl", "Silverlight"},      // sl4, sl5
+
+		{"net", ""}, // Special handling for "net" prefix
 	}
 
 	for _, p := range prefixes {
@@ -246,6 +389,15 @@ func parseFrameworkIdentifier(fw *NuGetFramework, s string) error {
 		}
 	}
 
+	// Check for special frameworks (any, unsupported, agnostic)
+	// These are case-insensitive and have no version
+	lower := strings.ToLower(s)
+	if lower == "any" || lower == "unsupported" || lower == "agnostic" {
+		fw.Framework = s                // Preserve original casing for now
+		fw.Version = FrameworkVersion{} // Empty version
+		return nil
+	}
+
 	return fmt.Errorf("unknown framework identifier: %s", s)
 }
 
@@ -255,16 +407,36 @@ func parseFrameworkVersion(s string, framework string) (FrameworkVersion, error)
 	// For .NET Core/Standard, it's like "3.1" or "2.1"
 	// For .NET 5+, it's like "6.0" or "8.0"
 	// For legacy NetCore (netcore45, netcore50), uses compact format like "50" = 5.0
+	// For legacy PCL frameworks (win8, wp8, wpa81, sl5), uses compact format
 
-	if framework == "net" || framework == "netcore" {
-		// .NET Framework and legacy NetCore use compact format (e.g., "48" = 4.8, "50" = 5.0)
-		if len(s) <= 4 && !strings.Contains(s, ".") {
-			// Compact format: "48" → 4.8, "472" → 4.7.2, "4721" → 4.7.2.1, "50" → 5.0
+	// Frameworks that use compact version format (no dots)
+	// .NET Framework requires minimum 2 digits (net40, net45, etc.)
+	compactFrameworks := map[string]bool{
+		"net":     true,
+		"netcore": true,
+	}
+
+	// Legacy PCL frameworks that allow single-digit versions (win8, wp8, sl5)
+	pclFrameworks := map[string]bool{
+		"win": true, // Windows
+		"wp":  true, // WindowsPhone
+		"wpa": true, // WindowsPhoneApp
+		"sl":  true, // Silverlight
+	}
+
+	if compactFrameworks[framework] {
+		// Compact format, minimum 2 digits for .NET Framework (e.g., "48" = 4.8)
+		if len(s) >= 2 && len(s) <= 4 && !strings.Contains(s, ".") {
+			return parseCompactVersion(s)
+		}
+	} else if pclFrameworks[framework] {
+		// PCL frameworks allow single-digit versions (e.g., "8" = 8.0)
+		if len(s) >= 1 && len(s) <= 4 && !strings.Contains(s, ".") {
 			return parseCompactVersion(s)
 		}
 	}
 
-	// Standard version format: "8.0", "3.1", etc.
+	// Standard version format: "8.0", "3.1", "4", "2", etc.
 	parts := strings.Split(s, ".")
 	if len(parts) == 0 {
 		return FrameworkVersion{}, fmt.Errorf("empty version")
@@ -305,6 +477,7 @@ func parseCompactVersion(s string) (FrameworkVersion, error) {
 	}
 
 	// NuGet.Client supports up to 4 digits:
+	// "8"    → 8.0.0.0 (for legacy PCL frameworks like win8, wp8)
 	// "48"   → 4.8.0.0
 	// "472"  → 4.7.2.0
 	// "461"  → 4.6.1.0
@@ -318,12 +491,13 @@ func parseCompactVersion(s string) (FrameworkVersion, error) {
 	}
 
 	if len(s) == 1 {
-		// Single digit not valid for compact format
-		return FrameworkVersion{}, fmt.Errorf("invalid compact version: %s", s)
+		// Single digit: "8" → 8.0 (for legacy PCL like win8, wp8, sl5)
+		major := int(s[0] - '0')
+		return FrameworkVersion{Major: major, Minor: 0}, nil
 	}
 
 	if len(s) == 2 {
-		// "48" format
+		// "48" format or "81" format
 		major := int(s[0] - '0')
 		minor := int(s[1] - '0')
 		return FrameworkVersion{Major: major, Minor: minor}, nil
@@ -384,15 +558,47 @@ func parsePlatform(fw *NuGetFramework, s string) error {
 
 // parsePCL parses portable class library format.
 func parsePCL(s string) (*NuGetFramework, error) {
-	// Format: portable-net45+win8+wpa81
-	// This is simplified; real implementation would look up profiles
+	// Format: portable-net45+win8+wpa81 or portable-Profile259
 
+	originalString := s
 	s = strings.TrimPrefix(s, "portable-")
 
+	provider := DefaultFrameworkNameProvider()
+
+	// Try to resolve profile to profile number
+	if strings.HasPrefix(s, "Profile") {
+		// Already in Profile format (e.g., "Profile259")
+		return &NuGetFramework{
+			Framework:      ".NETPortable",
+			Profile:        s,
+			originalString: originalString,
+		}, nil
+	}
+
+	// Parse as framework list (e.g., "net45+win8")
+	// NuGet.Client does NOT convert framework lists to profile numbers
+	// It keeps them as-is and formats with alphabetical sorting
+	if frameworks, ok := provider.TryGetPortableFrameworks(s, false); ok && len(frameworks) > 0 {
+		// Format and sort the framework list
+		shortNames := make([]string, len(frameworks))
+		for i, fw := range frameworks {
+			shortNames[i] = fw.GetShortFolderName(provider)
+		}
+		// Sort alphabetically (NuGet.Client behavior)
+		sortedProfile := sortStrings(shortNames)
+
+		return &NuGetFramework{
+			Framework:      ".NETPortable",
+			Profile:        strings.Join(sortedProfile, "+"),
+			originalString: originalString,
+		}, nil
+	}
+
+	// Fallback: store as custom profile
 	return &NuGetFramework{
 		Framework:      ".NETPortable",
-		Profile:        s, // Store the profile string for now
-		originalString: "portable-" + s,
+		Profile:        s,
+		originalString: originalString,
 	}, nil
 }
 
@@ -500,4 +706,12 @@ func isNetStandardCompatibleWithCoreApp(nsVersion, coreVersion FrameworkVersion)
 	}
 
 	return coreVersion.Compare(minVer) >= 0
+}
+
+// sortStrings sorts a slice of strings alphabetically and returns the sorted slice.
+func sortStrings(strs []string) []string {
+	sorted := make([]string, len(strs))
+	copy(sorted, strs)
+	sort.Strings(sorted)
+	return sorted
 }

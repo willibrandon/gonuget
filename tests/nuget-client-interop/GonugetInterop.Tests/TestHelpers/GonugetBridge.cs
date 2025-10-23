@@ -154,6 +154,23 @@ public static class GonugetBridge
     }
 
     /// <summary>
+    /// Formats a framework to its short folder name representation.
+    /// This matches NuGet.Client's GetShortFolderName() behavior.
+    /// </summary>
+    /// <param name="framework">The framework identifier to format (e.g., "net6.0-windows", "portable-net45+win8").</param>
+    /// <returns>The short folder name (e.g., "net6.0-windows10.0", "portable-net45+win8").</returns>
+    public static FormatFrameworkResponse FormatFramework(string framework)
+    {
+        var request = new
+        {
+            action = "format_framework",
+            data = new { framework }
+        };
+
+        return Execute<FormatFrameworkResponse>(request);
+    }
+
+    /// <summary>
     /// Reads package metadata and structure from a .nupkg file.
     /// </summary>
     /// <param name="packageBytes">The complete package file as a byte array (ZIP format).</param>

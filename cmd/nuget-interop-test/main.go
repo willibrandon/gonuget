@@ -71,6 +71,8 @@ func main() {
 		handler = &CheckFrameworkCompatHandler{}
 	case "parse_framework":
 		handler = &ParseFrameworkHandler{}
+	case "format_framework":
+		handler = &FormatFrameworkHandler{}
 
 	// Package operations
 	case "read_package":

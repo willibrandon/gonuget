@@ -194,7 +194,7 @@ func TestParseFramework_EdgeCases(t *testing.T) {
 	}{
 		{"whitespace", "  net8.0  ", false},
 		{"no version", "net", true},
-		{"invalid compact version - 1 digit", "net4", true},
+		{"single digit version", "net4", false}, // Valid: maps to net40 per NuGet.Client
 		{"invalid version format", "net8.a", true},
 		{"three part version", "netstandard1.6.1", false},
 		{"four digit compact version", "net4721", false}, // 4.7.2.1 - valid per NuGet.Client
@@ -231,5 +231,37 @@ func TestParseFramework_FourDigitVersion(t *testing.T) {
 	}
 	if fw.Version.Revision != 1 {
 		t.Errorf("Version.Revision = %v, want 1", fw.Version.Revision)
+	}
+}
+
+func TestParseFramework_SingleDigitVersion(t *testing.T) {
+	// Test single-digit version support (per NuGet.Client: "4" → net40, "2" → net20)
+	tests := []struct {
+		input string
+		major int
+		minor int
+	}{
+		{"net4", 4, 0},
+		{"net2", 2, 0},
+		{"net3", 3, 0},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			fw, err := ParseFramework(tt.input)
+			if err != nil {
+				t.Fatalf("ParseFramework() error = %v", err)
+			}
+
+			if fw.Framework != ".NETFramework" {
+				t.Errorf("Framework = %v, want .NETFramework", fw.Framework)
+			}
+			if fw.Version.Major != tt.major {
+				t.Errorf("Version.Major = %v, want %v", fw.Version.Major, tt.major)
+			}
+			if fw.Version.Minor != tt.minor {
+				t.Errorf("Version.Minor = %v, want %v", fw.Version.Minor, tt.minor)
+			}
+		})
 	}
 }
