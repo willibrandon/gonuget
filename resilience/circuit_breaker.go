@@ -11,8 +11,8 @@ type CircuitState int
 
 const (
 	StateClosed   CircuitState = iota // Normal operation
-	StateOpen                          // Failing, reject requests
-	StateHalfOpen                      // Testing if service recovered
+	StateOpen                         // Failing, reject requests
+	StateHalfOpen                     // Testing if service recovered
 )
 
 func (s CircuitState) String() string {
@@ -48,7 +48,7 @@ type CircuitBreakerConfig struct {
 // DefaultCircuitBreakerConfig returns default configuration.
 func DefaultCircuitBreakerConfig() CircuitBreakerConfig {
 	return CircuitBreakerConfig{
-		MaxFailures:         5,               // Open after 5 consecutive failures
+		MaxFailures:         5,                // Open after 5 consecutive failures
 		Timeout:             60 * time.Second, // Wait 60s before retry
 		MaxHalfOpenRequests: 1,                // Only 1 request in half-open state
 	}
