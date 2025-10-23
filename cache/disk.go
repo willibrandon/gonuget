@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 )
@@ -114,12 +115,7 @@ func getInvalidFileNameChars() []rune {
 
 // containsRune checks if a rune slice contains a specific rune.
 func containsRune(runes []rune, r rune) bool {
-	for _, item := range runes {
-		if item == r {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(runes, r)
 }
 
 // GetCachePath computes the cache file path for a source URL and cache key.
@@ -200,7 +196,7 @@ func (dc *DiskCache) Set(sourceURL string, cacheKey string, data io.Reader, vali
 	if err != nil {
 		return fmt.Errorf("create temp file: %w", err)
 	}
-	defer tempFile.Close()
+	defer func() { _ = tempFile.Close() }()
 
 	// Copy data to temp file
 	if _, err := io.CopyBuffer(tempFile, data, make([]byte, BufferSize)); err != nil {
@@ -272,7 +268,7 @@ func isFileAlreadyOpen(filePath string) bool {
 		// Any other error means file is likely open
 		return true
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	return false
 }

@@ -47,7 +47,7 @@ func TestComputeHash_MatchesNuGetClient(t *testing.T) {
 			// Hash should be hex
 			hashPart := got[:40]
 			for _, c := range hashPart {
-				if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
+				if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
 					t.Errorf("ComputeHash() contains non-hex character: %c", c)
 				}
 			}
@@ -113,7 +113,7 @@ func TestDiskCache_SetGet(t *testing.T) {
 	if !ok {
 		t.Fatal("Get() expected cache hit")
 	}
-	defer reader.Close()
+	defer func() { _ = reader.Close() }()
 
 	got, err := io.ReadAll(reader)
 	if err != nil {
@@ -190,7 +190,7 @@ func TestDiskCache_AtomicUpdate(t *testing.T) {
 	if !ok {
 		t.Fatal("Get() expected cache hit")
 	}
-	defer reader.Close()
+	defer func() { _ = reader.Close() }()
 
 	got, err := io.ReadAll(reader)
 	if err != nil {
@@ -219,16 +219,16 @@ func TestDiskCache_ConcurrentWrites(t *testing.T) {
 
 	// Concurrent writes should not corrupt data
 	done := make(chan bool)
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		go func(n int) {
-			data := []byte(fmt.Sprintf("version %d", n))
+			data := fmt.Appendf(nil, "version %d", n)
 			_ = dc.Set(sourceURL, cacheKey, bytes.NewReader(data), nil)
 			done <- true
 		}(i)
 	}
 
 	// Wait for all writes
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		<-done
 	}
 
@@ -243,7 +243,7 @@ func TestDiskCache_ConcurrentWrites(t *testing.T) {
 	if !ok {
 		t.Fatal("Get() expected cache hit")
 	}
-	defer reader.Close()
+	defer func() { _ = reader.Close() }()
 
 	got, err := io.ReadAll(reader)
 	if err != nil {
@@ -295,10 +295,10 @@ func TestDiskCache_Clear(t *testing.T) {
 	}
 
 	// Add multiple entries
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		sourceURL := fmt.Sprintf("https://example.com/feed%d", i)
 		cacheKey := fmt.Sprintf("key%d", i)
-		data := []byte(fmt.Sprintf("data%d", i))
+		data := fmt.Appendf(nil, "data%d", i)
 
 		err = dc.Set(sourceURL, cacheKey, bytes.NewReader(data), nil)
 		if err != nil {
@@ -313,7 +313,7 @@ func TestDiskCache_Clear(t *testing.T) {
 	}
 
 	// Verify all entries are gone
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		sourceURL := fmt.Sprintf("https://example.com/feed%d", i)
 		cacheKey := fmt.Sprintf("key%d", i)
 
@@ -408,7 +408,7 @@ func TestDiskCache_SetWithValidation(t *testing.T) {
 	if !ok {
 		t.Fatal("Get() expected cache hit")
 	}
-	reader.Close()
+	_ = reader.Close()
 }
 
 func TestDiskCache_SetWithValidationError(t *testing.T) {
@@ -499,7 +499,7 @@ func TestDiskCache_SetDirectoryCreationError(t *testing.T) {
 	if !ok {
 		t.Fatal("Get() expected cache hit")
 	}
-	reader.Close()
+	_ = reader.Close()
 }
 
 func TestDiskCache_SetRenameRaceCondition(t *testing.T) {
@@ -535,7 +535,7 @@ func TestDiskCache_SetRenameRaceCondition(t *testing.T) {
 		t.Fatal("Get() expected cache hit")
 	}
 	got, err := io.ReadAll(reader)
-	reader.Close()
+	_ = reader.Close()
 	if err != nil {
 		t.Fatalf("ReadAll() error = %v", err)
 	}
