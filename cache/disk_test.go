@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"runtime"
 	"testing"
 	"time"
 )
@@ -436,8 +437,18 @@ func TestDiskCache_SetWithValidationError(t *testing.T) {
 }
 
 func TestNewDiskCache_InvalidPath(t *testing.T) {
+	// Use platform-appropriate invalid path
+	var invalidPath string
+	if runtime.GOOS == "windows" {
+		// Windows: Use NUL device with subdirectory (invalid)
+		invalidPath = "NUL\\invalid\\path"
+	} else {
+		// Unix: Use /dev/null with subdirectory (invalid)
+		invalidPath = "/dev/null/invalid/path"
+	}
+
 	// Try to create cache in invalid location
-	_, err := NewDiskCache("/dev/null/invalid/path", 1024*1024)
+	_, err := NewDiskCache(invalidPath, 1024*1024)
 	if err == nil {
 		t.Fatal("NewDiskCache() expected error for invalid path")
 	}

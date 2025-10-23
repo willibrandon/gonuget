@@ -285,24 +285,18 @@ func cleanDirectory(path string) error {
 // if it's empty. This prevents deleting files from other concurrent installations.
 // Reference: NuGet.Client PackageExtractor.DeleteTargetAndTempPaths
 func cleanupPartialInstall(targetPath, tempNupkg string) {
-	// Remove temp nupkg file
+	// Remove temp nupkg file only
 	if tempNupkg != "" {
 		_ = os.Remove(tempNupkg)
 	}
 
-	// Remove target directory only if it's empty (non-recursive)
-	// This is safe for concurrent operations because:
-	// 1. If other installations are in progress, the directory won't be empty
-	// 2. os.Remove fails silently if directory is not empty
-	if targetPath != "" {
-		_ = os.Remove(targetPath)
-
-		// Try to remove parent if empty (version directory)
-		parent := filepath.Dir(targetPath)
-		if parent != "" && parent != "." && parent != "/" {
-			_ = os.Remove(parent)
-		}
-	}
+	// DO NOT remove directories during cleanup.
+	// Reason: In concurrent scenarios, multiple goroutines may be writing
+	// temp files to the same version directory. Removing the directory
+	// would break other in-progress installations.
+	//
+	// Empty directories are safe to leave and will be reused or cleaned
+	// up by the successful installation.
 }
 
 // getContentHash returns the content hash for a package.
