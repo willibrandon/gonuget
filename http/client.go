@@ -11,6 +11,8 @@ import (
 	"net"
 	"net/http"
 	"time"
+
+	"github.com/willibrandon/gonuget/observability"
 )
 
 const (
@@ -25,17 +27,20 @@ type Client struct {
 	userAgent   string
 	timeout     time.Duration
 	retryConfig *RetryConfig
+	logger      observability.Logger
 }
 
 // Config holds HTTP client configuration
 type Config struct {
-	Timeout      time.Duration
-	DialTimeout  time.Duration
-	UserAgent    string
-	TLSConfig    *tls.Config
-	MaxIdleConns int
-	EnableHTTP2  bool
-	RetryConfig  *RetryConfig
+	Timeout       time.Duration
+	DialTimeout   time.Duration
+	UserAgent     string
+	TLSConfig     *tls.Config
+	MaxIdleConns  int
+	EnableHTTP2   bool
+	RetryConfig   *RetryConfig
+	Logger        observability.Logger // Optional logger (nil uses NullLogger)
+	EnableTracing bool                 // Enable OpenTelemetry HTTP tracing
 }
 
 // DefaultConfig returns a client configuration with sensible defaults
@@ -72,14 +77,26 @@ func NewClient(cfg *Config) *Client {
 		ForceAttemptHTTP2:   cfg.EnableHTTP2,
 	}
 
+	// Wrap transport with tracing if enabled
+	var finalTransport http.RoundTripper = transport
+	if cfg.EnableTracing {
+		finalTransport = observability.NewHTTPTracingTransport(transport, "github.com/willibrandon/gonuget/http")
+	}
+
+	logger := cfg.Logger
+	if logger == nil {
+		logger = observability.NewNullLogger()
+	}
+
 	return &Client{
 		httpClient: &http.Client{
-			Transport: transport,
+			Transport: finalTransport,
 			Timeout:   cfg.Timeout,
 		},
 		userAgent:   cfg.UserAgent,
 		timeout:     cfg.Timeout,
 		retryConfig: cfg.RetryConfig,
+		logger:      logger,
 	}
 }
 
@@ -91,7 +108,25 @@ func (c *Client) Do(ctx context.Context, req *http.Request) (*http.Response, err
 		req.Header.Set("User-Agent", c.userAgent)
 	}
 
-	return c.httpClient.Do(req)
+	c.logger.DebugContext(ctx, "HTTP {Method} {URL}", req.Method, req.URL.String())
+
+	start := time.Now()
+	resp, err := c.httpClient.Do(req)
+	duration := time.Since(start)
+
+	if err != nil {
+		c.logger.WarnContext(ctx, "HTTP {Method} {URL} failed after {Duration}ms: {Error}",
+			req.Method, req.URL.String(), duration.Milliseconds(), err)
+		observability.HTTPRequestsTotal.WithLabelValues(req.Method, "error", req.URL.Host).Inc()
+		return nil, err
+	}
+
+	c.logger.DebugContext(ctx, "HTTP {Method} {URL} → {StatusCode} ({Duration}ms)",
+		req.Method, req.URL.String(), resp.StatusCode, duration.Milliseconds())
+	observability.HTTPRequestsTotal.WithLabelValues(req.Method, fmt.Sprintf("%d", resp.StatusCode), req.URL.Host).Inc()
+	observability.HTTPRequestDuration.WithLabelValues(req.Method, req.URL.Host).Observe(duration.Seconds())
+
+	return resp, nil
 }
 
 // Get performs a GET request
@@ -114,6 +149,9 @@ func (c *Client) DoWithRetry(ctx context.Context, req *http.Request) (*http.Resp
 	var lastErr error
 	var resp *http.Response
 
+	c.logger.DebugContext(ctx, "HTTP {Method} {URL} with retry (max={MaxRetries})",
+		req.Method, req.URL.String(), c.retryConfig.MaxRetries)
+
 	for attempt := 0; attempt <= c.retryConfig.MaxRetries; attempt++ {
 		// Clone request for retry (body may have been consumed)
 		reqClone := req.Clone(ctx)
@@ -125,11 +163,17 @@ func (c *Client) DoWithRetry(ctx context.Context, req *http.Request) (*http.Resp
 
 		// Success
 		if lastErr == nil && !IsRetriableStatus(resp.StatusCode) {
+			if attempt > 0 {
+				c.logger.InfoContext(ctx, "HTTP {Method} {URL} succeeded after {Attempt} retries",
+					req.Method, req.URL.String(), attempt)
+			}
 			return resp, nil
 		}
 
 		// Check if error is retriable
 		if lastErr != nil && !IsRetriable(lastErr) {
+			c.logger.WarnContext(ctx, "HTTP {Method} {URL} failed with non-retriable error: {Error}",
+				req.Method, req.URL.String(), lastErr)
 			return nil, lastErr
 		}
 
@@ -155,6 +199,9 @@ func (c *Client) DoWithRetry(ctx context.Context, req *http.Request) (*http.Resp
 				backoff = c.retryConfig.CalculateBackoff(attempt)
 			}
 
+			c.logger.DebugContext(ctx, "HTTP {Method} {URL} retry {Attempt}/{MaxRetries} after {Backoff}ms",
+				req.Method, req.URL.String(), attempt+1, c.retryConfig.MaxRetries, backoff.Milliseconds())
+
 			// Close response body before retry
 			if resp != nil {
 				_ = resp.Body.Close()
@@ -170,6 +217,8 @@ func (c *Client) DoWithRetry(ctx context.Context, req *http.Request) (*http.Resp
 	}
 
 	if lastErr != nil {
+		c.logger.ErrorContext(ctx, "HTTP {Method} {URL} failed after {MaxRetries} retries: {Error}",
+			req.Method, req.URL.String(), c.retryConfig.MaxRetries, lastErr)
 		return nil, fmt.Errorf("after %d retries: %w", c.retryConfig.MaxRetries, lastErr)
 	}
 

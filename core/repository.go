@@ -10,6 +10,7 @@ import (
 	"github.com/willibrandon/gonuget/auth"
 	"github.com/willibrandon/gonuget/cache"
 	nugethttp "github.com/willibrandon/gonuget/http"
+	"github.com/willibrandon/gonuget/observability"
 )
 
 // SourceRepository represents a NuGet package source with authentication
@@ -19,6 +20,7 @@ type SourceRepository struct {
 	authenticator   auth.Authenticator
 	httpClient      *nugethttp.Client
 	providerFactory *ProviderFactory
+	logger          observability.Logger
 
 	mu       sync.RWMutex
 	provider ResourceProvider
@@ -31,6 +33,7 @@ type RepositoryConfig struct {
 	Authenticator auth.Authenticator
 	HTTPClient    *nugethttp.Client
 	Cache         *cache.MultiTierCache // Optional cache (nil disables caching)
+	Logger        observability.Logger  // Optional logger (nil uses NullLogger)
 }
 
 // NewSourceRepository creates a new source repository
@@ -40,12 +43,18 @@ func NewSourceRepository(cfg RepositoryConfig) *SourceRepository {
 		httpClient = nugethttp.NewClient(nil)
 	}
 
+	logger := cfg.Logger
+	if logger == nil {
+		logger = observability.NewNullLogger()
+	}
+
 	return &SourceRepository{
 		name:            cfg.Name,
 		sourceURL:       cfg.SourceURL,
 		authenticator:   cfg.Authenticator,
 		httpClient:      httpClient,
 		providerFactory: NewProviderFactory(httpClient, cfg.Cache),
+		logger:          logger,
 	}
 }
 
@@ -90,41 +99,111 @@ func (r *SourceRepository) GetProvider(ctx context.Context) (ResourceProvider, e
 // GetMetadata retrieves metadata for a specific package version
 // cacheCtx controls caching behavior (can be nil for default behavior)
 func (r *SourceRepository) GetMetadata(ctx context.Context, cacheCtx *cache.SourceCacheContext, packageID, version string) (*ProtocolMetadata, error) {
+	r.logger.DebugContext(ctx, "Fetching package metadata for {PackageID}@{Version} from {Source}",
+		packageID, version, r.sourceURL)
+
 	provider, err := r.GetProvider(ctx)
 	if err != nil {
+		r.logger.ErrorContext(ctx, "Failed to get provider for {Source}: {Error}",
+			r.sourceURL, err)
 		return nil, err
 	}
-	return provider.GetMetadata(ctx, cacheCtx, packageID, version)
+
+	metadata, err := provider.GetMetadata(ctx, cacheCtx, packageID, version)
+	if err != nil {
+		r.logger.WarnContext(ctx, "Metadata fetch failed for {PackageID}@{Version}: {Error}",
+			packageID, version, err)
+		return nil, err
+	}
+
+	r.logger.InfoContext(ctx, "Successfully fetched metadata for {PackageID}@{Version}",
+		packageID, version)
+	return metadata, nil
 }
 
 // ListVersions lists all available versions for a package
 // cacheCtx controls caching behavior (can be nil for default behavior)
 func (r *SourceRepository) ListVersions(ctx context.Context, cacheCtx *cache.SourceCacheContext, packageID string) ([]string, error) {
+	r.logger.DebugContext(ctx, "Listing package versions for {PackageID} from {Source}",
+		packageID, r.sourceURL)
+
 	provider, err := r.GetProvider(ctx)
 	if err != nil {
+		r.logger.ErrorContext(ctx, "Failed to get provider for {Source}: {Error}",
+			r.sourceURL, err)
 		return nil, err
 	}
-	return provider.ListVersions(ctx, cacheCtx, packageID)
+
+	versions, err := provider.ListVersions(ctx, cacheCtx, packageID)
+	if err != nil {
+		r.logger.WarnContext(ctx, "Failed to list versions for {PackageID}: {Error}",
+			packageID, err)
+		return nil, err
+	}
+
+	r.logger.InfoContext(ctx, "Successfully listed {Count} versions for {PackageID}",
+		len(versions), packageID)
+	return versions, nil
 }
 
 // Search searches for packages matching the query
 // cacheCtx controls caching behavior (can be nil for default behavior)
 func (r *SourceRepository) Search(ctx context.Context, cacheCtx *cache.SourceCacheContext, query string, opts SearchOptions) ([]SearchResult, error) {
+	r.logger.DebugContext(ctx, "Searching for packages with query {Query} from {Source} (skip={Skip}, take={Take})",
+		query, r.sourceURL, opts.Skip, opts.Take)
+
 	provider, err := r.GetProvider(ctx)
 	if err != nil {
+		r.logger.ErrorContext(ctx, "Failed to get provider for {Source}: {Error}",
+			r.sourceURL, err)
 		return nil, err
 	}
-	return provider.Search(ctx, cacheCtx, query, opts)
+
+	results, err := provider.Search(ctx, cacheCtx, query, opts)
+	if err != nil {
+		r.logger.WarnContext(ctx, "Search failed for query {Query}: {Error}",
+			query, err)
+		return nil, err
+	}
+
+	r.logger.InfoContext(ctx, "Search returned {Count} results for query {Query}",
+		len(results), query)
+	return results, nil
 }
 
 // DownloadPackage downloads a .nupkg file
 // cacheCtx controls caching behavior (can be nil for default behavior)
 func (r *SourceRepository) DownloadPackage(ctx context.Context, cacheCtx *cache.SourceCacheContext, packageID, version string) (io.ReadCloser, error) {
+	// Start OpenTelemetry span
+	ctx, span := observability.StartPackageDownloadSpan(ctx, packageID, version, r.sourceURL)
+	defer span.End()
+
+	r.logger.InfoContext(ctx, "Downloading package {PackageID}@{Version} from {Source}",
+		packageID, version, r.sourceURL)
+
 	provider, err := r.GetProvider(ctx)
 	if err != nil {
+		r.logger.ErrorContext(ctx, "Failed to get provider for {Source}: {Error}",
+			r.sourceURL, err)
+		observability.EndSpanWithError(span, err)
 		return nil, err
 	}
-	return provider.DownloadPackage(ctx, cacheCtx, packageID, version)
+
+	rc, err := provider.DownloadPackage(ctx, cacheCtx, packageID, version)
+	if err != nil {
+		r.logger.ErrorContext(ctx, "Package download failed for {PackageID}@{Version}: {Error}",
+			packageID, version, err)
+		observability.EndSpanWithError(span, err)
+		return nil, err
+	}
+
+	r.logger.InfoContext(ctx, "Successfully downloaded package {PackageID}@{Version}",
+		packageID, version)
+
+	// Increment Prometheus metrics
+	observability.PackageDownloadsTotal.WithLabelValues("success").Inc()
+
+	return rc, nil
 }
 
 // Name returns the repository name

@@ -3,8 +3,10 @@ package observability
 import (
 	"net/http"
 
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/propagation"
 	semconv "go.opentelemetry.io/otel/semconv/v1.21.0"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -47,9 +49,12 @@ func (t *HTTPTracingTransport) RoundTrip(req *http.Request) (*http.Response, err
 	)
 	defer span.End()
 
-	// Inject trace context into HTTP headers (W3C Trace Context)
-	// OTEL automatically propagates context via http.Request.WithContext
+	// Update request with new context
 	req = req.WithContext(ctx)
+
+	// Inject trace context into HTTP headers using W3C Trace Context propagator
+	propagator := otel.GetTextMapPropagator()
+	propagator.Inject(ctx, propagation.HeaderCarrier(req.Header))
 
 	// Execute request
 	resp, err := t.base.RoundTrip(req)
