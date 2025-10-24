@@ -51,8 +51,7 @@ jobs:
       if: matrix.os == 'ubuntu-latest'
       run: |
         cd observability
-        docker compose -f docker-compose.test.yml up -d
-        sleep 5
+        docker compose -f docker-compose.test.yml up -d --wait
         echo "Jaeger UI: http://localhost:16686"
         echo "Prometheus UI: http://localhost:9090"
 
@@ -62,17 +61,17 @@ jobs:
     - name: Run all tests (including integration)
       run: go test -v ./...
 
-    - name: Stop observability stack
-      if: matrix.os == 'ubuntu-latest' && always()
-      run: |
-        cd observability
-        docker compose -f docker-compose.test.yml down
-
     - name: Coverage report
       if: matrix.os == 'ubuntu-latest'
       run: |
         go test -coverprofile=coverage.out -covermode=atomic ./...
         go tool cover -func=coverage.out
+
+    - name: Stop observability stack
+      if: matrix.os == 'ubuntu-latest' && always()
+      run: |
+        cd observability
+        docker compose -f docker-compose.test.yml down
 
     - name: Build interop CLI
       shell: bash

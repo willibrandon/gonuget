@@ -125,10 +125,8 @@ func createOTLPExporter(ctx context.Context, endpoint string) (*otlptrace.Export
 
 // ShutdownTracing gracefully shuts down the tracer provider
 func ShutdownTracing(ctx context.Context, tp *sdktrace.TracerProvider) error {
-	// Create timeout context for shutdown.
-	// Timeout must be longer than BatchSpanProcessor's default BatchTimeout (5s)
-	// to allow pending batches to be exported. 10s provides sufficient buffer.
-	shutdownCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	// Create timeout context for shutdown
+	shutdownCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
 	if err := tp.Shutdown(shutdownCtx); err != nil {

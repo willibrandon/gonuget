@@ -242,13 +242,41 @@ func TestE2E_FullObservabilityStack(t *testing.T) {
 		t.Skip("Skipping E2E integration test in short mode")
 	}
 
+	// Check if OTLP collector is available
+	endpoint := "localhost:4317"
+	checkCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	conn, err := grpc.NewClient(endpoint,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	)
+	if err != nil {
+		t.Skipf("OTLP collector not available at %s (run: cd observability && docker-compose -f docker-compose.test.yml up -d): %v", endpoint, err)
+	}
+	defer conn.Close()
+
+	// Trigger connection and wait for Ready state or timeout
+	conn.Connect()
+	for {
+		state := conn.GetState()
+		if state == connectivity.Ready {
+			break
+		}
+		if state == connectivity.Shutdown || state == connectivity.TransientFailure {
+			t.Skipf("OTLP collector not available at %s (state: %v, run: cd observability && docker-compose -f docker-compose.test.yml up -d)", endpoint, state)
+		}
+		if !conn.WaitForStateChange(checkCtx, state) {
+			t.Skipf("OTLP collector not available at %s (timeout waiting for Ready state, run: cd observability && docker-compose -f docker-compose.test.yml up -d)", endpoint)
+		}
+	}
+
 	ctx := context.Background()
 
 	// 1. Setup tracing
 	config := DefaultTracerConfig()
 	config.ServiceName = "gonuget-full-stack-test"
 	config.ExporterType = "otlp"
-	config.OTLPEndpoint = "localhost:4317"
+	config.OTLPEndpoint = endpoint
 
 	tp, err := SetupTracing(ctx, config)
 	if err != nil {

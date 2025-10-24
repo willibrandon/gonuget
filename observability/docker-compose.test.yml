@@ -5,11 +5,12 @@ services:
       - "4317:4317"   # OTLP gRPC
       - "4318:4318"   # OTLP HTTP
       - "16686:16686" # Jaeger UI
-      - "16685:16685" # OTLP HTTP (Jaeger v2)
+      - "16685:16685" # Query gRPC
+      - "13133:13133" # Health check
     environment:
       - COLLECTOR_OTLP_ENABLED=true
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:14269/"]
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:13133/status"]
       interval: 5s
       timeout: 3s
       retries: 5
