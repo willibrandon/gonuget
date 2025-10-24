@@ -47,12 +47,14 @@ jobs:
       shell: bash
       run: go list ./... | xargs go test -run=^$ -bench=.
 
-    - name: Start Jaeger collector for integration tests
+    - name: Start observability stack for integration and E2E tests
       if: matrix.os == 'ubuntu-latest'
       run: |
         cd observability
         docker compose -f docker-compose.test.yml up -d
         sleep 5
+        echo "Jaeger UI: http://localhost:16686"
+        echo "Prometheus UI: http://localhost:9090"
 
     - name: Run unit tests
       run: go test -short -v ./...
@@ -60,7 +62,7 @@ jobs:
     - name: Run all tests (including integration)
       run: go test -v ./...
 
-    - name: Stop Jaeger collector
+    - name: Stop observability stack
       if: matrix.os == 'ubuntu-latest' && always()
       run: |
         cd observability
