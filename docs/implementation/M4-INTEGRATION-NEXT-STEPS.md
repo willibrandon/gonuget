@@ -1,6 +1,6 @@
 # M4 Integration Guide: Next Steps
 
-**Status:** Cache ✅ Integrated | Observability ✅ Integrated | Resilience Integration Pending
+**Status:** Cache ✅ Integrated | Observability ✅ Integrated | Resilience ✅ Integrated
 **Last Updated:** 2025-10-24
 **Owner:** Engineering
 
@@ -280,14 +280,72 @@ func (c *Client) GetPackageMetadata(ctx context.Context, packageID, versionStr s
 
 ---
 
-## Integration Task 2: Wire Resilience into HTTP Client
+## Integration Task 2: Wire Resilience into HTTP Client ✅ COMPLETE
 
 **Goal:** Wrap HTTP client with circuit breaker and rate limiter.
 
 **Priority:** P0 (Critical)
-**Estimated Time:** 3 hours
+**Status:** ✅ **COMPLETED** (2025-10-24)
+**Actual Time:** 3 hours
 
-### Changes Required
+### What Was Implemented
+
+Following the integration plan, we successfully wired circuit breaker and rate limiter resilience components into the HTTP client. Both components protect HTTP requests with per-host isolation.
+
+#### Implementation Summary:
+
+1. **HTTP Client Structure Updates (`http/client.go`)**:
+   - Added `circuitBreaker *resilience.HTTPCircuitBreaker` field to `Client` struct
+   - Added `rateLimiter *resilience.PerSourceLimiter` field to `Client` struct
+   - Added `CircuitBreakerConfig` and `RateLimiterConfig` to `Config` struct
+   - Updated `NewClient()` to initialize resilience components when configs provided
+
+2. **Do() Method Integration**:
+   - Rate limiter applied BEFORE request execution (blocks until token available)
+   - Circuit breaker wraps request execution with `Execute(ctx, host, executeRequest)`
+   - Both components operate per-host for isolation
+   - Existing logging, metrics, and tracing preserved
+
+3. **DoWithRetry() Method Integration**:
+   - Rate limiter check before retry sequence begins
+   - Circuit breaker wraps ENTIRE retry sequence (not individual attempts)
+   - Proper interaction: circuit breaker sees retry as single operation
+   - Prevents wasted retry attempts when circuit is open
+
+4. **Test Suite (`http/client_resilience_test.go`)**:
+   - 9 new tests covering all resilience scenarios
+   - Circuit breaker opening after N failures
+   - Circuit breaker half-open → closed transition
+   - Per-host circuit breaker isolation
+   - Rate limiter delaying requests (timing verification)
+   - Rate limiter context cancellation
+   - Per-host rate limiter isolation
+   - Circuit breaker + rate limiter interaction
+   - Retry + circuit breaker interaction
+   - Client without resilience (backward compatibility)
+
+### Test Results
+
+✅ **All HTTP tests passing** (5.622s)
+✅ **All 9 resilience tests passing**
+✅ **Linter passing** (0 issues)
+✅ **No regressions** in existing tests
+✅ **Full test suite passing** across all packages
+
+### Key Implementation Details
+
+- **Order of operations**: Rate limiter → Circuit Breaker → Request execution
+- **Per-host isolation**: Each host gets its own circuit breaker and rate limiter
+- **Circuit breaker wraps retry**: Entire retry sequence is ONE operation to circuit breaker
+- **Optional resilience**: Both components are nil-safe (nil disables)
+- **Error handling**: Rate limit errors distinguished from circuit breaker errors
+- **Backward compatibility**: Existing code works without resilience configured
+
+---
+
+### Original Plan (For Reference)
+
+#### Changes Required
 
 #### 1. Update `http/client.go`
 
@@ -784,14 +842,18 @@ func TestFullStackIntegration(t *testing.T) {
    - 9 comprehensive integration tests passing ✅
    - **Actual time: 4 hours**
 
+5. **Resilience Integration** (Task 2) - ✅ **COMPLETED** (2025-10-24)
+   - CircuitBreakerConfig and RateLimiterConfig added to http.Config ✅
+   - Circuit breaker and rate limiter fields added to http.Client ✅
+   - Do() method wrapped with rate limiter → circuit breaker → request execution ✅
+   - DoWithRetry() method with circuit breaker wrapping entire retry sequence ✅
+   - 9 resilience integration tests passing (circuit breaker, rate limiter, interactions) ✅
+   - Per-host isolation for both circuit breaker and rate limiter ✅
+   - **Actual time: 3 hours**
+
 ### ❌ Remaining Work
 
-1. **Integration Task 2: Wire Resilience into HTTP Client** - NOT STARTED
-   - Add CircuitBreakerConfig and RateLimiterConfig to http.Config
-   - Wrap Do() and DoWithRetry() with circuit breaker + rate limiter
-   - Estimated: 3-4 hours
-
-2. **Integration Testing** - NOT STARTED
+1. **Integration Testing** - NOT STARTED
    - Create full-stack integration test with cache + resilience + observability
    - Verify metrics are exported correctly
    - Verify traces appear in Jaeger
@@ -800,14 +862,7 @@ func TestFullStackIntegration(t *testing.T) {
 
 ### Next Steps
 
-**Immediate Priority:** Integration Task 2 (Resilience Wiring)
-- Add CircuitBreakerConfig and RateLimiterConfig to http.Config
-- Add resilience fields to http.Client
-- Wrap Do() and DoWithRetry() with circuit breaker + rate limiter
-- Create http/client_resilience_test.go with comprehensive tests
-- Estimated: 3-4 hours
-
-**Then:** Full Integration Testing
+**Immediate Priority:** Full Integration Testing
 - Create full-stack integration test with cache + resilience + observability
 - Test with real NuGet.org operations
 - Verify metrics exported to Prometheus
@@ -816,10 +871,12 @@ func TestFullStackIntegration(t *testing.T) {
 - Document usage examples
 - Estimated: 2-3 hours
 
-**Final:** M4 Complete
-- All infrastructure components integrated ✅
-- Cache, resilience, and observability working together
-- Production-ready for M5 (Package Extraction & Restore)
+**Then:** M4 Complete
+- ✅ All core infrastructure integrated (cache, resilience, observability)
+- ✅ Cache: Multi-tier caching with hit/miss tracking
+- ✅ Resilience: Circuit breaker and rate limiter with per-host isolation
+- ✅ Observability: Logging, tracing, and metrics throughout
+- Ready for M5 (Package Extraction & Restore)
 
 ---
 
