@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"testing"
 	"time"
 
@@ -224,13 +225,7 @@ func TestE2E_PrometheusScraping(t *testing.T) {
 		"text/plain; charset=utf-8",
 	}
 
-	validContentType := false
-	for _, valid := range validTypes {
-		if contentType == valid {
-			validContentType = true
-			break
-		}
-	}
+	validContentType := slices.Contains(validTypes, contentType)
 
 	if !validContentType {
 		t.Errorf("Invalid Content-Type: %s (expected one of: %v)", contentType, validTypes)

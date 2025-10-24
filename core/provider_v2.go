@@ -1,10 +1,14 @@
 package core
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"fmt"
 	"io"
 	"strings"
 
+	"github.com/willibrandon/gonuget/cache"
 	nugethttp "github.com/willibrandon/gonuget/http"
 	"github.com/willibrandon/gonuget/protocol/v2"
 )
@@ -15,10 +19,12 @@ type V2ResourceProvider struct {
 	searchClient   *v2.SearchClient
 	metadataClient *v2.MetadataClient
 	downloadClient *v2.DownloadClient
+	cache          *cache.MultiTierCache
 }
 
 // NewV2ResourceProvider creates a new v2 resource provider
-func NewV2ResourceProvider(sourceURL string, httpClient HTTPClient) *V2ResourceProvider {
+// mtCache can be nil if caching is not desired
+func NewV2ResourceProvider(sourceURL string, httpClient HTTPClient, mtCache *cache.MultiTierCache) *V2ResourceProvider {
 	// Type assert to *nugethttp.Client for protocol clients
 	// This is safe because HTTPClient interface is implemented by *nugethttp.Client
 	// and authenticatedHTTPClient which wraps it
@@ -34,11 +40,30 @@ func NewV2ResourceProvider(sourceURL string, httpClient HTTPClient) *V2ResourceP
 		searchClient:   v2.NewSearchClient(client),
 		metadataClient: v2.NewMetadataClient(client),
 		downloadClient: v2.NewDownloadClient(client),
+		cache:          mtCache,
 	}
 }
 
 // GetMetadata retrieves metadata for a specific package version
-func (p *V2ResourceProvider) GetMetadata(ctx context.Context, packageID, version string) (*ProtocolMetadata, error) {
+func (p *V2ResourceProvider) GetMetadata(ctx context.Context, cacheCtx *cache.SourceCacheContext, packageID, version string) (*ProtocolMetadata, error) {
+	// Use default cache context if none provided
+	if cacheCtx == nil {
+		cacheCtx = cache.NewSourceCacheContext()
+	}
+
+	// Check cache if enabled
+	if p.cache != nil && !cacheCtx.NoCache {
+		cacheKey := fmt.Sprintf("metadata:%s:%s", packageID, version)
+		cached, hit, err := p.cache.Get(ctx, p.sourceURL, cacheKey, cacheCtx.MaxAge)
+		if err == nil && hit {
+			var metadata ProtocolMetadata
+			if err := json.Unmarshal(cached, &metadata); err == nil {
+				return &metadata, nil
+			}
+		}
+	}
+
+	// Fetch from network
 	v2Metadata, err := p.metadataClient.GetPackageMetadata(ctx, p.sourceURL, packageID, version)
 	if err != nil {
 		return nil, err
@@ -73,6 +98,14 @@ func (p *V2ResourceProvider) GetMetadata(ctx context.Context, packageID, version
 	// V2 format: "PackageA:1.0:net45|PackageB:2.0:netstandard2.0"
 	if v2Metadata.Dependencies != "" {
 		metadata.Dependencies = parseDependencies(v2Metadata.Dependencies)
+	}
+
+	// Cache result if enabled
+	if p.cache != nil && !cacheCtx.DirectDownload {
+		cacheKey := fmt.Sprintf("metadata:%s:%s", packageID, version)
+		if jsonData, err := json.Marshal(metadata); err == nil {
+			_ = p.cache.Set(ctx, p.sourceURL, cacheKey, bytes.NewReader(jsonData), cacheCtx.MaxAge, nil)
+		}
 	}
 
 	return metadata, nil
@@ -151,12 +184,61 @@ func parseDependencies(deps string) []ProtocolDependencyGroup {
 }
 
 // ListVersions lists all available versions for a package
-func (p *V2ResourceProvider) ListVersions(ctx context.Context, packageID string) ([]string, error) {
-	return p.metadataClient.ListVersions(ctx, p.sourceURL, packageID)
+func (p *V2ResourceProvider) ListVersions(ctx context.Context, cacheCtx *cache.SourceCacheContext, packageID string) ([]string, error) {
+	// Use default cache context if none provided
+	if cacheCtx == nil {
+		cacheCtx = cache.NewSourceCacheContext()
+	}
+
+	// Check cache if enabled
+	if p.cache != nil && !cacheCtx.NoCache {
+		cacheKey := fmt.Sprintf("versions:%s", packageID)
+		cached, hit, err := p.cache.Get(ctx, p.sourceURL, cacheKey, cacheCtx.MaxAge)
+		if err == nil && hit {
+			var versions []string
+			if err := json.Unmarshal(cached, &versions); err == nil {
+				return versions, nil
+			}
+		}
+	}
+
+	// Fetch from network
+	versions, err := p.metadataClient.ListVersions(ctx, p.sourceURL, packageID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Cache result if enabled
+	if p.cache != nil && !cacheCtx.DirectDownload {
+		cacheKey := fmt.Sprintf("versions:%s", packageID)
+		if jsonData, err := json.Marshal(versions); err == nil {
+			_ = p.cache.Set(ctx, p.sourceURL, cacheKey, bytes.NewReader(jsonData), cacheCtx.MaxAge, nil)
+		}
+	}
+
+	return versions, nil
 }
 
 // Search searches for packages matching the query
-func (p *V2ResourceProvider) Search(ctx context.Context, query string, opts SearchOptions) ([]SearchResult, error) {
+func (p *V2ResourceProvider) Search(ctx context.Context, cacheCtx *cache.SourceCacheContext, query string, opts SearchOptions) ([]SearchResult, error) {
+	// Use default cache context if none provided
+	if cacheCtx == nil {
+		cacheCtx = cache.NewSourceCacheContext()
+	}
+
+	// Check cache if enabled
+	if p.cache != nil && !cacheCtx.NoCache {
+		cacheKey := fmt.Sprintf("search:%s:%d:%d:%t", query, opts.Skip, opts.Take, opts.IncludePrerelease)
+		cached, hit, err := p.cache.Get(ctx, p.sourceURL, cacheKey, cacheCtx.MaxAge)
+		if err == nil && hit {
+			var results []SearchResult
+			if err := json.Unmarshal(cached, &results); err == nil {
+				return results, nil
+			}
+		}
+	}
+
+	// Fetch from network
 	searchOpts := v2.SearchOptions{
 		Query:             query,
 		Skip:              opts.Skip,
@@ -192,12 +274,65 @@ func (p *V2ResourceProvider) Search(ctx context.Context, query string, opts Sear
 		results = append(results, result)
 	}
 
+	// Cache result if enabled
+	if p.cache != nil && !cacheCtx.DirectDownload {
+		cacheKey := fmt.Sprintf("search:%s:%d:%d:%t", query, opts.Skip, opts.Take, opts.IncludePrerelease)
+		if jsonData, err := json.Marshal(results); err == nil {
+			_ = p.cache.Set(ctx, p.sourceURL, cacheKey, bytes.NewReader(jsonData), cacheCtx.MaxAge, nil)
+		}
+	}
+
 	return results, nil
 }
 
 // DownloadPackage downloads a .nupkg file
-func (p *V2ResourceProvider) DownloadPackage(ctx context.Context, packageID, version string) (io.ReadCloser, error) {
-	return p.downloadClient.DownloadPackage(ctx, p.sourceURL, packageID, version)
+func (p *V2ResourceProvider) DownloadPackage(ctx context.Context, cacheCtx *cache.SourceCacheContext, packageID, version string) (io.ReadCloser, error) {
+	// Use default cache context if none provided
+	if cacheCtx == nil {
+		cacheCtx = cache.NewSourceCacheContext()
+	}
+
+	// Check cache if enabled
+	if p.cache != nil && !cacheCtx.NoCache {
+		cacheKey := fmt.Sprintf("package:%s.%s.nupkg", packageID, version)
+		cached, hit, err := p.cache.Get(ctx, p.sourceURL, cacheKey, cacheCtx.MaxAge)
+		if err == nil && hit {
+			return io.NopCloser(bytes.NewReader(cached)), nil
+		}
+	}
+
+	// Download from network
+	reader, err := p.downloadClient.DownloadPackage(ctx, p.sourceURL, packageID, version)
+	if err != nil {
+		return nil, err
+	}
+
+	// Read package data for caching
+	packageData, err := io.ReadAll(reader)
+	_ = reader.Close()
+	if err != nil {
+		return nil, err
+	}
+
+	// Cache result if enabled (with ZIP validation)
+	if p.cache != nil && !cacheCtx.DirectDownload {
+		cacheKey := fmt.Sprintf("package:%s.%s.nupkg", packageID, version)
+		validator := func(rs io.ReadSeeker) error {
+			// Basic ZIP validation - check for PK signature
+			var sig [2]byte
+			if _, err := rs.Read(sig[:]); err != nil {
+				return fmt.Errorf("failed to read signature: %w", err)
+			}
+			if sig[0] != 0x50 || sig[1] != 0x4B { // PK signature
+				return fmt.Errorf("invalid ZIP signature")
+			}
+			_, _ = rs.Seek(0, io.SeekStart) // Reset for caching
+			return nil
+		}
+		_ = p.cache.Set(ctx, p.sourceURL, cacheKey, bytes.NewReader(packageData), cacheCtx.MaxAge, validator)
+	}
+
+	return io.NopCloser(bytes.NewReader(packageData)), nil
 }
 
 // SourceURL returns the source URL

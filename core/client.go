@@ -52,7 +52,7 @@ func (c *Client) GetTargetFramework() *frameworks.NuGetFramework {
 
 // SearchPackages searches for packages across all repositories
 func (c *Client) SearchPackages(ctx context.Context, query string, opts SearchOptions) (map[string][]SearchResult, error) {
-	return c.repositoryManager.SearchAll(ctx, query, opts)
+	return c.repositoryManager.SearchAll(ctx, nil, query, opts)
 }
 
 // GetPackageMetadata retrieves metadata from the first repository that has it
@@ -64,7 +64,7 @@ func (c *Client) GetPackageMetadata(ctx context.Context, packageID, versionStr s
 
 	var lastErr error
 	for _, repo := range repos {
-		metadata, err := repo.GetMetadata(ctx, packageID, versionStr)
+		metadata, err := repo.GetMetadata(ctx, nil, packageID, versionStr)
 		if err != nil {
 			lastErr = err
 			continue
@@ -89,7 +89,7 @@ func (c *Client) ListVersions(ctx context.Context, packageID string) ([]string, 
 	// Collect versions from all repos
 	versionsMap := make(map[string]bool)
 	for _, repo := range repos {
-		versions, err := repo.ListVersions(ctx, packageID)
+		versions, err := repo.ListVersions(ctx, nil, packageID)
 		if err != nil {
 			continue // Skip repos that don't have the package
 		}
@@ -152,7 +152,7 @@ func (c *Client) DownloadPackage(ctx context.Context, packageID, versionStr stri
 
 	var lastErr error
 	for _, repo := range repos {
-		body, err := repo.DownloadPackage(ctx, packageID, versionStr)
+		body, err := repo.DownloadPackage(ctx, nil, packageID, versionStr)
 		if err != nil {
 			lastErr = err
 			continue

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/willibrandon/gonuget/cache"
 	nugethttp "github.com/willibrandon/gonuget/http"
 )
 
@@ -14,16 +15,20 @@ import (
 // Abstracts differences between v2 and v3 protocols
 type ResourceProvider interface {
 	// GetMetadata retrieves metadata for a specific package version
-	GetMetadata(ctx context.Context, packageID, version string) (*ProtocolMetadata, error)
+	// cacheCtx controls caching behavior (can be nil for default behavior)
+	GetMetadata(ctx context.Context, cacheCtx *cache.SourceCacheContext, packageID, version string) (*ProtocolMetadata, error)
 
 	// ListVersions lists all available versions for a package
-	ListVersions(ctx context.Context, packageID string) ([]string, error)
+	// cacheCtx controls caching behavior (can be nil for default behavior)
+	ListVersions(ctx context.Context, cacheCtx *cache.SourceCacheContext, packageID string) ([]string, error)
 
 	// Search searches for packages matching the query
-	Search(ctx context.Context, query string, opts SearchOptions) ([]SearchResult, error)
+	// cacheCtx controls caching behavior (can be nil for default behavior)
+	Search(ctx context.Context, cacheCtx *cache.SourceCacheContext, query string, opts SearchOptions) ([]SearchResult, error)
 
 	// DownloadPackage downloads a .nupkg file
-	DownloadPackage(ctx context.Context, packageID, version string) (io.ReadCloser, error)
+	// cacheCtx controls caching behavior (can be nil for default behavior)
+	DownloadPackage(ctx context.Context, cacheCtx *cache.SourceCacheContext, packageID, version string) (io.ReadCloser, error)
 
 	// SourceURL returns the source URL for this provider
 	SourceURL() string
@@ -96,12 +101,15 @@ type HTTPClient interface {
 // ProviderFactory creates resource providers based on protocol detection
 type ProviderFactory struct {
 	httpClient HTTPClient
+	cache      *cache.MultiTierCache
 }
 
 // NewProviderFactory creates a new provider factory
-func NewProviderFactory(httpClient HTTPClient) *ProviderFactory {
+// cache can be nil if caching is not desired
+func NewProviderFactory(httpClient HTTPClient, mtCache *cache.MultiTierCache) *ProviderFactory {
 	return &ProviderFactory{
 		httpClient: httpClient,
+		cache:      mtCache,
 	}
 }
 
@@ -144,7 +152,7 @@ func (f *ProviderFactory) CreateProvider(ctx context.Context, sourceURL string) 
 		_ = resp.Body.Close()
 		if resp.StatusCode == http.StatusOK {
 			// V3 feed detected
-			return NewV3ResourceProvider(sourceURL, f.httpClient), nil
+			return NewV3ResourceProvider(sourceURL, f.httpClient, f.cache), nil
 		}
 	}
 
@@ -156,7 +164,7 @@ func (f *ProviderFactory) CreateProvider(ctx context.Context, sourceURL string) 
 			contentType := resp.Header.Get("Content-Type")
 			// V2 feeds typically return XML
 			if strings.Contains(contentType, "xml") || strings.Contains(contentType, "atom") {
-				return NewV2ResourceProvider(sourceURL, f.httpClient), nil
+				return NewV2ResourceProvider(sourceURL, f.httpClient, f.cache), nil
 			}
 		}
 	}
@@ -166,10 +174,10 @@ func (f *ProviderFactory) CreateProvider(ctx context.Context, sourceURL string) 
 
 // CreateV3Provider creates a v3 resource provider (no detection)
 func (f *ProviderFactory) CreateV3Provider(sourceURL string) ResourceProvider {
-	return NewV3ResourceProvider(sourceURL, f.httpClient)
+	return NewV3ResourceProvider(sourceURL, f.httpClient, f.cache)
 }
 
 // CreateV2Provider creates a v2 resource provider (no detection)
 func (f *ProviderFactory) CreateV2Provider(sourceURL string) ResourceProvider {
-	return NewV2ResourceProvider(sourceURL, f.httpClient)
+	return NewV2ResourceProvider(sourceURL, f.httpClient, f.cache)
 }

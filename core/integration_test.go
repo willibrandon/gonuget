@@ -274,7 +274,7 @@ func TestIntegration_RepositoryManager_MultipleRepos(t *testing.T) {
 	_ = manager.AddRepository(nugetOrg)
 
 	ctx := context.Background()
-	results, err := manager.SearchAll(ctx, "Newtonsoft.Json", SearchOptions{
+	results, err := manager.SearchAll(ctx, nil, "Newtonsoft.Json", SearchOptions{
 		Skip: 0,
 		Take: 1,
 	})

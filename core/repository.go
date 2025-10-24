@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/willibrandon/gonuget/auth"
+	"github.com/willibrandon/gonuget/cache"
 	nugethttp "github.com/willibrandon/gonuget/http"
 )
 
@@ -29,6 +30,7 @@ type RepositoryConfig struct {
 	SourceURL     string
 	Authenticator auth.Authenticator
 	HTTPClient    *nugethttp.Client
+	Cache         *cache.MultiTierCache // Optional cache (nil disables caching)
 }
 
 // NewSourceRepository creates a new source repository
@@ -43,7 +45,7 @@ func NewSourceRepository(cfg RepositoryConfig) *SourceRepository {
 		sourceURL:       cfg.SourceURL,
 		authenticator:   cfg.Authenticator,
 		httpClient:      httpClient,
-		providerFactory: NewProviderFactory(httpClient),
+		providerFactory: NewProviderFactory(httpClient, cfg.Cache),
 	}
 }
 
@@ -74,8 +76,8 @@ func (r *SourceRepository) GetProvider(ctx context.Context) (ResourceProvider, e
 		httpClient = r.createAuthenticatedClient()
 	}
 
-	// Create new provider factory with authenticated client
-	factory := NewProviderFactory(httpClient)
+	// Create new provider factory with authenticated client and cache from existing factory
+	factory := NewProviderFactory(httpClient, r.providerFactory.cache)
 	provider, err := factory.CreateProvider(ctx, r.sourceURL)
 	if err != nil {
 		return nil, fmt.Errorf("create provider: %w", err)
@@ -86,39 +88,43 @@ func (r *SourceRepository) GetProvider(ctx context.Context) (ResourceProvider, e
 }
 
 // GetMetadata retrieves metadata for a specific package version
-func (r *SourceRepository) GetMetadata(ctx context.Context, packageID, version string) (*ProtocolMetadata, error) {
+// cacheCtx controls caching behavior (can be nil for default behavior)
+func (r *SourceRepository) GetMetadata(ctx context.Context, cacheCtx *cache.SourceCacheContext, packageID, version string) (*ProtocolMetadata, error) {
 	provider, err := r.GetProvider(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return provider.GetMetadata(ctx, packageID, version)
+	return provider.GetMetadata(ctx, cacheCtx, packageID, version)
 }
 
 // ListVersions lists all available versions for a package
-func (r *SourceRepository) ListVersions(ctx context.Context, packageID string) ([]string, error) {
+// cacheCtx controls caching behavior (can be nil for default behavior)
+func (r *SourceRepository) ListVersions(ctx context.Context, cacheCtx *cache.SourceCacheContext, packageID string) ([]string, error) {
 	provider, err := r.GetProvider(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return provider.ListVersions(ctx, packageID)
+	return provider.ListVersions(ctx, cacheCtx, packageID)
 }
 
 // Search searches for packages matching the query
-func (r *SourceRepository) Search(ctx context.Context, query string, opts SearchOptions) ([]SearchResult, error) {
+// cacheCtx controls caching behavior (can be nil for default behavior)
+func (r *SourceRepository) Search(ctx context.Context, cacheCtx *cache.SourceCacheContext, query string, opts SearchOptions) ([]SearchResult, error) {
 	provider, err := r.GetProvider(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return provider.Search(ctx, query, opts)
+	return provider.Search(ctx, cacheCtx, query, opts)
 }
 
 // DownloadPackage downloads a .nupkg file
-func (r *SourceRepository) DownloadPackage(ctx context.Context, packageID, version string) (io.ReadCloser, error) {
+// cacheCtx controls caching behavior (can be nil for default behavior)
+func (r *SourceRepository) DownloadPackage(ctx context.Context, cacheCtx *cache.SourceCacheContext, packageID, version string) (io.ReadCloser, error) {
 	provider, err := r.GetProvider(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return provider.DownloadPackage(ctx, packageID, version)
+	return provider.DownloadPackage(ctx, cacheCtx, packageID, version)
 }
 
 // Name returns the repository name
@@ -248,7 +254,8 @@ func (m *RepositoryManager) ListRepositories() []*SourceRepository {
 }
 
 // SearchAll searches for packages across all repositories
-func (m *RepositoryManager) SearchAll(ctx context.Context, query string, opts SearchOptions) (map[string][]SearchResult, error) {
+// cacheCtx controls caching behavior (can be nil for default behavior)
+func (m *RepositoryManager) SearchAll(ctx context.Context, cacheCtx *cache.SourceCacheContext, query string, opts SearchOptions) (map[string][]SearchResult, error) {
 	m.mu.RLock()
 	repos := make([]*SourceRepository, 0, len(m.repositories))
 	for _, repo := range m.repositories {
@@ -266,7 +273,7 @@ func (m *RepositoryManager) SearchAll(ctx context.Context, query string, opts Se
 		go func(r *SourceRepository) {
 			defer wg.Done()
 
-			res, err := r.Search(ctx, query, opts)
+			res, err := r.Search(ctx, cacheCtx, query, opts)
 			if err != nil {
 				errs <- fmt.Errorf("%s: %w", r.name, err)
 				return

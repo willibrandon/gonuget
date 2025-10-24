@@ -55,7 +55,7 @@ func TestProviderFactory_CreateProvider_V3(t *testing.T) {
 	defer server.Close()
 
 	httpClient := nugethttp.NewClient(nil)
-	factory := NewProviderFactory(httpClient)
+	factory := NewProviderFactory(httpClient, nil)
 
 	ctx := context.Background()
 	provider, err := factory.CreateProvider(ctx, server.URL)
@@ -77,7 +77,7 @@ func TestProviderFactory_CreateProvider_V2(t *testing.T) {
 	defer server.Close()
 
 	httpClient := nugethttp.NewClient(nil)
-	factory := NewProviderFactory(httpClient)
+	factory := NewProviderFactory(httpClient, nil)
 
 	ctx := context.Background()
 	provider, err := factory.CreateProvider(ctx, server.URL)
@@ -101,7 +101,7 @@ func TestProviderFactory_CreateProvider_Unknown(t *testing.T) {
 	defer server.Close()
 
 	httpClient := nugethttp.NewClient(nil)
-	factory := NewProviderFactory(httpClient)
+	factory := NewProviderFactory(httpClient, nil)
 
 	ctx := context.Background()
 	_, err := factory.CreateProvider(ctx, server.URL)
@@ -112,7 +112,7 @@ func TestProviderFactory_CreateProvider_Unknown(t *testing.T) {
 
 func TestProviderFactory_CreateV3Provider(t *testing.T) {
 	httpClient := nugethttp.NewClient(nil)
-	factory := NewProviderFactory(httpClient)
+	factory := NewProviderFactory(httpClient, nil)
 
 	provider := factory.CreateV3Provider("https://api.nuget.org/v3/index.json")
 
@@ -123,7 +123,7 @@ func TestProviderFactory_CreateV3Provider(t *testing.T) {
 
 func TestProviderFactory_CreateV2Provider(t *testing.T) {
 	httpClient := nugethttp.NewClient(nil)
-	factory := NewProviderFactory(httpClient)
+	factory := NewProviderFactory(httpClient, nil)
 
 	provider := factory.CreateV2Provider("https://www.nuget.org/api/v2")
 
@@ -136,7 +136,7 @@ func TestV3ResourceProvider_SourceURL(t *testing.T) {
 	httpClient := nugethttp.NewClient(nil)
 	sourceURL := "https://api.nuget.org/v3/index.json"
 
-	provider := NewV3ResourceProvider(sourceURL, httpClient)
+	provider := NewV3ResourceProvider(sourceURL, httpClient, nil)
 
 	if provider.SourceURL() != sourceURL {
 		t.Errorf("SourceURL() = %q, want %q", provider.SourceURL(), sourceURL)
@@ -147,7 +147,7 @@ func TestV2ResourceProvider_SourceURL(t *testing.T) {
 	httpClient := nugethttp.NewClient(nil)
 	sourceURL := "https://www.nuget.org/api/v2"
 
-	provider := NewV2ResourceProvider(sourceURL, httpClient)
+	provider := NewV2ResourceProvider(sourceURL, httpClient, nil)
 
 	if provider.SourceURL() != sourceURL {
 		t.Errorf("SourceURL() = %q, want %q", provider.SourceURL(), sourceURL)

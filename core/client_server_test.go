@@ -314,7 +314,7 @@ func TestSourceRepository_GetMetadata(t *testing.T) {
 	})
 
 	ctx := context.Background()
-	metadata, err := repo.GetMetadata(ctx, "TestPkg", "1.0.0")
+	metadata, err := repo.GetMetadata(ctx, nil, "TestPkg", "1.0.0")
 	if err != nil {
 		t.Fatalf("GetMetadata() error = %v", err)
 	}
@@ -336,7 +336,7 @@ func TestSourceRepository_ListVersions(t *testing.T) {
 	})
 
 	ctx := context.Background()
-	versions, err := repo.ListVersions(ctx, "TestPkg")
+	versions, err := repo.ListVersions(ctx, nil, "TestPkg")
 	if err != nil {
 		t.Fatalf("ListVersions() error = %v", err)
 	}
@@ -358,7 +358,7 @@ func TestSourceRepository_Search(t *testing.T) {
 	})
 
 	ctx := context.Background()
-	results, err := repo.Search(ctx, "test", SearchOptions{})
+	results, err := repo.Search(ctx, nil, "test", SearchOptions{})
 	if err != nil {
 		t.Fatalf("Search() error = %v", err)
 	}
@@ -380,7 +380,7 @@ func TestSourceRepository_DownloadPackage(t *testing.T) {
 	})
 
 	ctx := context.Background()
-	rc, err := repo.DownloadPackage(ctx, "TestPkg", "1.0.0")
+	rc, err := repo.DownloadPackage(ctx, nil, "TestPkg", "1.0.0")
 	if err != nil {
 		t.Fatalf("DownloadPackage() error = %v", err)
 	}
@@ -414,7 +414,7 @@ func TestRepositoryManager_SearchAll(t *testing.T) {
 	_ = manager.AddRepository(repo2)
 
 	ctx := context.Background()
-	results, err := manager.SearchAll(ctx, "test", SearchOptions{})
+	results, err := manager.SearchAll(ctx, nil, "test", SearchOptions{})
 	if err != nil {
 		t.Fatalf("SearchAll() error = %v", err)
 	}
