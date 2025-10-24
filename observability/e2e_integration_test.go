@@ -68,7 +68,8 @@ func TestE2E_JaegerVisualization(t *testing.T) {
 		t.Fatalf("SetupTracing() with OTLP failed: %v", err)
 	}
 	defer func() {
-		if err := ShutdownTracing(ctx, tp); err != nil {
+		// Use fresh background context for shutdown (ShutdownTracing has its own timeout)
+		if err := ShutdownTracing(context.Background(), tp); err != nil {
 			t.Errorf("ShutdownTracing() failed: %v", err)
 		}
 	}()
@@ -254,7 +255,8 @@ func TestE2E_FullObservabilityStack(t *testing.T) {
 		t.Skipf("Tracing not available: %v", err)
 	}
 	defer func() {
-		if err := ShutdownTracing(ctx, tp); err != nil {
+		// Use fresh background context for shutdown (ShutdownTracing has its own timeout)
+		if err := ShutdownTracing(context.Background(), tp); err != nil {
 			t.Errorf("ShutdownTracing() failed: %v", err)
 		}
 	}()
