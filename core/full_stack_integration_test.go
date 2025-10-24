@@ -663,9 +663,9 @@ func TestFullStack_E2E_LiveObservability(t *testing.T) {
 	}
 
 	// Wait for Prometheus to scrape metrics (scrape interval is 5s)
-	// Wait 12s to ensure at least 2 scrape cycles complete (worst case: 10s + processing)
+	// Wait 8s to ensure at least one full scrape cycle + buffer for CI
 	t.Log("Waiting for Prometheus to scrape metrics...")
-	time.Sleep(12 * time.Second)
+	time.Sleep(8 * time.Second)
 
 	// Verify metrics in Prometheus
 	t.Run("Prometheus_Metrics", func(t *testing.T) {
