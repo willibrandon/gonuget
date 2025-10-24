@@ -1,15 +1,15 @@
 # gonuget Implementation Roadmap
 
 **Version:** 1.0
-**Last Updated:** 2025-10-22
+**Last Updated:** 2025-10-24
 
 ---
 
 ## Quick Navigation
 
 - **Total Chunks:** 88
-- **Completed:** 45/88 (51.1%)
-- **Current Chunk:** M4.1
+- **Completed:** 60/88 (68.2%)
+- **Current Chunk:** M5.1
 - **Estimated Total Time:** ~212 hours (35 weeks @ 6 hrs/week)
 
 ---
@@ -62,7 +62,7 @@ Each chunk entry includes:
 ### [M4] Infrastructure & Resilience (Weeks 15-18)
 **Goal:** Caching, retry, circuit breaker, observability
 **Chunks:** 15
-**Status:** 0/15 complete (0%)
+**Status:** 15/15 complete (100%)
 **Est. Time:** 40 hours
 
 ### [M5] Dependency Resolution (Weeks 19-21)
@@ -443,105 +443,105 @@ Each chunk entry includes:
 **Est. Total Time:** 40 hours
 
 ### M4.1: Cache - Memory (LRU)
-- **Status:** [ ] Not Started
+- **Status:** [x] Complete
 - **Dependencies:** M1.1
 - **Est. Time:** 3 hours
 - **Verification:** `go test ./cache -run TestMemoryCache`
 - **Commit:** `feat: add LRU memory cache`
 
 ### M4.2: Cache - Disk Persistence
-- **Status:** [ ] Not Started
+- **Status:** [x] Complete
 - **Dependencies:** M4.1
 - **Est. Time:** 3 hours
 - **Verification:** `go test ./cache -run TestDiskCache`
 - **Commit:** `feat: add disk cache with persistence`
 
 ### M4.3: Cache - Multi-Tier
-- **Status:** [ ] Not Started
+- **Status:** [x] Complete
 - **Dependencies:** M4.1, M4.2
 - **Est. Time:** 2 hours
 - **Verification:** `go test ./cache -run TestMultiTier`
 - **Commit:** `feat: implement multi-tier caching`
 
 ### M4.4: Cache - Validation (ETag, TTL)
-- **Status:** [ ] Not Started
+- **Status:** [x] Complete
 - **Dependencies:** M4.3
 - **Est. Time:** 2 hours
 - **Verification:** `go test ./cache -run TestValidation`
 - **Commit:** `feat: add cache validation with ETag and TTL`
 
 ### M4.5: Circuit Breaker - State Machine
-- **Status:** [ ] Not Started
+- **Status:** [x] Complete
 - **Dependencies:** M1.1
 - **Est. Time:** 3 hours
 - **Verification:** `go test ./circuitbreaker -run TestStateMachine`
 - **Commit:** `feat: implement circuit breaker pattern`
 
 ### M4.6: Circuit Breaker - Integration with HTTP
-- **Status:** [ ] Not Started
+- **Status:** [x] Complete
 - **Dependencies:** M4.5, M2.1
 - **Est. Time:** 2 hours
 - **Verification:** `go test ./circuitbreaker -run TestHTTPIntegration`
 - **Commit:** `feat: integrate circuit breaker with HTTP client`
 
 ### M4.7: Rate Limiter - Token Bucket
-- **Status:** [ ] Not Started
+- **Status:** [x] Complete
 - **Dependencies:** M1.1
 - **Est. Time:** 2 hours
 - **Verification:** `go test ./ratelimit -run TestTokenBucket`
 - **Commit:** `feat: add token bucket rate limiter`
 
 ### M4.8: Rate Limiter - Per-Source
-- **Status:** [ ] Not Started
+- **Status:** [x] Complete
 - **Dependencies:** M4.7
 - **Est. Time:** 2 hours
 - **Verification:** `go test ./ratelimit -run TestPerSource`
 - **Commit:** `feat: implement per-source rate limiting`
 
 ### M4.9: mtlog Integration
-- **Status:** [ ] Not Started
+- **Status:** [x] Complete
 - **Dependencies:** M1.1
 - **Est. Time:** 2 hours
 - **Verification:** `go test ./... -run TestLogging`
 - **Commit:** `feat: integrate mtlog for structured logging`
 
 ### M4.10: OpenTelemetry - Tracing Setup
-- **Status:** [ ] Not Started
+- **Status:** [x] Complete
 - **Dependencies:** M1.1
 - **Est. Time:** 3 hours
 - **Verification:** `go test ./observability -run TestTracing`
 - **Commit:** `feat: add OpenTelemetry tracing`
 
 ### M4.11: OpenTelemetry - HTTP Instrumentation
-- **Status:** [ ] Not Started
+- **Status:** [x] Complete
 - **Dependencies:** M4.10, M2.1
 - **Est. Time:** 2 hours
 - **Verification:** `go test ./observability -run TestHTTPTracing`
 - **Commit:** `feat: instrument HTTP client with OTEL`
 
 ### M4.12: OpenTelemetry - Operation Spans
-- **Status:** [ ] Not Started
+- **Status:** [x] Complete
 - **Dependencies:** M4.10
 - **Est. Time:** 2 hours
 - **Verification:** `go test ./observability -run TestOperationSpans`
 - **Commit:** `feat: add operation-level tracing spans`
 
 ### M4.13: Prometheus Metrics
-- **Status:** [ ] Not Started
+- **Status:** [x] Complete
 - **Dependencies:** M1.1
 - **Est. Time:** 3 hours
 - **Verification:** `go test ./observability -run TestMetrics`
 - **Commit:** `feat: add Prometheus metrics`
 
 ### M4.14: Health Checks
-- **Status:** [ ] Not Started
+- **Status:** [x] Complete
 - **Dependencies:** M2.17
 - **Est. Time:** 2 hours
 - **Verification:** `go test ./observability -run TestHealth`
 - **Commit:** `feat: implement health check system`
 
 ### M4.15: HTTP/2 and HTTP/3 Support
-- **Status:** [ ] Not Started
+- **Status:** [x] Complete
 - **Dependencies:** M2.1
 - **Est. Time:** 3 hours
 - **Verification:** `go test ./http -run TestHTTP2`
