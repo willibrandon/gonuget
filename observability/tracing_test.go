@@ -233,6 +233,7 @@ func TestSetupTracing_OTLPIntegration(t *testing.T) {
 		Environment:    "test",
 		ExporterType:   "otlp",
 		OTLPEndpoint:   endpoint,
+		OTLPInsecure:   true, // Local Jaeger uses insecure gRPC
 		SamplingRate:   1.0,
 	}
 

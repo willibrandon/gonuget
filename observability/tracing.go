@@ -15,8 +15,6 @@ import (
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.21.0"
 	"go.opentelemetry.io/otel/trace"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 )
 
 // TracerConfig holds OpenTelemetry tracer configuration
@@ -35,6 +33,9 @@ type TracerConfig struct {
 
 	// OTLPEndpoint is the OTLP collector endpoint (e.g., localhost:4317)
 	OTLPEndpoint string
+
+	// OTLPInsecure disables TLS for OTLP connections (use only for local development)
+	OTLPInsecure bool
 
 	// SamplingRate is the trace sampling rate (0.0 to 1.0)
 	SamplingRate float64
@@ -69,7 +70,7 @@ func SetupTracing(ctx context.Context, config TracerConfig) (*sdktrace.TracerPro
 	var exporter sdktrace.SpanExporter
 	switch config.ExporterType {
 	case "otlp":
-		exporter, err = createOTLPExporter(ctx, config.OTLPEndpoint)
+		exporter, err = createOTLPExporter(ctx, config.OTLPEndpoint, config.OTLPInsecure)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create OTLP exporter: %w", err)
 		}
@@ -114,15 +115,19 @@ func SetupTracing(ctx context.Context, config TracerConfig) (*sdktrace.TracerPro
 }
 
 // createOTLPExporter creates an OTLP gRPC exporter
-func createOTLPExporter(ctx context.Context, endpoint string) (*otlptrace.Exporter, error) {
-	conn, err := grpc.NewClient(endpoint,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create gRPC connection: %w", err)
+func createOTLPExporter(ctx context.Context, endpoint string, insecure bool) (*otlptrace.Exporter, error) {
+	// Configure exporter options
+	opts := []otlptracegrpc.Option{
+		otlptracegrpc.WithEndpoint(endpoint),
 	}
 
-	exporter, err := otlptracegrpc.New(ctx, otlptracegrpc.WithGRPCConn(conn))
+	// Only disable TLS if explicitly requested (for local development)
+	if insecure {
+		opts = append(opts, otlptracegrpc.WithInsecure())
+	}
+
+	// Create exporter with configured options
+	exporter, err := otlptracegrpc.New(ctx, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create OTLP exporter: %w", err)
 	}

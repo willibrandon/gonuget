@@ -5,6 +5,8 @@ import (
 	"context"
 	"io"
 	"time"
+
+	"github.com/willibrandon/gonuget/observability"
 )
 
 // MultiTierCache combines memory (L1) and disk (L2) caching with automatic promotion.
@@ -26,15 +28,19 @@ func NewMultiTierCache(l1 *MemoryCache, l2 *DiskCache) *MultiTierCache {
 func (mtc *MultiTierCache) Get(ctx context.Context, sourceURL string, cacheKey string, maxAge time.Duration) ([]byte, bool, error) {
 	// Check L1 (memory cache)
 	if data, ok := mtc.l1.Get(cacheKey); ok {
+		observability.CacheHitsTotal.WithLabelValues("memory").Inc()
 		return data, true, nil
 	}
 
 	// Check L2 (disk cache)
 	reader, ok, err := mtc.l2.Get(sourceURL, cacheKey, maxAge)
 	if err != nil {
+		observability.CacheMissesTotal.WithLabelValues("disk").Inc()
 		return nil, false, err
 	}
 	if !ok {
+		observability.CacheMissesTotal.WithLabelValues("memory").Inc()
+		observability.CacheMissesTotal.WithLabelValues("disk").Inc()
 		return nil, false, nil
 	}
 	defer func() { _ = reader.Close() }()
@@ -44,6 +50,10 @@ func (mtc *MultiTierCache) Get(ctx context.Context, sourceURL string, cacheKey s
 	if err != nil {
 		return nil, false, err
 	}
+
+	// L2 hit - record metric
+	observability.CacheHitsTotal.WithLabelValues("disk").Inc()
+	observability.CacheMissesTotal.WithLabelValues("memory").Inc()
 
 	// Promote to L1
 	mtc.l1.Set(cacheKey, data, maxAge)

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 
@@ -190,6 +191,25 @@ func (l *TestLogger) CountEntries() int {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	return len(l.entries)
+}
+
+// HasLog checks if any log entry contains the given substring
+func (l *TestLogger) HasLog(substring string) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	for _, entry := range l.entries {
+		if strings.Contains(entry.Template, substring) {
+			return true
+		}
+	}
+	return false
+}
+
+// Clear removes all log entries
+func (l *TestLogger) Clear() {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.entries = make([]LogEntry, 0)
 }
 
 // TestObservability_Repository_LoggingIntegration verifies logging is called correctly

@@ -89,6 +89,7 @@ func (r *SourceRepository) GetProvider(ctx context.Context) (ResourceProvider, e
 	factory := NewProviderFactory(httpClient, r.providerFactory.cache)
 	provider, err := factory.CreateProvider(ctx, r.sourceURL)
 	if err != nil {
+		r.logger.ErrorContext(ctx, "Failed to create provider for {Source}: {Error}", r.name, err)
 		return nil, fmt.Errorf("create provider: %w", err)
 	}
 

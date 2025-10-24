@@ -62,6 +62,7 @@ func TestE2E_JaegerVisualization(t *testing.T) {
 		Environment:    "e2e-test",
 		ExporterType:   "otlp",
 		OTLPEndpoint:   endpoint,
+		OTLPInsecure:   true, // Local Jaeger uses insecure gRPC
 		SamplingRate:   1.0,
 	}
 
@@ -132,7 +133,7 @@ func TestE2E_JaegerVisualization(t *testing.T) {
 				OperationName string `json:"operationName"`
 				Tags          []struct {
 					Key   string `json:"key"`
-					Value string `json:"value"`
+					Value any    `json:"value"` // Can be string, number, or bool
 				} `json:"tags"`
 			} `json:"spans"`
 		} `json:"data"`
@@ -295,6 +296,7 @@ func TestE2E_FullObservabilityStack(t *testing.T) {
 	config.ServiceName = "gonuget-full-stack-test"
 	config.ExporterType = "otlp"
 	config.OTLPEndpoint = endpoint
+	config.OTLPInsecure = true // Local Jaeger uses insecure gRPC
 
 	tp, err := SetupTracing(ctx, config)
 	if err != nil {

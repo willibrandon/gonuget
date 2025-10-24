@@ -3,6 +3,8 @@ package observability
 import (
 	"net/http"
 
+	dto "github.com/prometheus/client_model/go"
+
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -120,4 +122,25 @@ func MetricsHandler() http.Handler {
 func StartMetricsServer(addr string) error {
 	http.Handle("/metrics", MetricsHandler())
 	return http.ListenAndServe(addr, nil)
+}
+
+// GetCounterValue retrieves the current value of a counter metric with the given labels
+// This is primarily intended for testing
+func GetCounterValue(counter *prometheus.CounterVec, labels ...string) (float64, error) {
+	metric, err := counter.GetMetricWithLabelValues(labels...)
+	if err != nil {
+		return 0, err
+	}
+
+	// Write metric to a DTO to read its value
+	var pb dto.Metric
+	if err := metric.Write(&pb); err != nil {
+		return 0, err
+	}
+
+	if pb.Counter != nil {
+		return pb.Counter.GetValue(), nil
+	}
+
+	return 0, nil
 }
