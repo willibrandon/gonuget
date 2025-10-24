@@ -35,7 +35,9 @@ func TestE2E_JaegerVisualization(t *testing.T) {
 	if err != nil {
 		t.Skipf("OTLP collector not available at %s (run: cd observability && docker-compose -f docker-compose.test.yml up -d): %v", endpoint, err)
 	}
-	defer conn.Close()
+	defer func() {
+		_ = conn.Close()
+	}()
 
 	// Trigger connection and wait for Ready state or timeout
 	conn.Connect()
@@ -144,11 +146,13 @@ func TestE2E_JaegerVisualization(t *testing.T) {
 		// Log all available services to help debug
 		servResp, _ := http.Get("http://localhost:16686/api/services")
 		if servResp != nil {
-			defer servResp.Body.Close()
+			defer func() {
+				_ = servResp.Body.Close()
+			}()
 			var services struct {
 				Data []string `json:"data"`
 			}
-			json.NewDecoder(servResp.Body).Decode(&services)
+			_ = json.NewDecoder(servResp.Body).Decode(&services)
 			t.Logf("Available services in Jaeger: %v", services.Data)
 		}
 		t.Fatalf("No traces found in Jaeger for service '%s'. Check if service name is correct.", serviceName)
@@ -209,10 +213,27 @@ func TestE2E_PrometheusScraping(t *testing.T) {
 	}
 
 	// Test 2: Verify Prometheus format
+	// Valid Content-Types:
+	// - text/plain; version=0.0.4; charset=utf-8; escaping=underscores (modern)
+	// - text/plain; version=0.0.4; charset=utf-8 (legacy)
+	// - text/plain; charset=utf-8 (fallback)
 	contentType := resp.Header.Get("Content-Type")
-	if contentType != "text/plain; version=0.0.4; charset=utf-8" &&
-		contentType != "text/plain; charset=utf-8" {
-		t.Logf("Warning: Unexpected Content-Type: %s", contentType)
+	validTypes := []string{
+		"text/plain; version=0.0.4; charset=utf-8; escaping=underscores",
+		"text/plain; version=0.0.4; charset=utf-8",
+		"text/plain; charset=utf-8",
+	}
+
+	validContentType := false
+	for _, valid := range validTypes {
+		if contentType == valid {
+			validContentType = true
+			break
+		}
+	}
+
+	if !validContentType {
+		t.Errorf("Invalid Content-Type: %s (expected one of: %v)", contentType, validTypes)
 	}
 
 	// Test 3: Query actual Prometheus server (if running)
@@ -231,9 +252,9 @@ func TestE2E_PrometheusScraping(t *testing.T) {
 	}
 
 	t.Logf("✓ Successfully verified Prometheus metrics")
-	t.Logf("  - Metrics endpoint: %s/metrics", server.URL)
-	t.Logf("  - Prometheus UI: http://localhost:9090")
-	t.Logf("  - Health endpoint: %s/health", server.URL)
+	t.Logf("  - Test server (temporary): %s/metrics", server.URL)
+	t.Logf("  - Prometheus UI (persistent): http://localhost:9090")
+	t.Logf("  - Content-Type: %s", contentType)
 }
 
 // TestE2E_FullObservabilityStack tests the complete observability stack
@@ -253,7 +274,9 @@ func TestE2E_FullObservabilityStack(t *testing.T) {
 	if err != nil {
 		t.Skipf("OTLP collector not available at %s (run: cd observability && docker-compose -f docker-compose.test.yml up -d): %v", endpoint, err)
 	}
-	defer conn.Close()
+	defer func() {
+		_ = conn.Close()
+	}()
 
 	// Trigger connection and wait for Ready state or timeout
 	conn.Connect()

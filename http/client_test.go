@@ -2,6 +2,7 @@ package http
 
 import (
 	"context"
+	"crypto/tls"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -107,4 +108,96 @@ func TestFunctionalOptions(t *testing.T) {
 	if client.userAgent != "test/1.0" {
 		t.Errorf("userAgent = %q, want test/1.0", client.userAgent)
 	}
+}
+
+func TestSetUserAgent(t *testing.T) {
+	client := NewClient(nil)
+	if client.userAgent != DefaultUserAgent {
+		t.Errorf("initial userAgent = %q, want %q", client.userAgent, DefaultUserAgent)
+	}
+
+	client.SetUserAgent("custom/2.0")
+	if client.userAgent != "custom/2.0" {
+		t.Errorf("after SetUserAgent, userAgent = %q, want custom/2.0", client.userAgent)
+	}
+}
+
+func TestWithTLSConfig(t *testing.T) {
+	tlsConfig := &tls.Config{
+		MinVersion: tls.VersionTLS13,
+	}
+
+	client := NewClientWithOptions(
+		WithTLSConfig(tlsConfig),
+	)
+
+	// Verify TLS config is set on the transport
+	transport := client.httpClient.Transport.(*http.Transport)
+	if transport.TLSClientConfig == nil {
+		t.Fatal("TLSClientConfig is nil")
+	}
+	if transport.TLSClientConfig.MinVersion != tls.VersionTLS13 {
+		t.Errorf("MinVersion = %d, want %d (TLS 1.3)", transport.TLSClientConfig.MinVersion, tls.VersionTLS13)
+	}
+}
+
+func TestWithRetryConfig(t *testing.T) {
+	customRetry := &RetryConfig{
+		MaxRetries:     5,
+		InitialBackoff: 500 * time.Millisecond,
+		MaxBackoff:     10 * time.Second,
+		BackoffFactor:  3.0,
+		JitterFactor:   0.5,
+	}
+
+	client := NewClientWithOptions(
+		WithRetryConfig(customRetry),
+	)
+
+	if client.retryConfig.MaxRetries != 5 {
+		t.Errorf("MaxRetries = %d, want 5", client.retryConfig.MaxRetries)
+	}
+	if client.retryConfig.InitialBackoff != 500*time.Millisecond {
+		t.Errorf("InitialBackoff = %v, want 500ms", client.retryConfig.InitialBackoff)
+	}
+	if client.retryConfig.BackoffFactor != 3.0 {
+		t.Errorf("BackoffFactor = %f, want 3.0", client.retryConfig.BackoffFactor)
+	}
+}
+
+func TestWithMaxRetries(t *testing.T) {
+	t.Run("with existing retry config", func(t *testing.T) {
+		customRetry := &RetryConfig{
+			MaxRetries:     1,
+			InitialBackoff: 100 * time.Millisecond,
+		}
+
+		client := NewClientWithOptions(
+			WithRetryConfig(customRetry),
+			WithMaxRetries(10),
+		)
+
+		if client.retryConfig.MaxRetries != 10 {
+			t.Errorf("MaxRetries = %d, want 10", client.retryConfig.MaxRetries)
+		}
+		// Verify other fields preserved
+		if client.retryConfig.InitialBackoff != 100*time.Millisecond {
+			t.Errorf("InitialBackoff = %v, want 100ms (should be preserved)", client.retryConfig.InitialBackoff)
+		}
+	})
+
+	t.Run("without existing retry config", func(t *testing.T) {
+		client := NewClientWithOptions(
+			WithMaxRetries(7),
+		)
+
+		if client.retryConfig.MaxRetries != 7 {
+			t.Errorf("MaxRetries = %d, want 7", client.retryConfig.MaxRetries)
+		}
+		// Should use default values for other fields
+		defaultRetry := DefaultRetryConfig()
+		if client.retryConfig.InitialBackoff != defaultRetry.InitialBackoff {
+			t.Errorf("InitialBackoff = %v, want %v (default)", client.retryConfig.InitialBackoff, defaultRetry.InitialBackoff)
+		}
+	})
 }

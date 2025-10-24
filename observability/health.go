@@ -149,7 +149,7 @@ func (hc *HealthChecker) Handler() http.HandlerFunc {
 		results := hc.Check(ctx)
 		overall := hc.OverallStatus(ctx)
 
-		response := map[string]interface{}{
+		response := map[string]any{
 			"status": overall,
 			"checks": results,
 		}

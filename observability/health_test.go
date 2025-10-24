@@ -331,7 +331,7 @@ func TestHealthChecker_ConcurrentChecks(t *testing.T) {
 	hc := NewHealthChecker()
 
 	// Register multiple checks
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		name := fmt.Sprintf("check-%d", i)
 		hc.Register(HealthCheck{
 			Name: name,

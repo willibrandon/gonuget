@@ -10,10 +10,9 @@ func BenchmarkLogger_Info(b *testing.B) {
 	buf := &bytes.Buffer{}
 	logger := NewLogger(buf, InfoLevel)
 
-	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		logger.Info("Test message")
 	}
 }
@@ -22,11 +21,10 @@ func BenchmarkLogger_InfoWithArgs(b *testing.B) {
 	buf := &bytes.Buffer{}
 	logger := NewLogger(buf, InfoLevel)
 
-	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
-		logger.Info("Test message {Count} {Status}", i, "ok")
+	for b.Loop() {
+		logger.Info("Test message {Count} {Status}", 42, "ok")
 	}
 }
 
@@ -35,10 +33,9 @@ func BenchmarkLogger_InfoContext(b *testing.B) {
 	logger := NewLogger(buf, InfoLevel)
 	ctx := context.Background()
 
-	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		logger.InfoContext(ctx, "Test message")
 	}
 }
@@ -47,10 +44,9 @@ func BenchmarkLogger_Debug_Filtered(b *testing.B) {
 	buf := &bytes.Buffer{}
 	logger := NewLogger(buf, InfoLevel) // Debug will be filtered
 
-	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		logger.Debug("Filtered debug message")
 	}
 }
@@ -59,10 +55,9 @@ func BenchmarkLogger_ForContext(b *testing.B) {
 	buf := &bytes.Buffer{}
 	logger := NewLogger(buf, InfoLevel)
 
-	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		childLogger := logger.ForContext("request_id", "12345")
 		childLogger.Info("Test message")
 	}
@@ -72,10 +67,9 @@ func BenchmarkLogger_MultipleProperties(b *testing.B) {
 	buf := &bytes.Buffer{}
 	logger := NewLogger(buf, InfoLevel)
 
-	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		logger.
 			WithProperty("user_id", 12345).
 			WithProperty("session_id", "abc-123").
@@ -91,7 +85,7 @@ func BenchmarkLogger_AllLevels(b *testing.B) {
 	b.Run("Verbose", func(b *testing.B) {
 		b.ResetTimer()
 		b.ReportAllocs()
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			logger.Verbose("Verbose message")
 		}
 	})
@@ -99,7 +93,7 @@ func BenchmarkLogger_AllLevels(b *testing.B) {
 	b.Run("Debug", func(b *testing.B) {
 		b.ResetTimer()
 		b.ReportAllocs()
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			logger.Debug("Debug message")
 		}
 	})
@@ -107,7 +101,7 @@ func BenchmarkLogger_AllLevels(b *testing.B) {
 	b.Run("Info", func(b *testing.B) {
 		b.ResetTimer()
 		b.ReportAllocs()
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			logger.Info("Info message")
 		}
 	})
@@ -115,7 +109,7 @@ func BenchmarkLogger_AllLevels(b *testing.B) {
 	b.Run("Warn", func(b *testing.B) {
 		b.ResetTimer()
 		b.ReportAllocs()
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			logger.Warn("Warning message")
 		}
 	})
@@ -123,7 +117,7 @@ func BenchmarkLogger_AllLevels(b *testing.B) {
 	b.Run("Error", func(b *testing.B) {
 		b.ResetTimer()
 		b.ReportAllocs()
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			logger.Error("Error message")
 		}
 	})
@@ -132,10 +126,9 @@ func BenchmarkLogger_AllLevels(b *testing.B) {
 func BenchmarkNullLogger(b *testing.B) {
 	logger := NewNullLogger()
 
-	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		logger.Info("This should have zero overhead")
 	}
 }
