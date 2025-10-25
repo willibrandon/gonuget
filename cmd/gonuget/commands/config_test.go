@@ -277,8 +277,11 @@ func TestConfigCommand_GetAbsolutePath(t *testing.T) {
 	tmpDir := t.TempDir()
 	configPath := filepath.Join(tmpDir, "NuGet.config")
 
+	// Use a real absolute path that works cross-platform
+	absPath := filepath.Join(tmpDir, "absolute", "path")
+
 	cfg := config.NewDefaultConfig()
-	cfg.SetConfigValue("absPath", "/absolute/path")
+	cfg.SetConfigValue("absPath", absPath)
 	if err := config.SaveNuGetConfig(configPath, cfg); err != nil {
 		t.Fatalf("failed to save config: %v", err)
 	}
@@ -292,8 +295,8 @@ func TestConfigCommand_GetAbsolutePath(t *testing.T) {
 	}
 
 	result := strings.TrimSpace(out.String())
-	if result != "/absolute/path" {
-		t.Errorf("AsPath with absolute path should return as-is, got: %s", result)
+	if result != absPath {
+		t.Errorf("AsPath with absolute path should return as-is, got: %s, want: %s", result, absPath)
 	}
 }
 
