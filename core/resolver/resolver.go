@@ -116,3 +116,12 @@ func (r *Resolver) flattenGraphRecursive(
 		r.flattenGraphRecursive(child, visited, packages)
 	}
 }
+
+// ResolveProject resolves transitive dependencies for a project with multiple direct dependencies.
+func (r *Resolver) ResolveProject(
+	ctx context.Context,
+	dependencies []PackageDependency,
+) (*ResolutionResult, error) {
+	transitiveResolver := NewTransitiveResolver(r)
+	return transitiveResolver.ResolveMultipleRoots(ctx, dependencies)
+}
