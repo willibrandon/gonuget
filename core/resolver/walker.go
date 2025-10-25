@@ -11,10 +11,11 @@ import (
 // DependencyWalker builds dependency graphs using stack-based traversal.
 // Matches NuGet.Client's RemoteDependencyWalker.
 type DependencyWalker struct {
-	client          PackageMetadataClient
-	sources         []string
-	cache           *WalkerCache
-	targetFramework string
+	client            PackageMetadataClient
+	sources           []string
+	cache             *WalkerCache
+	targetFramework   string
+	frameworkSelector *FrameworkSelector
 }
 
 // PackageMetadataClient interface for fetching package metadata
@@ -25,10 +26,11 @@ type PackageMetadataClient interface {
 // NewDependencyWalker creates a new dependency walker
 func NewDependencyWalker(client PackageMetadataClient, sources []string, targetFramework string) *DependencyWalker {
 	return &DependencyWalker{
-		client:          client,
-		sources:         sources,
-		cache:           NewWalkerCache(),
-		targetFramework: targetFramework,
+		client:            client,
+		sources:           sources,
+		cache:             NewWalkerCache(),
+		targetFramework:   targetFramework,
+		frameworkSelector: NewFrameworkSelector(),
 	}
 }
 
@@ -277,18 +279,9 @@ func (w *DependencyWalker) getDependenciesForFramework(
 	info *PackageDependencyInfo,
 	targetFramework string,
 ) []PackageDependency {
-	// If package has dependency groups, use framework-specific
 	if len(info.DependencyGroups) > 0 {
-		// Find best matching group (M5.2 will implement FrameworkReducer)
-		for _, group := range info.DependencyGroups {
-			if group.TargetFramework == targetFramework || group.TargetFramework == "" {
-				return group.Dependencies
-			}
-		}
-		return nil
+		return w.frameworkSelector.SelectDependencies(info.DependencyGroups, targetFramework)
 	}
-
-	// Otherwise use flat dependency list
 	return info.Dependencies
 }
 

@@ -748,7 +748,7 @@ func TestDependencyWalker_InvalidVersionRange(t *testing.T) {
 }
 
 func TestDependencyWalker_NoMatchingFramework(t *testing.T) {
-	// Test when no framework group matches (should return nil)
+	// Test when no framework group matches (should return empty dependencies)
 	client := &mockPackageMetadataClient{
 		packages: map[string]*PackageDependencyInfo{
 			"A|1.0.0": {
@@ -756,7 +756,7 @@ func TestDependencyWalker_NoMatchingFramework(t *testing.T) {
 				Version: "1.0.0",
 				DependencyGroups: []DependencyGroup{
 					{
-						TargetFramework: "net6.0",
+						TargetFramework: "net461",
 						Dependencies: []PackageDependency{
 							{ID: "B", VersionRange: "[1.0.0]"},
 						},
@@ -775,7 +775,7 @@ func TestDependencyWalker_NoMatchingFramework(t *testing.T) {
 		t.Fatalf("Walk() failed: %v", err)
 	}
 
-	// Should have no children (no matching framework group)
+	// Should have no children (net461 is incompatible with net8.0)
 	if len(node.InnerNodes) != 0 {
 		t.Errorf("Expected 0 children when framework doesn't match, got %d", len(node.InnerNodes))
 	}
