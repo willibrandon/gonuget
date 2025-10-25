@@ -32,7 +32,7 @@ public class PackageExtractionTests : IDisposable
             version: "1.0.0",
             files: new Dictionary<string, byte[]>
             {
-                ["lib/net6.0/test.dll"] = new byte[] { 0x4D, 0x5A }, // MZ header
+                ["lib/net6.0/test.dll"] = [0x4D, 0x5A], // MZ header
                 ["content/readme.txt"] = "Hello"u8.ToArray()
             }).PackageBytes;
 
@@ -97,7 +97,7 @@ public class PackageExtractionTests : IDisposable
             version: "1.0.0",
             files: new Dictionary<string, byte[]>
             {
-                ["lib/net6.0/test.dll"] = new byte[] { 0x4D, 0x5A }
+                ["lib/net6.0/test.dll"] = [0x4D, 0x5A]
             }).PackageBytes;
 
         var installPath = CreateTempDirectory();
@@ -189,7 +189,7 @@ public class PackageExtractionTests : IDisposable
             version: "1.0.0",
             files: new Dictionary<string, byte[]>
             {
-                ["lib/net6.0/test.dll"] = new byte[] { 0x4D, 0x5A }
+                ["lib/net6.0/test.dll"] = [0x4D, 0x5A]
             }).PackageBytes;
 
         var globalPackages = CreateTempDirectory();

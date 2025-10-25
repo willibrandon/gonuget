@@ -418,3 +418,73 @@ type ValidateCacheFileResponse struct {
 	// Valid is true if the file exists and is within the TTL, false if missing or expired.
 	Valid bool `json:"valid"`
 }
+
+// WalkGraphRequest walks the dependency graph for a package.
+type WalkGraphRequest struct {
+	// PackageID is the package identifier (e.g., "Newtonsoft.Json").
+	PackageID string `json:"packageId"`
+
+	// VersionRange is the version constraint (e.g., "[13.0.1]", "[1.0.0,2.0.0)").
+	VersionRange string `json:"versionRange"`
+
+	// TargetFramework is the target framework (e.g., "net8.0").
+	TargetFramework string `json:"targetFramework"`
+
+	// Sources is the list of package sources to query.
+	Sources []string `json:"sources"`
+}
+
+// WalkGraphResponse contains the dependency graph.
+type WalkGraphResponse struct {
+	// RootNode is the root of the dependency graph.
+	RootNode GraphNodeData `json:"rootNode"`
+}
+
+// GraphNodeData represents a node in the dependency graph.
+// Matches the C# GraphNodeData structure.
+type GraphNodeData struct {
+	// Key is the unique identifier for this node (packageID|version).
+	Key string `json:"key"`
+
+	// PackageID is the package identifier.
+	PackageID string `json:"packageId"`
+
+	// Version is the package version.
+	Version string `json:"version"`
+
+	// Disposition is the node state (Acceptable, Rejected, Cycle, etc.).
+	Disposition string `json:"disposition"`
+
+	// Depth is the distance from root (0 for root).
+	Depth int `json:"depth"`
+
+	// InnerNodes are the child nodes (dependencies).
+	InnerNodes []GraphNodeData `json:"innerNodes"`
+
+	// OuterEdge is the edge from parent to this node (nil for root).
+	OuterEdge *GraphEdgeData `json:"outerEdge,omitempty"`
+}
+
+// GraphEdgeData represents an edge between nodes in the dependency graph.
+type GraphEdgeData struct {
+	// ParentPackageID is the package ID of the parent node.
+	ParentPackageID string `json:"parentPackageId"`
+
+	// ParentVersion is the version of the parent node.
+	ParentVersion string `json:"parentVersion"`
+
+	// Dependency is the dependency that created this edge.
+	Dependency DependencyData `json:"dependency"`
+}
+
+// DependencyData represents a package dependency.
+type DependencyData struct {
+	// ID is the package ID of the dependency.
+	ID string `json:"id"`
+
+	// VersionRange is the version constraint.
+	VersionRange string `json:"versionRange"`
+
+	// TargetFramework is the target framework (empty for all frameworks).
+	TargetFramework string `json:"targetFramework"`
+}

@@ -22,6 +22,9 @@
     <PackageReference Include="NuGet.Versioning" Version="6.12.1" />
     <PackageReference Include="NuGet.Frameworks" Version="6.12.1" />
     <PackageReference Include="NuGet.Protocol" Version="6.12.1" />
+    <PackageReference Include="NuGet.DependencyResolver.Core" Version="6.12.1" />
+    <PackageReference Include="NuGet.LibraryModel" Version="6.12.1" />
+    <PackageReference Include="NuGet.Commands" Version="6.12.1" />
 
     <!-- JSON serialization -->
     <PackageReference Include="System.Text.Json" Version="9.0.1" />

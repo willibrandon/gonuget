@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
-using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -480,6 +479,30 @@ public static class GonugetBridge
         };
 
         return Execute<InstallFromSourceV3Response>(request);
+    }
+
+    /// <summary>
+    /// Walks the dependency graph for a package using gonuget's resolver.
+    /// </summary>
+    public static WalkGraphResponse WalkGraph(
+        string packageId,
+        string versionRange,
+        string targetFramework,
+        string[] sources)
+    {
+        var request = new
+        {
+            action = "walk_graph",
+            data = new
+            {
+                packageId,
+                versionRange,
+                targetFramework,
+                sources
+            }
+        };
+
+        return Execute<WalkGraphResponse>(request);
     }
 
     /// <summary>

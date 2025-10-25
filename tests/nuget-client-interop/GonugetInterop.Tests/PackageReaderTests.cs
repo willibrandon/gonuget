@@ -7,7 +7,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using GonugetInterop.Tests.TestHelpers;
 using NuGet.Packaging;
-using NuGet.Packaging.Core;
 using Xunit;
 
 namespace GonugetInterop.Tests;
@@ -66,7 +65,7 @@ public class PackageReaderTests
         var buildResult = GonugetBridge.BuildPackage(
             id: "Test.Package",
             version: "1.0.0",
-            authors: new[] { "Author1", "Author2" });
+            authors: ["Author1", "Author2"]);
 
         var readResult = GonugetBridge.ReadPackage(buildResult.PackageBytes);
 
@@ -95,7 +94,7 @@ public class PackageReaderTests
     {
         var files = new Dictionary<string, byte[]>
         {
-            ["lib/net6.0/test.dll"] = new byte[] { 0x4D, 0x5A }, // MZ header
+            ["lib/net6.0/test.dll"] = [0x4D, 0x5A], // MZ header
             ["content/readme.txt"] = "Hello"u8.ToArray(),
             ["build/test.targets"] = "<Project />"u8.ToArray()
         };
@@ -211,7 +210,7 @@ public class PackageReaderTests
         var buildResult = GonugetBridge.BuildPackage(
             id: "Test.Package",
             version: "1.0.0",
-            authors: new[] { "Author1", "Author2" });
+            authors: ["Author1", "Author2"]);
 
         using var stream = new MemoryStream(buildResult.PackageBytes);
         using var reader = new PackageArchiveReader(stream);
@@ -225,7 +224,7 @@ public class PackageReaderTests
     {
         var files = new Dictionary<string, byte[]>
         {
-            ["lib/net6.0/test.dll"] = new byte[] { 0x4D, 0x5A },
+            ["lib/net6.0/test.dll"] = [0x4D, 0x5A],
             ["content/readme.txt"] = "Hello"u8.ToArray()
         };
 
@@ -274,8 +273,8 @@ public class PackageReaderTests
     {
         var files = new Dictionary<string, byte[]>
         {
-            ["lib/net6.0/test.dll"] = new byte[] { 0x4D, 0x5A },
-            ["lib/netstandard2.0/test.dll"] = new byte[] { 0x4D, 0x5A },
+            ["lib/net6.0/test.dll"] = [0x4D, 0x5A],
+            ["lib/netstandard2.0/test.dll"] = [0x4D, 0x5A],
             ["content/readme.txt"] = "Readme"u8.ToArray(),
             ["build/test.targets"] = "<Project />"u8.ToArray(),
             ["tools/install.ps1"] = "Write-Host 'Installing'"u8.ToArray()
@@ -377,7 +376,7 @@ public class PackageReaderTests
     {
         var files = new Dictionary<string, byte[]>
         {
-            ["lib/net6.0/subfolder/deep/nested/file.dll"] = new byte[] { 0x4D, 0x5A }
+            ["lib/net6.0/subfolder/deep/nested/file.dll"] = [0x4D, 0x5A]
         };
 
         var buildResult = GonugetBridge.BuildPackage(
@@ -422,7 +421,7 @@ public class PackageReaderTests
     {
         var files = new Dictionary<string, byte[]>
         {
-            ["lib/net6.0/test.dll"] = new byte[] { 0x4D, 0x5A },
+            ["lib/net6.0/test.dll"] = [0x4D, 0x5A],
             ["content/readme.txt"] = "Hello"u8.ToArray()
         };
 
@@ -430,7 +429,7 @@ public class PackageReaderTests
             id: "Test.Package",
             version: "1.2.3",
             description: "Test description",
-            authors: new[] { "TestAuthor" },
+            authors: ["TestAuthor"],
             files: files);
 
         var gonugetResult = GonugetBridge.ReadPackage(buildResult.PackageBytes);
@@ -545,7 +544,7 @@ public class PackageReaderTests
     {
         var files = new Dictionary<string, byte[]>
         {
-            ["lib/net6.0/test.dll"] = new byte[] { 0x4D, 0x5A },
+            ["lib/net6.0/test.dll"] = [0x4D, 0x5A],
             ["content/readme.txt"] = "Hello"u8.ToArray()
         };
 
@@ -569,7 +568,7 @@ public class PackageReaderTests
     {
         var files = new Dictionary<string, byte[]>
         {
-            ["lib/net6.0/test.dll"] = new byte[] { 0x4D, 0x5A }
+            ["lib/net6.0/test.dll"] = [0x4D, 0x5A]
         };
 
         var buildResult = GonugetBridge.BuildPackage(
@@ -700,7 +699,7 @@ public class PackageReaderTests
     {
         var files = new Dictionary<string, byte[]>
         {
-            ["lib/net6.0/test.dll"] = new byte[] { 0x4D, 0x5A }
+            ["lib/net6.0/test.dll"] = [0x4D, 0x5A]
         };
 
         var buildResult = GonugetBridge.BuildPackage(

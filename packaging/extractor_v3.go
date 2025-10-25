@@ -73,14 +73,14 @@ func InstallFromSourceV3(
 
 	// Download package to temp location
 	if err := copyToAsync(targetTempNupkg); err != nil {
-		cleanupPartialInstall(targetPath, targetTempNupkg)
+		cleanupPartialInstall(targetTempNupkg)
 		return false, fmt.Errorf("download package: %w", err)
 	}
 
 	// Open package reader
 	reader, err := OpenPackage(targetTempNupkg)
 	if err != nil {
-		cleanupPartialInstall(targetPath, targetTempNupkg)
+		cleanupPartialInstall(targetTempNupkg)
 		return false, fmt.Errorf("open package: %w", err)
 	}
 
@@ -93,7 +93,7 @@ func InstallFromSourceV3(
 
 		if err := extractionContext.SignatureVerifier.VerifySignatureAsync(ctx, reader); err != nil {
 			_ = reader.Close()
-			cleanupPartialInstall(targetPath, targetTempNupkg)
+			cleanupPartialInstall(targetTempNupkg)
 			return false, fmt.Errorf("signature verification failed: %w", err)
 		}
 	}
@@ -106,21 +106,21 @@ func InstallFromSourceV3(
 		nuspecFile, err := reader.GetNuspecFile()
 		if err != nil {
 			_ = reader.Close()
-			cleanupPartialInstall(targetPath, targetTempNupkg)
+			cleanupPartialInstall(targetTempNupkg)
 			return false, fmt.Errorf("get nuspec: %w", err)
 		}
 
 		stream, err := nuspecFile.Open()
 		if err != nil {
 			_ = reader.Close()
-			cleanupPartialInstall(targetPath, targetTempNupkg)
+			cleanupPartialInstall(targetTempNupkg)
 			return false, fmt.Errorf("open nuspec stream: %w", err)
 		}
 
 		if _, err := CopyToFile(stream, targetNuspec); err != nil {
 			_ = stream.Close()
 			_ = reader.Close()
-			cleanupPartialInstall(targetPath, targetTempNupkg)
+			cleanupPartialInstall(targetTempNupkg)
 			return false, fmt.Errorf("extract nuspec: %w", err)
 		}
 		_ = stream.Close()
@@ -163,7 +163,7 @@ func InstallFromSourceV3(
 	hash, err := calculateFileHash(targetTempNupkg)
 	if err != nil {
 		_ = reader.Close()
-		cleanupPartialInstall(targetPath, targetTempNupkg)
+		cleanupPartialInstall(targetTempNupkg)
 		return false, fmt.Errorf("calculate hash: %w", err)
 	}
 	packageHash = base64.StdEncoding.EncodeToString(hash)
@@ -173,7 +173,7 @@ func InstallFromSourceV3(
 	contentHash, err = getContentHash(reader, targetTempNupkg, packageHash)
 	if err != nil {
 		_ = reader.Close()
-		cleanupPartialInstall(targetPath, targetTempNupkg)
+		cleanupPartialInstall(targetTempNupkg)
 		return false, fmt.Errorf("calculate content hash: %w", err)
 	}
 
@@ -184,14 +184,14 @@ func InstallFromSourceV3(
 	hashFilePath := versionFolderPathResolver.GetHashPath(
 		packageIdentity.ID, packageIdentity.Version)
 	if err := os.WriteFile(tempHashPath, []byte(packageHash), 0644); err != nil {
-		cleanupPartialInstall(targetPath, targetTempNupkg)
+		cleanupPartialInstall(targetTempNupkg)
 		return false, fmt.Errorf("write hash file: %w", err)
 	}
 
 	// Write metadata file
 	metadata := NewNupkgMetadataFile(contentHash, source)
 	if err := metadata.WriteToFile(tempMetadataPath); err != nil {
-		cleanupPartialInstall(targetPath, targetTempNupkg)
+		cleanupPartialInstall(targetTempNupkg)
 		return false, fmt.Errorf("write metadata: %w", err)
 	}
 
@@ -200,7 +200,7 @@ func InstallFromSourceV3(
 
 	if extractionContext.PackageSaveMode.HasFlag(PackageSaveModeNupkg) {
 		if err := os.Rename(targetTempNupkg, targetNupkg); err != nil {
-			cleanupPartialInstall(targetPath, targetTempNupkg)
+			cleanupPartialInstall(targetTempNupkg)
 			return false, fmt.Errorf("rename nupkg: %w", err)
 		}
 	} else {
@@ -284,7 +284,7 @@ func cleanDirectory(path string) error {
 // For concurrent safety, only removes the temp nupkg and the target directory
 // if it's empty. This prevents deleting files from other concurrent installations.
 // Reference: NuGet.Client PackageExtractor.DeleteTargetAndTempPaths
-func cleanupPartialInstall(targetPath, tempNupkg string) {
+func cleanupPartialInstall(tempNupkg string) {
 	// Remove temp nupkg file only
 	if tempNupkg != "" {
 		_ = os.Remove(tempNupkg)

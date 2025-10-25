@@ -108,6 +108,10 @@ func main() {
 	case "validate_cache_file":
 		handler = &ValidateCacheFileHandler{}
 
+	// Resolver operations
+	case "walk_graph":
+		handler = &WalkGraphHandler{}
+
 	default:
 		sendError("ACT_001", "Unknown action", fmt.Sprintf("action=%s", req.Action))
 		os.Exit(1)
