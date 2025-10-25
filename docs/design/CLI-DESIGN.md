@@ -1,9 +1,10 @@
 # gonuget CLI Tool Design Specification
 
 **Status**: Design Phase
-**Target**: 100% parity with nuget.exe CLI
+**Target**: 100% parity with nuget.exe CLI and dotnet nuget commands
 **Quality**: Production-ready, enterprise-grade
 **Created**: 2025-10-25
+**Last Updated**: 2025-10-25
 
 ---
 
@@ -26,25 +27,26 @@
 
 ## Executive Summary
 
-The gonuget CLI tool provides a production-ready command-line interface for NuGet package management operations with 100% functional parity to the official nuget.exe tool. Built on the gonuget library, it delivers native performance, cross-platform support, and seamless integration with existing NuGet workflows.
+The gonuget CLI tool provides a production-ready command-line interface for NuGet package management operations with 100% functional parity to the official nuget.exe tool and dotnet nuget commands. Built on the gonuget library, it delivers native performance, cross-platform support, and seamless integration with existing NuGet workflows.
 
 ### Design Goals
 
-1. **Complete Parity**: All 20 nuget.exe commands with identical behavior
+1. **Complete Parity**: All nuget.exe commands and dotnet nuget commands with identical behavior
 2. **Native Performance**: Sub-100ms startup time, efficient resource usage
 3. **Superior UX**: Modern CLI patterns, colored output, progress indicators
 4. **Production Quality**: Error handling, logging, telemetry, graceful degradation
 5. **Cross-Platform**: Windows, Linux, macOS with platform-specific optimizations
 6. **Extensibility**: NuGet Credential Provider protocol compatibility
-7. **Backwards Compatibility**: Drop-in replacement for nuget.exe in CI/CD pipelines
+7. **Backwards Compatibility**: Drop-in replacement for nuget.exe and dotnet nuget in CI/CD pipelines
 
 ### Key Differentiators
 
-- **Single Binary**: No runtime dependencies (vs .NET Framework requirement)
+- **Single Binary**: No runtime dependencies (vs .NET Framework/SDK requirement)
 - **Faster Startup**: Native binary vs CLR warm-up time
 - **Lower Memory**: Efficient Go runtime vs .NET GC overhead
 - **Modern Output**: Built-in progress bars, structured logging, JSON output
 - **HTTP/3 Support**: Next-generation protocol for faster downloads
+- **Unified CLI**: Single tool combining nuget.exe and dotnet nuget functionality
 
 ---
 
@@ -63,7 +65,7 @@ cmd/gonuget/
 ├── commands/
 │   ├── add.go                 # Add command implementation
 │   ├── clientcerts.go         # Client certificates management
-│   ├── config.go              # Configuration management
+│   ├── config.go              # Configuration management (get/set/list)
 │   ├── delete.go              # Package deletion
 │   ├── help.go                # Help command
 │   ├── init.go                # Initialize offline feed
@@ -76,7 +78,12 @@ cmd/gonuget/
 │   ├── search.go              # Search package feeds
 │   ├── setapikey.go           # API key management
 │   ├── sign.go                # Package signing
-│   ├── sources.go             # Package source management
+│   ├── source_list.go         # List package sources
+│   ├── source_add.go          # Add package source
+│   ├── source_remove.go       # Remove package source
+│   ├── source_update.go       # Update package source
+│   ├── source_enable.go       # Enable package source
+│   ├── source_disable.go      # Disable package source
 │   ├── spec.go                # Generate .nuspec files
 │   ├── trustedsigners.go      # Trusted signer management
 │   ├── update.go              # Update packages
@@ -228,17 +235,30 @@ gonuget client-certs remove -PackageSource https://private.feed.com/v3/index.jso
 
 ### Command: config
 
-**Synopsis**: Gets or sets NuGet configuration values
+**Synopsis**: Gets, sets, or lists NuGet configuration values
+
+**Subcommands**:
+- `get`: Get a configuration value
+- `set`: Set one or more configuration values
+- `list`: List all configuration values
 
 ```bash
-gonuget config <key> [value] [options]
-gonuget config -Set key1=value1 [-Set key2=value2 ...]
+gonuget config get <key> [options]
+gonuget config set [options]
+gonuget config list [options]
 ```
 
-**Flags**:
-- `-Set` (string, repeatable): Set key=value pair(s)
-- `-AsPath` (bool): Return value as filesystem path
-- `-ConfigFile` (string): Specific config file to modify
+**Flags (get)**:
+- `--as-path` (bool): Return value as filesystem path
+- `--configfile` (string): Specific config file to read
+
+**Flags (set)**:
+- `--set` (string, repeatable): Set key=value pair(s) (required)
+- `--configfile` (string): Specific config file to modify
+
+**Flags (list)**:
+- `--configfile` (string): Specific config file to read
+- `--format` (string): Output format (detailed, simple, json) (default: detailed)
 
 **Configuration Keys**:
 - `repositoryPath`: Global packages folder
@@ -252,17 +272,23 @@ gonuget config -Set key1=value1 [-Set key2=value2 ...]
 **Example**:
 ```bash
 # Get configuration value
-gonuget config repositoryPath
+gonuget config get repositoryPath
 
 # Set configuration value
-gonuget config repositoryPath ~/packages
+gonuget config set --set repositoryPath=~/packages
 
 # Set multiple values
-gonuget config -Set repositoryPath=~/packages -Set http_proxy=http://proxy:8080
+gonuget config set --set repositoryPath=~/packages --set http_proxy=http://proxy:8080
+
+# List all configuration values
+gonuget config list
 
 # Get as path (expands environment variables)
-gonuget config repositoryPath -AsPath
+gonuget config get repositoryPath --as-path
 ```
+
+**dotnet nuget Parity**:
+This command matches `dotnet nuget config` behavior exactly.
 
 ---
 
@@ -338,11 +364,43 @@ gonuget [command] --help
 USAGE:
   gonuget <command> [options]
 
-COMMANDS:
+FOUNDATION COMMANDS:
+  help             Show help information
+  version          Show version information
+  config           Configuration management (get, set, list)
+
+SOURCE MANAGEMENT:
+  list source      List configured package sources
+  add source       Add a new package source
+  remove source    Remove a package source
+  update source    Update an existing source
+  enable source    Enable a package source
+  disable source   Disable a package source
+
+PACKAGE OPERATIONS:
+  search           Search for packages
+  install          Install packages
+  restore          Restore packages for a project
+  pack             Create a .nupkg package
+  push             Push a package to a feed
+  delete           Delete a package from a feed
+  update           Update packages
   add              Add package to offline feed
+  init             Initialize offline feed
+  list             List packages (deprecated, use search)
+
+SIGNING & SECURITY:
+  sign             Sign a package
+  verify           Verify package signatures
+  trusted-signers  Manage trusted signers
   client-certs     Manage client certificates
-  config           Get/set configuration values
-  ...
+  setapikey        Set API key for a source
+
+CACHE MANAGEMENT:
+  locals           Manage local caches
+
+UTILITIES:
+  spec             Generate .nuspec file
 
 Run 'gonuget help <command>' for detailed help.
 ```
@@ -841,59 +899,31 @@ Successfully signed MyPackage.1.0.0.nupkg
 
 ---
 
-### Command: sources
+### Command: list source
 
-**Synopsis**: Manages package sources
+**Synopsis**: Lists all configured package sources
 
 ```bash
-gonuget sources <action> [options]
+gonuget list source [options]
 ```
 
-**Actions**:
-- `list`: List all configured sources
-- `add`: Add a new source
-- `remove`: Remove a source
-- `update`: Update an existing source
-- `enable`: Enable a source
-- `disable`: Disable a source
-
-**Flags (add/update)**:
-- `-Name, -n` (string, required): Source name
-- `-Source, -s` (string, required): Source URL
-- `-Username, -u` (string): Authentication username
-- `-Password, -p` (string): Authentication password
-- `-StorePasswordInClearText` (bool): Store password unencrypted
-- `-ValidAuthenticationTypes` (string): Comma-separated auth types (basic, negotiate, kerberos)
-- `-ProtocolVersion` (string): Protocol version (2, 3)
-- `-AllowInsecureConnections` (bool): Allow HTTP (non-HTTPS)
-
-**Flags (list)**:
-- `-Format` (string): Output format (table, json, simple)
-
-**Flags (remove/enable/disable)**:
-- `-Name, -n` (string, required): Source name
+**Flags**:
+- `--configfile` (string): Specific config file to read
+- `--format` (string): Output format (detailed, simple, json) (default: detailed)
 
 **Example**:
 ```bash
-# Add source
-gonuget sources add -Name MyFeed -Source https://myfeed.com/nuget/v3/index.json
+# List all sources
+gonuget list source
 
-# Add source with auth
-gonuget sources add -Name PrivateFeed \
-  -Source https://private.feed.com/v3/index.json \
-  -Username user -Password pass
+# List sources from specific config file
+gonuget list source --configfile ~/custom-nuget.config
 
-# List sources
-gonuget sources list
-
-# Disable source
-gonuget sources disable -Name MyFeed
-
-# Remove source
-gonuget sources remove -Name MyFeed
+# List sources in JSON format
+gonuget list source --format json
 ```
 
-**Output (list)**:
+**Output (detailed format)**:
 ```
 Registered Sources:
   1. nuget.org [Enabled]
@@ -901,6 +931,159 @@ Registered Sources:
   2. MyFeed [Disabled]
      https://myfeed.com/nuget/v3/index.json
 ```
+
+**dotnet nuget Parity**:
+This command matches `dotnet nuget list source` behavior exactly.
+
+---
+
+### Command: add source
+
+**Synopsis**: Adds a new package source
+
+```bash
+gonuget add source <source-url> [options]
+```
+
+**Arguments**:
+- `source-url` (string, required): Source URL (e.g., https://api.nuget.org/v3/index.json)
+
+**Flags**:
+- `--name` (string, required): Source name
+- `--username` (string): Authentication username
+- `--password` (string): Authentication password
+- `--store-password-in-clear-text` (bool): Store password unencrypted (not recommended)
+- `--valid-authentication-types` (string): Comma-separated auth types (basic, negotiate, kerberos)
+- `--configfile` (string): Specific config file to modify
+
+**Example**:
+```bash
+# Add public source
+gonuget add source https://myfeed.com/nuget/v3/index.json --name MyFeed
+
+# Add authenticated source
+gonuget add source https://private.feed.com/v3/index.json \
+  --name PrivateFeed \
+  --username user \
+  --password pass
+
+# Add to specific config file
+gonuget add source https://myfeed.com/v3/index.json \
+  --name MyFeed \
+  --configfile ~/custom-nuget.config
+```
+
+**dotnet nuget Parity**:
+This command matches `dotnet nuget add source` behavior exactly.
+
+---
+
+### Command: remove source
+
+**Synopsis**: Removes a package source
+
+```bash
+gonuget remove source [options]
+```
+
+**Flags**:
+- `--name` (string, required): Source name to remove
+- `--configfile` (string): Specific config file to modify
+
+**Example**:
+```bash
+# Remove source by name
+gonuget remove source --name MyFeed
+
+# Remove from specific config file
+gonuget remove source --name MyFeed --configfile ~/custom-nuget.config
+```
+
+**dotnet nuget Parity**:
+This command matches `dotnet nuget remove source` behavior exactly.
+
+---
+
+### Command: update source
+
+**Synopsis**: Updates an existing package source
+
+```bash
+gonuget update source [options]
+```
+
+**Flags**:
+- `--name` (string, required): Source name to update
+- `--source` (string): New source URL
+- `--username` (string): Authentication username
+- `--password` (string): Authentication password
+- `--store-password-in-clear-text` (bool): Store password unencrypted (not recommended)
+- `--valid-authentication-types` (string): Comma-separated auth types
+- `--configfile` (string): Specific config file to modify
+
+**Example**:
+```bash
+# Update source URL
+gonuget update source --name MyFeed --source https://new.feed.com/v3/index.json
+
+# Update authentication
+gonuget update source --name PrivateFeed --username newuser --password newpass
+```
+
+**dotnet nuget Parity**:
+This command matches `dotnet nuget update source` behavior exactly.
+
+---
+
+### Command: enable source
+
+**Synopsis**: Enables a disabled package source
+
+```bash
+gonuget enable source [options]
+```
+
+**Flags**:
+- `--name` (string, required): Source name to enable
+- `--configfile` (string): Specific config file to modify
+
+**Example**:
+```bash
+# Enable source
+gonuget enable source --name MyFeed
+
+# Enable in specific config file
+gonuget enable source --name MyFeed --configfile ~/custom-nuget.config
+```
+
+**dotnet nuget Parity**:
+This command matches `dotnet nuget enable source` behavior exactly.
+
+---
+
+### Command: disable source
+
+**Synopsis**: Disables a package source without removing it
+
+```bash
+gonuget disable source [options]
+```
+
+**Flags**:
+- `--name` (string, required): Source name to disable
+- `--configfile` (string): Specific config file to modify
+
+**Example**:
+```bash
+# Disable source
+gonuget disable source --name MyFeed
+
+# Disable in specific config file
+gonuget disable source --name MyFeed --configfile ~/custom-nuget.config
+```
+
+**dotnet nuget Parity**:
+This command matches `dotnet nuget disable source` behavior exactly.
 
 ---
 
@@ -1498,10 +1681,16 @@ Linux:    /home/user/.nuget/packages
    - Real package operations (with test feed)
    - Multi-source scenarios
 
-3. **Interop Tests**:
-   - Compare gonuget vs nuget.exe behavior
-   - Validate output parity
-   - Test config file compatibility
+3. **CLI Interop Tests** (C# Bridge):
+   - **Primary**: Compare gonuget vs `dotnet nuget` behavior (all platforms)
+   - **Secondary**: Compare gonuget vs `nuget.exe` behavior (Windows only, for compatibility verification)
+   - Validate output parity (stdout, stderr, exit codes)
+   - Test config file compatibility (NuGet.config round-tripping)
+   - Verify identical results for identical inputs
+   - Test command structure: `<verb> <noun>` pattern
+   - Test flag names: kebab-case (`--configfile`, `--name`, `--source`)
+   - Verify config subcommands: `config get`, `config set`, `config list`
+   - Verify source commands: `list source`, `add source`, `remove source`, `update source`, `enable source`, `disable source`
 
 4. **Performance Tests**:
    - Benchmark startup time
@@ -1519,6 +1708,16 @@ Linux:    /home/user/.nuget/packages
 - In-memory NuGet V3 server for fast tests
 - Configurable responses (errors, delays)
 - Package repository with test packages
+
+**CLI Interop Bridge**:
+- C# executable that invokes both `dotnet nuget` and `gonuget` (primary comparison)
+- On Windows, also compares with `nuget.exe` for compatibility verification
+- Compares outputs, exit codes, and file system changes
+- Returns JSON comparison report with detailed diffs
+- Runs on all platforms (.NET 9.0 SDK required)
+- Uses JSON-RPC protocol for command execution
+- Validates command structure (`<verb> <noun>` pattern)
+- Validates flag naming (kebab-case)
 
 **Test Packages**:
 - Simple packages (no dependencies)
@@ -1539,9 +1738,16 @@ Linux:    /home/user/.nuget/packages
 - CLI application structure (cobra)
 - Configuration loading (viper + NuGet.config XML)
 - Console abstraction with colors and progress
-- Commands: `help`, `version`, `config`, `sources`
+- Commands: `help`, `version`, `config` (get/set/list), `list source`, `add source`, `remove source`, `enable source`, `disable source`, `update source`
+- **Total Commands**: 9/21 (43%)
 
-**Tests**: Unit tests for config and CLI parsing
+**Command Structure**:
+- `<verb> <noun>` pattern (e.g., `add source`, not `sources add`)
+- Kebab-case flags (e.g., `--configfile`, not `-ConfigFile`)
+
+**Tests**:
+- Unit tests for config and CLI parsing
+- CLI interop tests comparing with `dotnet nuget` commands
 
 ---
 
@@ -1550,13 +1756,16 @@ Linux:    /home/user/.nuget/packages
 **Goals**: Package search, download, basic install
 
 **Deliverables**:
-- Commands: `search`, `install`, `list`
+- Commands: `search`, `install`
 - Package metadata fetching
 - Package download with progress
 - Simple extraction (no dependency resolution)
 - Cache integration
+- **Total Commands**: 11/21 (52%)
 
-**Tests**: Integration tests with test feed
+**Tests**:
+- Integration tests with test feed
+- CLI interop tests for search and install
 
 ---
 
@@ -1570,8 +1779,11 @@ Linux:    /home/user/.nuget/packages
 - Version conflict detection
 - packages.config support
 - Lock file generation
+- **Total Commands**: 12/21 (57%)
 
-**Tests**: Complex dependency scenarios
+**Tests**:
+- Complex dependency scenarios
+- CLI interop tests for restore
 
 ---
 
@@ -1580,13 +1792,16 @@ Linux:    /home/user/.nuget/packages
 **Goals**: Pack, push, spec
 
 **Deliverables**:
-- Commands: `pack`, `push`, `spec`
+- Commands: `pack`, `push`
 - .nuspec parsing and generation
 - OPC-compliant package creation
 - File pattern matching
 - Metadata extraction
+- **Total Commands**: 14/21 (67%)
 
-**Tests**: Package creation validation
+**Tests**:
+- Package creation validation
+- CLI interop tests for pack and push
 
 ---
 
@@ -1595,13 +1810,16 @@ Linux:    /home/user/.nuget/packages
 **Goals**: Signing, verification, trust management
 
 **Deliverables**:
-- Commands: `sign`, `verify`, `trusted-signers`, `client-certs`
+- Commands: `sign`, `verify`, `trusted-signers`
 - PKCS#7 signature creation/validation
 - RFC 3161 timestamping
 - Certificate store integration
 - Trust configuration
+- **Total Commands**: 17/21 (81%)
 
-**Tests**: Signature validation scenarios
+**Tests**:
+- Signature validation scenarios
+- CLI interop tests for sign and verify
 
 ---
 
@@ -1610,12 +1828,15 @@ Linux:    /home/user/.nuget/packages
 **Goals**: Update, locals, remaining commands
 
 **Deliverables**:
-- Commands: `update`, `locals`, `add`, `init`, `delete`, `setapikey`
+- Commands: `update`, `locals`, `add`, `init`, `delete`, `setapikey`, `spec`, `client-certs`, `list` (deprecated)
 - Self-update mechanism
 - Cache management
 - API key storage
+- **Total Commands**: 21/21 (100%)
 
-**Tests**: Full command suite testing
+**Tests**:
+- Full command suite testing
+- Complete CLI interop test coverage
 
 ---
 
@@ -1731,18 +1952,32 @@ Linux:    /home/user/.nuget/packages
 
 ### Behavioral Parity
 
+**Primary Target**: `dotnet nuget` commands (cross-platform, modern NuGet CLI)
+**Secondary Target**: `nuget.exe` (Windows only, legacy compatibility)
+
 **Critical Behaviors**:
-- Version resolution algorithm (same results as nuget.exe)
+- Version resolution algorithm (same results as `dotnet nuget`)
 - Dependency conflict resolution
 - Framework compatibility matching
 - Package extraction layout
 - Lock file format
 - Error codes
+- Command structure: `<verb> <noun>` pattern (e.g., `add source`, not `sources add`)
+- Flag naming: kebab-case (e.g., `--configfile`, not `-ConfigFile`)
+- Config subcommands: `get`, `set`, `list` (not single command with `-Set` flag)
 
 **Testing**:
-- Interop test suite comparing gonuget vs nuget.exe
+- CLI interop test suite comparing gonuget vs `dotnet nuget` commands (all platforms)
+- Windows-specific tests comparing gonuget vs `nuget.exe` (for compatibility verification)
 - Identical inputs → identical outputs
 - Edge cases and corner cases
+- Command structure validation
+- Flag name validation
+
+**Reference Implementations**:
+- [dotnet/sdk](https://github.com/dotnet/sdk) - **PRIMARY**: Official .NET SDK with `dotnet nuget` commands
+- [NuGet.Client](https://github.com/NuGet/NuGet.Client) - Secondary: nuget.exe implementation
+- [dotnet/docs](https://github.com/dotnet/docs) - Official NuGet documentation
 
 ---
 

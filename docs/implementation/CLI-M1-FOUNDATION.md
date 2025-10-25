@@ -4,25 +4,28 @@
 **Phase**: 1 of 8
 **Duration**: Weeks 1-2
 **Prerequisites**: gonuget library M1-M8 complete
+**Target**: 100% parity with `dotnet nuget` (cross-platform)
 
 ---
 
 ## Overview
 
-This milestone establishes the CLI foundation: command-line framework, configuration management, console output system, and basic commands. By the end of this milestone, you'll have a working `gonuget` binary with help, version, config, and sources commands.
+This milestone establishes the CLI foundation: command-line framework, configuration management, console output system, and basic commands. By the end of this milestone, you'll have a working `gonuget` binary with help, version, config, and source management commands that match `dotnet nuget` behavior exactly.
 
 **Deliverables**:
 - CLI application structure with Cobra
-- NuGet.config XML parsing and writing
+- NuGet.config XML parsing and writing (100% compatible with .NET tools)
 - Console abstraction with colors and progress bars
-- Commands: `help`, `version`, `config`, `sources`
+- Commands: `help`, `version`, `config`, source management (`list source`, `add source`, etc.)
+- CLI interop tests validating output matches `dotnet nuget`
 - 80%+ test coverage
 
 **Success Criteria**:
-- `gonuget --help` displays command list
-- `gonuget version` shows version info
-- `gonuget config` reads/writes NuGet.config
-- `gonuget sources list` displays configured sources
+- `gonuget --help` output matches `dotnet nuget --help` structure
+- `gonuget --version` output matches `dotnet nuget --version` format
+- `gonuget config` behavior matches `dotnet nuget config` exactly
+- `gonuget list source` output matches `dotnet nuget list source`
+- All CLI interop tests pass (output identical to `dotnet nuget`)
 
 ---
 
@@ -41,7 +44,12 @@ cmd/gonuget/
 │   ├── help.go             # Help command
 │   ├── version.go          # Version command
 │   ├── config.go           # Config command
-│   └── sources.go          # Sources command
+│   ├── source_list.go      # list source command
+│   ├── source_add.go       # add source command
+│   ├── source_remove.go    # remove source command
+│   ├── source_enable.go    # enable source command
+│   ├── source_disable.go   # disable source command
+│   └── source_update.go    # update source command
 ├── config/
 │   ├── nuget_config.go     # NuGet.config XML parsing
 │   ├── settings.go         # Settings management
@@ -53,6 +61,8 @@ cmd/gonuget/
     ├── progress.go         # Progress indicators
     └── formatter.go        # Output formatting
 ```
+
+**Note**: Commands follow `dotnet nuget` structure (`<verb> <noun>`) not `nuget.exe` structure (`<noun> <verb>`). For example: `gonuget list source` not `gonuget sources list`.
 
 ---
 
@@ -152,7 +162,7 @@ import (
 var rootCmd = &cobra.Command{
 	Use:   "gonuget",
 	Short: "NuGet package manager CLI",
-	Long: `gonuget is a cross-platform NuGet package manager CLI with 100% parity to nuget.exe.
+	Long: `gonuget is a cross-platform NuGet package manager CLI with 100% parity to dotnet nuget.
 
 Complete documentation is available at https://github.com/willibrandon/gonuget`,
 	SilenceUsage:  true,
@@ -240,6 +250,85 @@ func contains(s, substr string) bool {
 
 ```bash
 go test ./cmd/gonuget/cli -v
+```
+
+### CLI Interop Testing
+
+Since this chunk establishes basic CLI execution infrastructure, we'll add smoke test handlers to the CLI interop bridge:
+
+**Go Handler** (`cmd/gonuget-cli-interop-test/handlers_basic.go`):
+```go
+type ExecuteHelpHandler struct{}
+
+func (h *ExecuteHelpHandler) Handle(data json.RawMessage) (interface{}, error) {
+    var req struct {
+        Command string `json:"command"`
+    }
+    if err := json.Unmarshal(data, &req); err != nil {
+        return nil, err
+    }
+
+    // Execute: dotnet nuget --help
+    dotnetResult, err := ExecuteDotnetNuget([]string{"--help"}, "")
+    if err != nil {
+        return nil, err
+    }
+
+    // Execute: gonuget --help
+    gonugetResult, err := ExecuteGonuget([]string{"--help"}, "")
+    if err != nil {
+        return nil, err
+    }
+
+    return ExecuteCommandPairResponse{
+        DotnetExitCode: dotnetResult.ExitCode,
+        DotnetStdout: dotnetResult.Stdout,
+        GonugetExitCode: gonugetResult.ExitCode,
+        GonugetStdout: gonugetResult.Stdout,
+    }, nil
+}
+
+func (h *ExecuteHelpHandler) ErrorCode() string {
+    return "help_execution_error"
+}
+```
+
+**C# Test** (`tests/cli-interop/GonugetCliInterop.Tests/BasicTests.cs`):
+```csharp
+public class BasicTests
+{
+    [Fact]
+    public void Help_ShouldExecuteSuccessfully()
+    {
+        var result = GonugetCliBridge.ExecuteCommandPair("--help", "--help");
+
+        Assert.Equal(0, result.DotnetExitCode);
+        Assert.Equal(0, result.GonugetExitCode);
+        Assert.NotEmpty(result.DotnetStdout);
+        Assert.NotEmpty(result.GonugetStdout);
+    }
+
+    [Fact]
+    public void Version_ShouldShowVersionInfo()
+    {
+        var result = GonugetCliBridge.ExecuteCommandPair("--version", "--version");
+
+        Assert.Equal(0, result.DotnetExitCode);
+        Assert.Equal(0, result.GonugetExitCode);
+        Assert.NotEmpty(result.DotnetStdout);
+        Assert.NotEmpty(result.GonugetStdout);
+    }
+}
+```
+
+**Test Execution**:
+```bash
+# Build CLI interop bridge
+make build-cli-interop
+
+# Run CLI interop tests
+cd tests/cli-interop/GonugetCliInterop.Tests
+dotnet test --filter "FullyQualifiedName~BasicTests"
 ```
 
 ### Commit
@@ -663,6 +752,80 @@ go test ./cmd/gonuget/output -v
 # Test in CLI
 go build -o gonuget ./cmd/gonuget
 ./gonuget --help  # Should show colored output (if terminal supports it)
+```
+
+### CLI Interop Testing
+
+The console abstraction is tested indirectly through all other CLI interop tests. However, we should add specific tests for verbosity level handling to ensure it matches `dotnet nuget` behavior:
+
+**Go Handler** (`cmd/gonuget-cli-interop-test/handlers_basic.go`):
+```go
+type ExecuteWithVerbosityHandler struct{}
+
+func (h *ExecuteWithVerbosityHandler) Handle(data json.RawMessage) (interface{}, error) {
+    var req struct {
+        Command    []string `json:"command"`
+        Verbosity  string   `json:"verbosity"`  // "quiet", "normal", "detailed", "diagnostic"
+    }
+    if err := json.Unmarshal(data, &req); err != nil {
+        return nil, err
+    }
+
+    // Execute: dotnet nuget [command] --verbosity [level]
+    dotnetCmd := append(req.Command, "--verbosity", req.Verbosity)
+    dotnetResult, err := ExecuteDotnetNuget(dotnetCmd, "")
+    if err != nil {
+        return nil, err
+    }
+
+    // Execute: gonuget [command] --verbosity [level]
+    gonugetCmd := append(req.Command, "--verbosity", req.Verbosity)
+    gonugetResult, err := ExecuteGonuget(gonugetCmd, "")
+    if err != nil {
+        return nil, err
+    }
+
+    return ExecuteCommandPairResponse{
+        DotnetExitCode: dotnetResult.ExitCode,
+        DotnetStdout: dotnetResult.Stdout,
+        GonugetExitCode: gonugetResult.ExitCode,
+        GonugetStdout: gonugetResult.Stdout,
+    }, nil
+}
+
+func (h *ExecuteWithVerbosityHandler) ErrorCode() string {
+    return "verbosity_execution_error"
+}
+```
+
+**C# Test** (`tests/cli-interop/GonugetCliInterop.Tests/VerbosityTests.cs`):
+```csharp
+public class VerbosityTests
+{
+    [Theory]
+    [InlineData("quiet")]
+    [InlineData("normal")]
+    [InlineData("detailed")]
+    [InlineData("diagnostic")]
+    public void Config_WithVerbosity_ShouldMatchDotnetNuget(string verbosity)
+    {
+        var result = GonugetCliBridge.ExecuteWithVerbosity(
+            new[] { "config" },
+            verbosity);
+
+        Assert.Equal(0, result.DotnetExitCode);
+        Assert.Equal(0, result.GonugetExitCode);
+        // Output amount should be similar (exact match not required due to formatting)
+    }
+}
+```
+
+**Note**: Color output is disabled in non-TTY environments, so CLI interop tests will not test color codes. Manual testing required for color verification.
+
+**Test Execution**:
+```bash
+cd tests/cli-interop/GonugetCliInterop.Tests
+dotnet test --filter "FullyQualifiedName~VerbosityTests"
 ```
 
 ### Commit
@@ -1164,6 +1327,34 @@ EOF
 go run /tmp/test-config.go
 ```
 
+### CLI Interop Testing
+
+The NuGet.config XML parsing and management is tested through the `config` command CLI interop tests (see Chunk 5). This chunk provides the infrastructure that enables accurate `dotnet nuget config` parity.
+
+**Key Compatibility Points**:
+- XML structure must match `dotnet nuget` exactly
+- Config file hierarchy (current, user, system) must match .NET behavior
+- Default package sources must match (nuget.org V3 feed)
+- Path resolution on Windows/Linux/macOS must match .NET conventions
+
+**Manual Verification**:
+```bash
+# Create a config with dotnet nuget
+dotnet nuget add source https://test.com/v3/index.json --name test-source
+
+# Verify gonuget can read it
+./gonuget config
+
+# Create a config with gonuget
+./gonuget config globalPackagesFolder ~/my-packages
+
+# Verify dotnet nuget can read it
+dotnet nuget config globalPackagesFolder
+```
+
+**Test Execution**:
+Config file compatibility is validated in ConfigTests.cs (see Chunk 5).
+
 ### Commit
 
 ```bash
@@ -1184,7 +1375,7 @@ Coverage: 90%+"
 
 ## Chunk 4: Version Command
 
-**Objective**: Implement the `version` command.
+**Objective**: Implement the `version` command with output matching `dotnet nuget --version`.
 
 **Files to create**:
 - `cmd/gonuget/commands/version.go`
@@ -1207,7 +1398,7 @@ import (
 var rootCmd = &cobra.Command{
 	Use:   "gonuget",
 	Short: "NuGet package manager CLI",
-	Long: `gonuget is a cross-platform NuGet package manager CLI with 100% parity to nuget.exe.
+	Long: `gonuget is a cross-platform NuGet package manager CLI with 100% parity to dotnet nuget.
 
 Complete documentation is available at https://github.com/willibrandon/gonuget`,
 	SilenceUsage:  true,
@@ -1318,14 +1509,108 @@ go test ./cmd/gonuget/commands -v
 # Build and test
 go build -ldflags "-X github.com/willibrandon/gonuget/cmd/gonuget/cli.Version=1.0.0-test" -o gonuget ./cmd/gonuget
 ./gonuget version
+
+# Compare with dotnet nuget
+dotnet nuget --version
+./gonuget --version
 ```
 
-**Expected output**:
+**Expected output format** (matching `dotnet nuget --version`):
 ```
 gonuget version 1.0.0-test
 commit: unknown
 built: unknown
 built by: unknown
+```
+
+**Note**: `dotnet nuget --version` output format varies by SDK version. The gonuget output should be similar but doesn't need to be byte-for-byte identical. Focus on including version number prominently.
+
+### CLI Interop Testing
+
+**Go Handler** (`cmd/gonuget-cli-interop-test/handlers_basic.go`):
+```go
+type ExecuteVersionHandler struct{}
+
+func (h *ExecuteVersionHandler) Handle(data json.RawMessage) (interface{}, error) {
+    // Execute: dotnet nuget --version
+    dotnetResult, err := ExecuteDotnetNuget([]string{"--version"}, "")
+    if err != nil {
+        return nil, err
+    }
+
+    // Execute: gonuget --version
+    gonugetResult, err := ExecuteGonuget([]string{"--version"}, "")
+    if err != nil {
+        return nil, err
+    }
+
+    return ExecuteCommandPairResponse{
+        DotnetExitCode: dotnetResult.ExitCode,
+        DotnetStdout: dotnetResult.Stdout,
+        DotnetStderr: dotnetResult.Stderr,
+        GonugetExitCode: gonugetResult.ExitCode,
+        GonugetStdout: gonugetResult.Stdout,
+        GonugetStderr: gonugetResult.Stderr,
+    }, nil
+}
+
+func (h *ExecuteVersionHandler) ErrorCode() string {
+    return "version_execution_error"
+}
+```
+
+**C# Test** (`tests/cli-interop/GonugetCliInterop.Tests/VersionTests.cs`):
+```csharp
+public class VersionTests
+{
+    [Fact]
+    public void Version_WithDoubleDash_ShouldExecuteSuccessfully()
+    {
+        var result = GonugetCliBridge.ExecuteCommandPair("--version", "--version");
+
+        Assert.Equal(0, result.DotnetExitCode);
+        Assert.Equal(0, result.GonugetExitCode);
+        Assert.NotEmpty(result.DotnetStdout);
+        Assert.NotEmpty(result.GonugetStdout);
+
+        // Both should contain version information
+        Assert.Contains("version", result.DotnetStdout.ToLower());
+        Assert.Contains("version", result.GonugetStdout.ToLower());
+    }
+
+    [Fact]
+    public void Version_AsSubcommand_ShouldExecuteSuccessfully()
+    {
+        var result = GonugetCliBridge.ExecuteCommandPair("version", "version");
+
+        Assert.Equal(0, result.DotnetExitCode);
+        Assert.Equal(0, result.GonugetExitCode);
+        Assert.NotEmpty(result.DotnetStdout);
+        Assert.NotEmpty(result.GonugetStdout);
+    }
+
+    [Fact]
+    public void Version_OutputShouldContainVersionNumber()
+    {
+        var result = GonugetCliBridge.ExecuteVersion();
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.NotEmpty(result.Stdout);
+
+        // Should contain a version number pattern (e.g., "1.0.0", "1.2.3-beta")
+        Assert.Matches(@"\d+\.\d+\.\d+", result.Stdout);
+    }
+}
+```
+
+**Test Execution**:
+```bash
+# Build CLI interop bridge
+make build-cli-interop
+
+# Run version CLI interop tests
+cd tests/cli-interop/GonugetCliInterop.Tests
+dotnet test --filter "FullyQualifiedName~VersionTests"
 ```
 
 ### Commit
@@ -1348,9 +1633,9 @@ Commands: 1/20 complete (5%)"
 
 ---
 
-## Chunk 5: Config Command (Part 1: Reading)
+## Chunk 5: Config Command
 
-**Objective**: Implement `config` command for reading configuration values.
+**Objective**: Implement `config` command matching `dotnet nuget config` behavior for reading and writing configuration values.
 
 ### Step 5.1: Create commands/config.go
 
@@ -1383,18 +1668,18 @@ func NewConfigCommand(console *output.Console) *cobra.Command {
 		Long: `Get or set NuGet configuration values.
 
 Examples:
-  gonuget config                                    # List all config values
-  gonuget config repositoryPath                     # Get specific value
-  gonuget config repositoryPath ~/packages          # Set value
-  gonuget config -Set key1=value1 -Set key2=value2  # Set multiple values`,
+  gonuget config                                     # List all config values
+  gonuget config repositoryPath                      # Get specific value
+  gonuget config repositoryPath ~/packages           # Set value
+  gonuget config --set key1=value1 --set key2=value2 # Set multiple values`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runConfig(console, args, opts)
 		},
 	}
 
-	cmd.Flags().StringVar(&opts.configFile, "ConfigFile", "", "Config file to use")
-	cmd.Flags().BoolVar(&opts.asPath, "AsPath", false, "Return value as filesystem path")
-	cmd.Flags().StringArrayVar(&opts.set, "Set", []string{}, "Set key=value pair(s)")
+	cmd.Flags().StringVar(&opts.configFile, "configfile", "", "Config file to use")
+	cmd.Flags().BoolVar(&opts.asPath, "as-path", false, "Return value as filesystem path")
+	cmd.Flags().StringArrayVar(&opts.set, "set", []string{}, "Set key=value pair(s)")
 
 	return cmd
 }
@@ -1660,10 +1945,213 @@ go test ./cmd/gonuget/commands -v -run TestConfig
 go build -o gonuget ./cmd/gonuget
 
 # Test config operations
-./gonuget config -Set testKey=testValue
+./gonuget config --set testKey=testValue
 ./gonuget config testKey
 ./gonuget config
+
+# Compare with dotnet nuget config
+dotnet nuget config globalPackagesFolder
+./gonuget config globalPackagesFolder
 ```
+
+### CLI Interop Testing
+
+The config command is critical for NuGet.config parity. We need comprehensive CLI interop tests to ensure behavior matches `dotnet nuget config` exactly.
+
+**Go Handler** (`cmd/gonuget-cli-interop-test/handlers_config.go`):
+```go
+type ExecuteConfigHandler struct{}
+
+func (h *ExecuteConfigHandler) Handle(data json.RawMessage) (interface{}, error) {
+    var req struct {
+        Operation string   `json:"operation"` // "list", "get", "set"
+        Key       string   `json:"key,omitempty"`
+        Value     string   `json:"value,omitempty"`
+        ConfigFile string  `json:"configFile,omitempty"`
+    }
+    if err := json.Unmarshal(data, &req); err != nil {
+        return nil, err
+    }
+
+    var dotnetArgs, gonugetArgs []string
+
+    switch req.Operation {
+    case "list":
+        dotnetArgs = []string{"config"}
+        gonugetArgs = []string{"config"}
+    case "get":
+        dotnetArgs = []string{"config", req.Key}
+        gonugetArgs = []string{"config", req.Key}
+    case "set":
+        dotnetArgs = []string{"config", req.Key, req.Value}
+        gonugetArgs = []string{"config", req.Key, req.Value}
+    default:
+        return nil, fmt.Errorf("unknown operation: %s", req.Operation)
+    }
+
+    // Add --configfile if specified
+    if req.ConfigFile != "" {
+        dotnetArgs = append(dotnetArgs, "--configfile", req.ConfigFile)
+        gonugetArgs = append(gonugetArgs, "--configfile", req.ConfigFile)
+    }
+
+    // Execute dotnet nuget
+    dotnetResult, err := ExecuteDotnetNuget(dotnetArgs, "")
+    if err != nil {
+        return nil, err
+    }
+
+    // Execute gonuget
+    gonugetResult, err := ExecuteGonuget(gonugetArgs, "")
+    if err != nil {
+        return nil, err
+    }
+
+    return ExecuteCommandPairResponse{
+        DotnetExitCode: dotnetResult.ExitCode,
+        DotnetStdout: NormalizeOutput(dotnetResult.Stdout),
+        DotnetStderr: dotnetResult.Stderr,
+        GonugetExitCode: gonugetResult.ExitCode,
+        GonugetStdout: NormalizeOutput(gonugetResult.Stdout),
+        GonugetStderr: gonugetResult.Stderr,
+    }, nil
+}
+
+func (h *ExecuteConfigHandler) ErrorCode() string {
+    return "config_execution_error"
+}
+```
+
+**C# Test** (`tests/cli-interop/GonugetCliInterop.Tests/ConfigTests.cs`):
+```csharp
+public class ConfigTests : IDisposable
+{
+    private readonly string _tempConfigDir;
+    private readonly string _tempConfigFile;
+
+    public ConfigTests()
+    {
+        _tempConfigDir = Path.Combine(Path.GetTempPath(), $"nuget-test-{Guid.NewGuid()}");
+        Directory.CreateDirectory(_tempConfigDir);
+        _tempConfigFile = Path.Combine(_tempConfigDir, "NuGet.config");
+    }
+
+    public void Dispose()
+    {
+        if (Directory.Exists(_tempConfigDir))
+        {
+            Directory.Delete(_tempConfigDir, true);
+        }
+    }
+
+    [Fact]
+    public void Config_List_ShouldMatchDotnetNuget()
+    {
+        var result = GonugetCliBridge.ExecuteConfig("list", configFile: _tempConfigFile);
+
+        Assert.Equal(result.DotnetExitCode, result.GonugetExitCode);
+        // Output format may differ slightly, but both should succeed
+    }
+
+    [Fact]
+    public void Config_SetAndGet_ShouldMatchDotnetNuget()
+    {
+        // Set with dotnet nuget
+        var setResult = GonugetCliBridge.ExecuteConfig(
+            "set",
+            key: "globalPackagesFolder",
+            value: "~/test-packages",
+            configFile: _tempConfigFile);
+
+        Assert.Equal(0, setResult.DotnetExitCode);
+
+        // Get with gonuget - should read dotnet's config
+        var getResult = GonugetCliBridge.ExecuteConfig(
+            "get",
+            key: "globalPackagesFolder",
+            configFile: _tempConfigFile);
+
+        Assert.Equal(0, getResult.GonugetExitCode);
+        Assert.Contains("test-packages", getResult.GonugetStdout);
+    }
+
+    [Fact]
+    public void Config_GonugetSet_DotnetGet_ShouldBeCompatible()
+    {
+        // Set with gonuget
+        var setResult = GonugetCliBridge.ExecuteConfig(
+            "set",
+            key: "repositoryPath",
+            value: "~/my-repo",
+            configFile: _tempConfigFile);
+
+        Assert.Equal(0, setResult.GonugetExitCode);
+
+        // Get with dotnet nuget - should read gonuget's config
+        var getResult = GonugetCliBridge.ExecuteConfig(
+            "get",
+            key: "repositoryPath",
+            configFile: _tempConfigFile);
+
+        Assert.Equal(0, getResult.DotnetExitCode);
+        Assert.Contains("my-repo", getResult.DotnetStdout);
+    }
+
+    [Fact]
+    public void Config_GetNonExistentKey_ShouldFail()
+    {
+        var result = GonugetCliBridge.ExecuteConfig(
+            "get",
+            key: "nonExistentKey",
+            configFile: _tempConfigFile);
+
+        // Both should fail with similar exit codes
+        Assert.NotEqual(0, result.DotnetExitCode);
+        Assert.NotEqual(0, result.GonugetExitCode);
+    }
+
+    [Theory]
+    [InlineData("globalPackagesFolder", "~/packages")]
+    [InlineData("repositoryPath", "./local-repo")]
+    [InlineData("http_proxy", "http://proxy.example.com")]
+    public void Config_CommonKeys_ShouldMatchBehavior(string key, string value)
+    {
+        var setResult = GonugetCliBridge.ExecuteConfig(
+            "set",
+            key: key,
+            value: value,
+            configFile: _tempConfigFile);
+
+        Assert.Equal(0, setResult.DotnetExitCode);
+        Assert.Equal(0, setResult.GonugetExitCode);
+
+        var getResult = GonugetCliBridge.ExecuteConfig(
+            "get",
+            key: key,
+            configFile: _tempConfigFile);
+
+        Assert.Equal(0, getResult.DotnetExitCode);
+        Assert.Equal(0, getResult.GonugetExitCode);
+        Assert.Contains(value, getResult.GonugetStdout);
+    }
+}
+```
+
+**Test Execution**:
+```bash
+# Build CLI interop bridge
+make build-cli-interop
+
+# Run config CLI interop tests
+cd tests/cli-interop/GonugetCliInterop.Tests
+dotnet test --filter "FullyQualifiedName~ConfigTests"
+```
+
+**Key Compatibility Validation**:
+- Config file XML structure matches exactly
+- Both tools can read/write each other's config files
+- Exit codes match for success/failure scenarios
+- Path expansion behaves identically on Windows/Linux/macOS
 
 ### Commit
 
@@ -1688,19 +2176,27 @@ Commands: 2/20 complete (10%)"
 You've completed Chunk 1-5 of CLI Milestone 1 (Foundation). You now have:
 
 ✅ Project structure with Cobra
-✅ Console output abstraction with colors and verbosity
-✅ NuGet.config XML parsing and management
-✅ Version command
-✅ Config command (get/set)
+✅ Console output abstraction with colors and verbosity matching `dotnet nuget`
+✅ NuGet.config XML parsing and management (100% compatible with .NET tools)
+✅ Version command (`gonuget --version` vs `dotnet nuget --version`)
+✅ Config command (get/set/list with kebab-case flags)
+✅ CLI interop test handlers and C# tests for all chunks
 
-**Next document**: CLI-M1-FOUNDATION.md (continued) will cover:
-- Chunk 6: Sources command (list, add, remove, enable, disable)
+**Next document**: CLI-M1-FOUNDATION-CONTINUED.md will cover:
+- Chunk 6: Source management commands (`list source`, `add source`, `remove source`, `enable source`, `disable source`, `update source`)
 - Chunk 7: Help command
 - Chunk 8: Progress bars and spinners
-- Chunk 9: Integration tests for Phase 1
+- Chunk 9: CLI Interop Tests for Phase 1
 - Chunk 10: Performance benchmarks
 
-**Commands completed**: 2/20 (10%)
-**Test coverage**: Should be >80% for Phase 1
+**Commands completed**: 2/21 (9.5%)
+**Target**: 100% parity with `dotnet nuget`
+**Test coverage**: >80% unit tests + CLI interop tests for Phase 1
 
-**Ready to proceed?** The next chunks will complete the foundation phase. Let me know if you want me to continue with the remaining chunks of M1 or move to the next document (CLI-M2-CORE-OPERATIONS.md).
+**Key Changes from nuget.exe target**:
+- All flag names use kebab-case (--configfile not --ConfigFile)
+- Commands match `dotnet nuget` structure
+- Cross-platform compatibility is critical (Windows, macOS, Linux)
+- CLI interop tests validate output matches `dotnet nuget` exactly
+
+**Ready to proceed?** Continue to CLI-M1-FOUNDATION-CONTINUED.md for chunks 6-10, which will complete the foundation phase with source management commands and CLI interop test infrastructure.

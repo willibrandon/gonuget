@@ -1,10 +1,11 @@
 # Product Requirements Document: gonuget CLI
 
-**Document Version**: 1.0
+**Document Version**: 1.1
 **Last Updated**: 2025-10-25
 **Status**: Draft
 **Product**: gonuget CLI Tool
 **Target Release**: v1.0
+**Revision**: Updated to target dotnet nuget compatibility
 
 ---
 
@@ -35,14 +36,15 @@
 
 ## Executive Summary
 
-gonuget CLI is a production-ready command-line tool providing 100% functional parity with nuget.exe. Built as a native Go binary, it offers superior startup performance, cross-platform support, and modern CLI user experience while maintaining complete compatibility with existing NuGet workflows, configuration files, and credential providers.
+gonuget CLI is a production-ready command-line tool providing 100% functional parity with `dotnet nuget` commands and `nuget.exe`. Built as a native Go binary, it offers superior startup performance, cross-platform support, and modern CLI user experience while maintaining complete compatibility with existing NuGet workflows, configuration files, and credential providers.
 
 **Key Value Propositions**:
-- **Drop-in Replacement**: Works identically to nuget.exe in all scenarios
+- **Drop-in Replacement**: Works identically to `dotnet nuget` and `nuget.exe` in all scenarios
 - **Native Performance**: 10x faster startup (5ms vs 50ms)
-- **Single Binary**: No .NET Framework/runtime dependency
+- **Single Binary**: No .NET SDK/Framework dependency
 - **Modern UX**: Colored output, progress indicators, structured logging
 - **Universal Platform Support**: Windows, Linux, macOS with single codebase
+- **Unified CLI**: Single tool combining `dotnet nuget` and `nuget.exe` functionality
 
 ---
 
@@ -62,7 +64,7 @@ Create the definitive cross-platform NuGet CLI tool that sets the standard for p
 
 ### Primary Goals
 
-1. **Complete Parity**: 100% functional compatibility with nuget.exe (all 20 commands)
+1. **Complete Parity**: 100% functional compatibility with `dotnet nuget` and `nuget.exe` commands
 2. **Superior Performance**: Sub-50ms startup time, faster package operations
 3. **Platform Independence**: Identical behavior across Windows, Linux, macOS
 4. **Production Quality**: Zero-downtime deployments, <0.01% crash rate
@@ -77,11 +79,12 @@ Create the definitive cross-platform NuGet CLI tool that sets the standard for p
 
 ### Success Criteria
 
-- [ ] All 20 nuget.exe commands implemented with identical behavior
-- [ ] 100% of NuGet.Client interop tests passing
-- [ ] Startup time < 50ms (vs nuget.exe ~50-100ms)
-- [ ] Package restore 1.5x faster than nuget.exe (parallel downloads)
-- [ ] Zero breaking changes from nuget.exe in CI/CD scenarios
+- [ ] All `dotnet nuget` and `nuget.exe` commands implemented with identical behavior
+- [ ] 100% of CLI interop tests passing (dotnet nuget comparison)
+- [ ] 100% of NuGet.Client interop tests passing (library-level)
+- [ ] Startup time < 50ms (vs dotnet nuget ~100-200ms, nuget.exe ~50-100ms)
+- [ ] Package restore 1.5x faster than `dotnet restore` (parallel downloads)
+- [ ] Zero breaking changes from `dotnet nuget` / `nuget.exe` in CI/CD scenarios
 - [ ] 10,000+ downloads in first 6 months
 - [ ] 95% user satisfaction rating
 
@@ -98,13 +101,13 @@ Create the definitive cross-platform NuGet CLI tool that sets the standard for p
 
 **2. DevOps Engineers**
 - Need: Fast, reliable package restoration in CI/CD
-- Pain: nuget.exe startup time, .NET Framework dependency
+- Pain: `dotnet nuget` / `nuget.exe` startup time, .NET SDK/Framework dependency
 - Value: 10x faster startup, single binary deployment
 
 **3. Cross-Platform Teams**
 - Need: Consistent tooling across Windows, Linux, macOS
-- Pain: nuget.exe Windows-only, Mono compatibility issues
-- Value: True cross-platform binary with identical behavior
+- Pain: `nuget.exe` Windows-only, `dotnet nuget` requires .NET SDK
+- Value: True cross-platform binary with identical behavior, no SDK requirement
 
 ### Secondary Users
 
@@ -124,35 +127,51 @@ Create the definitive cross-platform NuGet CLI tool that sets the standard for p
 
 ### FR-1: Command Completeness
 
-**Requirement**: gonuget SHALL implement all 20 commands available in nuget.exe with identical syntax and behavior.
+**Requirement**: gonuget SHALL implement all 21 commands matching `dotnet nuget` with identical syntax and behavior.
 
 **Commands (Priority Order)**:
 
-**Common Commands** (P0 - Must Have):
-1. `pack` - Create NuGet packages
-2. `push` - Publish packages to feeds
-3. `restore` - Restore project dependencies
-4. `install` - Install packages
-5. `config` - Manage configuration
-6. `help` - Display help information
-7. `sources` - Manage package sources
-8. `setapikey` - Store API keys
+**Foundation Commands** (P0 - Must Have):
+1. `help` - Display help information
+2. `version` - Display version information (via `--version` flag)
+3. `config` - Manage configuration (subcommands: get, set, list)
+
+**Source Management Commands** (P0 - Must Have):
+4. `list source` - List configured package sources
+5. `add source` - Add a new package source
+6. `remove source` - Remove a package source
+7. `update source` - Update an existing source
+8. `enable source` - Enable a package source
+9. `disable source` - Disable a package source
+
+**Package Operations Commands** (P0 - Must Have):
+10. `search` - Search package feeds
+11. `install` - Install packages
+12. `restore` - Restore project dependencies
+13. `pack` - Create NuGet packages
+14. `push` - Publish packages to feeds
 
 **Secondary Commands** (P1 - Should Have):
-9. `search` - Search package feeds
-10. `list` - List packages (deprecated, delegates to search)
-11. `locals` - Manage local caches
-12. `delete` - Remove packages from feeds
-13. `update` - Update packages
-14. `spec` - Generate .nuspec files
-15. `add` - Add packages to offline feeds
-16. `init` - Initialize offline feeds
+15. `list` - List packages (deprecated, delegates to search)
+16. `delete` - Remove packages from feeds
+17. `update` - Update packages
+18. `add` - Add packages to offline feeds
+19. `init` - Initialize offline feeds
+20. `locals` - Manage local caches
+21. `setapikey` - Store API keys
 
 **Advanced Commands** (P2 - Nice to Have):
-17. `sign` - Sign packages with certificates
-18. `verify` - Verify package signatures
-19. `trusted-signers` - Manage trusted signers
-20. `client-certs` - Manage client certificates
+22. `sign` - Sign packages with certificates
+23. `verify` - Verify package signatures
+24. `trusted-signers` - Manage trusted signers
+25. `client-certs` - Manage client certificates
+26. `spec` - Generate .nuspec files
+
+**Command Structure**:
+- **Pattern**: `<verb> <noun>` (e.g., `add source`, not `sources add`)
+- **Flags**: kebab-case (e.g., `--configfile`, `--name`, `--source`)
+- **Config subcommands**: `get`, `set`, `list` (not single command with `-Set` flag)
+- **Total**: 21 core commands for 100% `dotnet nuget` parity
 
 **Deprecated/Out of Scope**:
 - `mirror` - Deprecated in NuGet 3.2+, not implemented
@@ -564,7 +583,7 @@ Create the definitive cross-platform NuGet CLI tool that sets the standard for p
 **So that** I can access internal packages
 
 **Acceptance Criteria**:
-- `gonuget sources add -Name Corporate -Source https://corp.feed.com/v3/index.json`
+- `gonuget add source https://corp.feed.com/v3/index.json --name Corporate`
 - Credential provider automatically invoked on 401
 - Credentials cached for session
 - Works with Azure Artifacts, AWS CodeArtifact, JFrog
@@ -593,9 +612,9 @@ Create the definitive cross-platform NuGet CLI tool that sets the standard for p
 **So that** everyone uses the same feeds
 
 **Acceptance Criteria**:
-- `gonuget config` shows current settings
-- `gonuget sources list` shows configured sources
-- `gonuget sources add` adds source to NuGet.config
+- `gonuget config list` shows current settings
+- `gonuget list source` shows configured sources
+- `gonuget add source <url> --name <name>` adds source to NuGet.config
 - Configuration hierarchy respected (machine > user > project)
 
 ---
@@ -642,14 +661,25 @@ Each command SHALL meet the following detailed requirements. See [CLI-DESIGN.md]
 
 #### CR-3: config
 
-**Synopsis**: `gonuget config <key> [value]`
+**Synopsis**:
+- `gonuget config get <key> [options]`
+- `gonuget config set [options]`
+- `gonuget config list [options]`
 
 **Requirements**:
-- Get/set NuGet configuration values
-- Supports `-Set` for multiple key=value pairs
-- Supports `-AsPath` to resolve paths
+- **get**: Get a configuration value by key
+- **set**: Set one or more configuration values (requires `--set key=value` flag)
+- **list**: List all configuration values
+- Supports `--as-path` to resolve paths (get subcommand)
+- Supports `--configfile` to specify config file
+- Supports `--format` for list output (detailed, simple, json)
 - Reads/writes NuGet.config XML
 - Respects configuration hierarchy
+
+**dotnet nuget Parity**:
+- Matches `dotnet nuget config get`
+- Matches `dotnet nuget config set`
+- Matches `dotnet nuget config list`
 
 **Priority**: P0
 **Dependencies**: configuration library
@@ -877,17 +907,64 @@ Each command SHALL meet the following detailed requirements. See [CLI-DESIGN.md]
 
 ---
 
-#### CR-16: sources
+#### CR-16: Source Management Commands
 
-**Synopsis**: `gonuget sources <action> [options]`
+**Synopsis**:
+- `gonuget list source [options]`
+- `gonuget add source <url> [options]`
+- `gonuget remove source [options]`
+- `gonuget update source [options]`
+- `gonuget enable source [options]`
+- `gonuget disable source [options]`
 
 **Requirements**:
-- Actions: list, add, remove, update, enable, disable
-- Manages package sources in NuGet.config
-- Supports authentication (username/password)
-- Supports certificate authentication
-- Formats list output as table
-- Supports JSON output
+
+**list source**:
+- Lists all configured package sources
+- Supports `--configfile` to specify config file
+- Supports `--format` (detailed, simple, json)
+- Shows source name, URL, enabled status
+
+**add source**:
+- Adds a new package source to NuGet.config
+- Requires source URL as positional argument
+- Requires `--name` flag for source name
+- Supports `--username` and `--password` for authentication
+- Supports `--configfile` to specify config file
+
+**remove source**:
+- Removes a package source from NuGet.config
+- Requires `--name` flag for source name to remove
+- Supports `--configfile` to specify config file
+
+**update source**:
+- Updates an existing package source
+- Requires `--name` flag for source name
+- Supports `--source` to update URL
+- Supports `--username` and `--password` to update credentials
+- Supports `--configfile` to specify config file
+
+**enable source**:
+- Enables a disabled package source
+- Requires `--name` flag for source name
+- Supports `--configfile` to specify config file
+
+**disable source**:
+- Disables a package source without removing it
+- Requires `--name` flag for source name
+- Supports `--configfile` to specify config file
+
+**dotnet nuget Parity**:
+- Matches `dotnet nuget list source`
+- Matches `dotnet nuget add source`
+- Matches `dotnet nuget remove source`
+- Matches `dotnet nuget update source`
+- Matches `dotnet nuget enable source`
+- Matches `dotnet nuget disable source`
+
+**Command Structure**:
+- Pattern: `<verb> <noun>` (e.g., `add source`, not `sources add`)
+- Flag naming: kebab-case (e.g., `--configfile`, `--name`, `--source`)
 
 **Priority**: P0
 **Dependencies**: configuration
@@ -1412,29 +1489,43 @@ Suggestions:
 
 **Compatibility Matrix**:
 
-| Command | gonuget v1.0 | nuget.exe 6.x | Parity Status |
-|---------|--------------|---------------|---------------|
-| add | ✓ | ✓ | Required |
-| client-certs | ✓ | ✓ | Required |
-| config | ✓ | ✓ | Required |
-| delete | ✓ | ✓ | Required |
-| help | ✓ | ✓ | Required |
-| init | ✓ | ✓ | Required |
-| install | ✓ | ✓ | Required |
-| list | ✓ (delegates) | ✓ (deprecated) | Required |
-| locals | ✓ | ✓ | Required |
-| pack | ✓ | ✓ | Required |
-| push | ✓ | ✓ | Required |
-| restore | ✓ | ✓ | Required |
-| search | ✓ | ✓ | Required |
-| setapikey | ✓ | ✓ | Required |
-| sign | ✓ | ✓ | Required |
-| sources | ✓ | ✓ | Required |
-| spec | ✓ | ✓ | Required |
-| trusted-signers | ✓ | ✓ | Required |
-| update | ✓ | ✓ | Required |
-| verify | ✓ | ✓ | Required |
-| mirror | ✗ | ✗ (deprecated) | Out of Scope |
+| Command | gonuget v1.0 | dotnet nuget | nuget.exe 6.x | Parity Status |
+|---------|--------------|--------------|---------------|---------------|
+| help | ✓ | ✓ | ✓ | Required |
+| version | ✓ | ✓ | ✓ | Required |
+| config get | ✓ | ✓ | ✗ (single cmd) | Required |
+| config set | ✓ | ✓ | ✗ (single cmd) | Required |
+| config list | ✓ | ✓ | ✗ (single cmd) | Required |
+| list source | ✓ | ✓ | ✗ (sources list) | Required |
+| add source | ✓ | ✓ | ✗ (sources add) | Required |
+| remove source | ✓ | ✓ | ✗ (sources remove) | Required |
+| update source | ✓ | ✓ | ✗ (sources update) | Required |
+| enable source | ✓ | ✓ | ✗ (sources enable) | Required |
+| disable source | ✓ | ✓ | ✗ (sources disable) | Required |
+| search | ✓ | ✓ | ✓ | Required |
+| install | ✓ | ✗ | ✓ | Required |
+| restore | ✓ | ✓ | ✓ | Required |
+| pack | ✓ | ✓ | ✓ | Required |
+| push | ✓ | ✓ | ✓ | Required |
+| delete | ✓ | ✓ | ✓ | Required |
+| add | ✓ | ✓ | ✓ | Required |
+| init | ✓ | ✗ | ✓ | Required |
+| list | ✓ (delegates) | ✗ | ✓ (deprecated) | Required |
+| locals | ✓ | ✓ | ✓ | Required |
+| setapikey | ✓ | ✗ | ✓ | Required |
+| update | ✓ | ✗ | ✓ | Required |
+| sign | ✓ | ✓ | ✓ | Required |
+| verify | ✓ | ✓ | ✓ | Required |
+| trusted-signers | ✓ | ✓ | ✓ | Required |
+| client-certs | ✓ | ✗ | ✓ | Required |
+| spec | ✓ | ✗ | ✓ | Required |
+| mirror | ✗ | ✗ | ✗ (deprecated) | Out of Scope |
+
+**Notes**:
+- **Primary Target**: `dotnet nuget` commands (cross-platform)
+- **Secondary Target**: `nuget.exe` compatibility (Windows legacy)
+- ✗ in dotnet nuget column indicates command not available in `dotnet nuget`, but may be in `nuget.exe`
+- Command structure follows `dotnet nuget` pattern: `<verb> <noun>` with kebab-case flags
 
 **Acceptance Criteria**:
 - [ ] All commands listed as "Required" implemented
@@ -1571,8 +1662,14 @@ Suggestions:
 - [ ] CLI framework (cobra) integrated
 - [ ] Configuration loading functional (NuGet.config XML)
 - [ ] Console output with colors and progress
-- [ ] Commands: help, version, config, sources
+- [ ] Commands: help, version
+- [ ] Config subcommands: get, set, list
+- [ ] Source commands: list source, add source, remove source, update source, enable source, disable source
+- [ ] **Total Commands**: 9/21 (43%)
+- [ ] Command structure: `<verb> <noun>` pattern
+- [ ] Flag naming: kebab-case (--configfile, --name, --source)
 - [ ] Unit tests for config and CLI parsing
+- [ ] CLI interop tests comparing with `dotnet nuget` commands
 - [ ] 80%+ test coverage
 
 ### Phase 2: Core Operations (Weeks 3-5)
@@ -1788,6 +1885,7 @@ Suggestions:
 
 **NuGet Documentation**:
 - [NuGet CLI Reference](https://learn.microsoft.com/nuget/reference/nuget-exe-cli-reference)
+- [dotnet nuget commands](https://learn.microsoft.com/en-us/dotnet/core/tools/dotnet-nuget)
 - [NuGet V3 Protocol](https://learn.microsoft.com/nuget/api/overview)
 - [NuGet Package Versioning](https://learn.microsoft.com/nuget/concepts/package-versioning)
 - [NuGet Package Signing](https://learn.microsoft.com/nuget/create-packages/sign-a-package)
@@ -1799,8 +1897,12 @@ Suggestions:
 - [PKCS#7 / CMS](https://tools.ietf.org/html/rfc5652)
 - [RFC 3161 Timestamping](https://tools.ietf.org/html/rfc3161)
 
+**Reference Implementations**:
+- [dotnet/sdk](https://github.com/dotnet/sdk) - Official .NET SDK with `dotnet nuget` commands (PRIMARY REFERENCE)
+- [NuGet.Client](https://github.com/NuGet/NuGet.Client) - nuget.exe implementation
+- [dotnet/docs](https://github.com/dotnet/docs) - Official NuGet documentation
+
 **Related Projects**:
-- [NuGet.Client](https://github.com/NuGet/NuGet.Client) - Official C# implementation
 - [dotnet CLI](https://github.com/dotnet/cli) - .NET CLI with NuGet integration
 - [gonuget library](../implementation/) - Go NuGet library
 
@@ -1811,6 +1913,7 @@ Suggestions:
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
 | 1.0 | 2025-10-25 | - | Initial PRD |
+| 1.1 | 2025-10-25 | - | Updated to target `dotnet nuget` compatibility in addition to `nuget.exe`; added dotnet/sdk and dotnet/docs as reference implementations |
 
 ---
 

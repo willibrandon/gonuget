@@ -5,6 +5,8 @@
 **Chunks**: 6-10
 **Document**: CLI-M1-FOUNDATION-CONTINUED.md
 **Prerequisites**: CLI-M1-FOUNDATION.md (Chunks 1-5) complete
+**Target**: 100% parity with `dotnet nuget` (cross-platform)
+**Reference Implementation**: dotnet/sdk and NuGet.Client/NuGet.CommandLine.XPlat
 
 ---
 
@@ -12,25 +14,32 @@
 
 This document continues the Foundation phase (CLI-M1) with the remaining chunks:
 
-- **Chunk 6**: Sources command (list, add, remove, enable, disable)
+- **Chunk 6**: Source management commands (`list source`, `add source`, `remove source`, `enable source`, `disable source`, `update source`)
 - **Chunk 7**: Help command
 - **Chunk 8**: Progress bars and spinners
-- **Chunk 9**: Integration tests for Phase 1
+- **Chunk 9**: CLI interop tests for Phase 1
 - **Chunk 10**: Performance benchmarks
 
+**Key Architecture**: Unlike `nuget.exe` which uses `nuget sources list`, `dotnet nuget` uses `dotnet nuget list source`. Commands follow the `<verb> <noun>` structure, not `<noun> <verb>`.
+
 After completing these chunks, Phase 1 will be 100% complete with:
-- 2 commands fully implemented (version, config)
-- 1 command with full CRUD operations (sources)
-- 1 command for user assistance (help)
+- 2 basic commands (version, config)
+- 6 source management commands (`list source`, `add source`, `remove source`, `enable source`, `disable source`, `update source`)
+- 1 help command
 - UI components (progress bars, spinners)
+- CLI interop tests validating exact parity with `dotnet nuget`
 - Full test coverage (>80%)
 - Performance benchmarks
 
+**Commands completed**: 2/21 (9.5%) after Chunks 1-5
+**Commands after Chunk 6**: 8/21 (38%)
+**Test approach**: CLI interop tests compare `gonuget` output with `dotnet nuget` output
+
 ---
 
-## Chunk 6: Sources Command
+## Chunk 6: Source Management Commands
 
-**Objective**: Implement the `sources` command to manage package sources in NuGet.config with list, add, remove, enable, and disable operations.
+**Objective**: Implement source management commands (`list source`, `add source`, `remove source`, `enable source`, `disable source`, `update source`) matching `dotnet nuget` exactly.
 
 **Prerequisites**:
 - Chunks 1-5 complete (console, config management)
@@ -38,17 +47,152 @@ After completing these chunks, Phase 1 will be 100% complete with:
 - `config.NuGetConfigManager` methods working
 
 **Files to create/modify**:
-- `cmd/gonuget/commands/sources.go` (new)
-- `cmd/gonuget/commands/sources_test.go` (new)
-- `cmd/gonuget/cli/root.go` (add sources command)
+- `cmd/gonuget/commands/source_list.go` (new)
+- `cmd/gonuget/commands/source_add.go` (new)
+- `cmd/gonuget/commands/source_remove.go` (new)
+- `cmd/gonuget/commands/source_enable.go` (new)
+- `cmd/gonuget/commands/source_disable.go` (new)
+- `cmd/gonuget/commands/source_update.go` (new)
+- `cmd/gonuget/commands/source_test.go` (new)
+- `cmd/gonuget/cli/root.go` (add source commands)
 
 ---
 
-### Step 6.1: Implement Sources Command Structure
+### Step 6.1: Implement Shared Source Options
 
-Create the sources command with subcommands matching nuget.exe exactly.
+Create shared options and helper code for all source commands. Unlike `nuget.exe` which uses `nuget sources <verb>`, `dotnet nuget` uses `dotnet nuget <verb> source`, so we need separate top-level commands.
 
-**File**: `cmd/gonuget/commands/sources.go`
+**File**: `cmd/gonuget/commands/source_common.go` (new)
+
+```go
+package commands
+
+import (
+	"fmt"
+
+	"github.com/willibrandon/gonuget/cmd/gonuget/config"
+	"github.com/willibrandon/gonuget/cmd/gonuget/output"
+)
+
+// sourceOptions holds common options for all source commands
+type sourceOptions struct {
+	configFile               string
+	name                     string
+	source                   string
+	username                 string
+	password                 string
+	storePasswordInClearText bool
+	validAuthenticationTypes string
+	format                   string // detailed or short
+}
+
+// statusString returns the status as a string matching dotnet nuget output
+func statusString(enabled bool) string {
+	if enabled {
+		return "Enabled"
+	}
+	return "Disabled"
+}
+
+// encodePassword provides basic password encoding (placeholder for future OS keychain integration)
+func encodePassword(password string) string {
+	// TODO: Use proper encryption with OS keychain in Phase 8
+	// For now, use base64 encoding as placeholder
+	return fmt.Sprintf("base64:%s", password)
+}
+
+// validateSourceExists checks if a source exists in the config
+func validateSourceExists(mgr *config.NuGetConfigManager, name string) (bool, error) {
+	sources := mgr.GetPackageSources()
+	for _, source := range sources {
+		if source.Key == name {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+```
+
+---
+
+### Step 6.2: Implement "list source" Command
+
+**File**: `cmd/gonuget/commands/source_list.go` (new)
+
+```go
+package commands
+
+import (
+	"fmt"
+
+	"github.com/spf13/cobra"
+	"github.com/willibrandon/gonuget/cmd/gonuget/config"
+	"github.com/willibrandon/gonuget/cmd/gonuget/output"
+)
+
+// NewListSourceCommand creates the "list source" command matching dotnet nuget
+func NewListSourceCommand(console *output.Console) *cobra.Command {
+	opts := &sourceOptions{
+		format: "detailed", // Default matches dotnet nuget
+	}
+
+	cmd := &cobra.Command{
+		Use:   "list source",
+		Short: "List package sources",
+		Long: `List all package sources from NuGet.config hierarchy.
+
+This command matches: dotnet nuget list source
+
+Examples:
+  gonuget list source
+  gonuget list source --format detailed
+  gonuget list source --format short
+  gonuget list source --configfile /path/to/NuGet.config`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runListSource(console, opts)
+		},
+	}
+
+	cmd.Flags().StringVar(&opts.configFile, "configfile", "", "NuGet configuration file to use")
+	cmd.Flags().StringVar(&opts.format, "format", "detailed", "Output format: detailed or short")
+
+	return cmd
+}
+
+func runListSource(console *output.Console, opts *sourceOptions) error {
+	mgr, err := config.NewNuGetConfigManager(opts.configFile)
+	if err != nil {
+		return fmt.Errorf("failed to load config: %w", err)
+	}
+
+	sources := mgr.GetPackageSources()
+	if len(sources) == 0 {
+		console.Info("No package sources configured.")
+		return nil
+	}
+
+	// Match dotnet nuget output format
+	console.Info("Registered Sources:")
+	console.Println("")
+
+	for i, source := range sources {
+		console.Info("  %d.  %s [%s]", i+1, source.Key, statusString(source.IsEnabled))
+		if opts.format == "detailed" {
+			console.Detailed("      %s", source.Value)
+			console.Println("")
+		}
+	}
+
+	return nil
+}
+```
+
+---
+
+### Step 6.3: Implement "add source" Command
+
+**File**: `cmd/gonuget/commands/source_add.go` (new)
 
 ```go
 package commands
@@ -63,247 +207,41 @@ import (
 	"github.com/willibrandon/gonuget/cmd/gonuget/output"
 )
 
-type sourcesOptions struct {
-	configFile       string
-	name             string
-	source           string
-	username         string
-	password         string
-	storePasswordInClearText bool
-	validAuthenticationTypes string
-	format           string // Detailed or Short
-}
-
-// NewSourcesCommand creates the sources command with list, add, remove, enable, disable subcommands
-func NewSourcesCommand(console *output.Console) *cobra.Command {
-	opts := &sourcesOptions{
-		format: "Detailed", // Default matches nuget.exe
-	}
+// NewAddSourceCommand creates the "add source" command matching dotnet nuget
+func NewAddSourceCommand(console *output.Console) *cobra.Command {
+	opts := &sourceOptions{}
 
 	cmd := &cobra.Command{
-		Use:   "sources",
-		Short: "Manage package sources",
-		Long: `Manage package sources in NuGet.config.
-
-Subcommands:
-  list     List all configured sources
-  add      Add a new package source
-  remove   Remove a package source
-  enable   Enable a disabled source
-  disable  Disable a source
-  update   Update an existing source
-
-Examples:
-  gonuget sources list
-  gonuget sources add -Name "MyFeed" -Source "https://api.nuget.org/v3/index.json"
-  gonuget sources remove -Name "MyFeed"
-  gonuget sources enable -Name "MyFeed"
-  gonuget sources disable -Name "MyFeed"
-  gonuget sources update -Name "MyFeed" -Source "https://new-url.org/v3/index.json"`,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			// Default to list if no subcommand provided
-			return runSourcesList(console, opts)
-		},
-	}
-
-	// Global flags for all subcommands
-	cmd.PersistentFlags().StringVar(&opts.configFile, "ConfigFile", "", "Config file to use")
-	cmd.PersistentFlags().StringVar(&opts.format, "Format", "Detailed", "Output format: Detailed or Short")
-
-	// Add subcommands
-	cmd.AddCommand(newSourcesListCommand(console, opts))
-	cmd.AddCommand(newSourcesAddCommand(console, opts))
-	cmd.AddCommand(newSourcesRemoveCommand(console, opts))
-	cmd.AddCommand(newSourcesEnableCommand(console, opts))
-	cmd.AddCommand(newSourcesDisableCommand(console, opts))
-	cmd.AddCommand(newSourcesUpdateCommand(console, opts))
-
-	return cmd
-}
-
-// newSourcesListCommand creates the list subcommand
-func newSourcesListCommand(console *output.Console, opts *sourcesOptions) *cobra.Command {
-	return &cobra.Command{
-		Use:   "list",
-		Short: "List all configured sources",
-		Long:  `List all package sources from NuGet.config hierarchy.`,
-		Args:  cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return runSourcesList(console, opts)
-		},
-	}
-}
-
-// newSourcesAddCommand creates the add subcommand
-func newSourcesAddCommand(console *output.Console, opts *sourcesOptions) *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "add",
+		Use:   "add source",
 		Short: "Add a package source",
 		Long: `Add a new package source to NuGet.config.
 
+This command matches: dotnet nuget add source <URL>
+
 Examples:
-  gonuget sources add -Name "MyFeed" -Source "https://api.nuget.org/v3/index.json"
-  gonuget sources add -Name "MyPrivate" -Source "https://pkgs.dev.azure.com/..." -Username user -Password pass`,
-		Args: cobra.NoArgs,
+  gonuget add source https://api.nuget.org/v3/index.json --name "MyFeed"
+  gonuget add source https://pkgs.dev.azure.com/org/_packaging/feed/nuget/v3/index.json --name "Azure" --username user --password pass
+  gonuget add source https://private.feed.com/v3/index.json --name "Private" --store-password-in-clear-text`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runSourcesAdd(console, opts)
+			opts.source = args[0]
+			return runAddSource(console, opts)
 		},
 	}
 
-	cmd.Flags().StringVar(&opts.name, "Name", "", "Name of the source (required)")
-	cmd.Flags().StringVar(&opts.source, "Source", "", "URL of the source (required)")
-	cmd.Flags().StringVar(&opts.username, "Username", "", "Username for authenticated feeds")
-	cmd.Flags().StringVar(&opts.password, "Password", "", "Password for authenticated feeds")
-	cmd.Flags().BoolVar(&opts.storePasswordInClearText, "StorePasswordInClearText", false, "Store password in clear text (not recommended)")
-	cmd.Flags().StringVar(&opts.validAuthenticationTypes, "ValidAuthenticationTypes", "", "Comma-separated list of valid authentication types")
+	cmd.Flags().StringVar(&opts.name, "name", "", "Name of the source (required)")
+	cmd.Flags().StringVar(&opts.username, "username", "", "Username for authenticated feeds")
+	cmd.Flags().StringVar(&opts.password, "password", "", "Password for authenticated feeds")
+	cmd.Flags().BoolVar(&opts.storePasswordInClearText, "store-password-in-clear-text", false, "Store password in clear text (not recommended)")
+	cmd.Flags().StringVar(&opts.validAuthenticationTypes, "valid-authentication-types", "", "Comma-separated list of valid authentication types")
+	cmd.Flags().StringVar(&opts.configFile, "configfile", "", "NuGet configuration file to use")
 
-	cmd.MarkFlagRequired("Name")
-	cmd.MarkFlagRequired("Source")
+	cmd.MarkFlagRequired("name")
 
 	return cmd
 }
 
-// newSourcesRemoveCommand creates the remove subcommand
-func newSourcesRemoveCommand(console *output.Console, opts *sourcesOptions) *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "remove",
-		Short: "Remove a package source",
-		Long: `Remove a package source from NuGet.config.
-
-Example:
-  gonuget sources remove -Name "MyFeed"`,
-		Args: cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return runSourcesRemove(console, opts)
-		},
-	}
-
-	cmd.Flags().StringVar(&opts.name, "Name", "", "Name of the source to remove (required)")
-	cmd.MarkFlagRequired("Name")
-
-	return cmd
-}
-
-// newSourcesEnableCommand creates the enable subcommand
-func newSourcesEnableCommand(console *output.Console, opts *sourcesOptions) *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "enable",
-		Short: "Enable a package source",
-		Long: `Enable a previously disabled package source.
-
-Example:
-  gonuget sources enable -Name "MyFeed"`,
-		Args: cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return runSourcesEnable(console, opts)
-		},
-	}
-
-	cmd.Flags().StringVar(&opts.name, "Name", "", "Name of the source to enable (required)")
-	cmd.MarkFlagRequired("Name")
-
-	return cmd
-}
-
-// newSourcesDisableCommand creates the disable subcommand
-func newSourcesDisableCommand(console *output.Console, opts *sourcesOptions) *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "disable",
-		Short: "Disable a package source",
-		Long: `Disable a package source without removing it.
-
-Example:
-  gonuget sources disable -Name "MyFeed"`,
-		Args: cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return runSourcesDisable(console, opts)
-		},
-	}
-
-	cmd.Flags().StringVar(&opts.name, "Name", "", "Name of the source to disable (required)")
-	cmd.MarkFlagRequired("Name")
-
-	return cmd
-}
-
-// newSourcesUpdateCommand creates the update subcommand
-func newSourcesUpdateCommand(console *output.Console, opts *sourcesOptions) *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "update",
-		Short: "Update a package source",
-		Long: `Update properties of an existing package source.
-
-Example:
-  gonuget sources update -Name "MyFeed" -Source "https://new-url.org/v3/index.json"`,
-		Args: cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return runSourcesUpdate(console, opts)
-		},
-	}
-
-	cmd.Flags().StringVar(&opts.name, "Name", "", "Name of the source to update (required)")
-	cmd.Flags().StringVar(&opts.source, "Source", "", "New URL for the source")
-	cmd.Flags().StringVar(&opts.username, "Username", "", "New username for authenticated feeds")
-	cmd.Flags().StringVar(&opts.password, "Password", "", "New password for authenticated feeds")
-	cmd.Flags().BoolVar(&opts.storePasswordInClearText, "StorePasswordInClearText", false, "Store password in clear text")
-	cmd.Flags().StringVar(&opts.validAuthenticationTypes, "ValidAuthenticationTypes", "", "Comma-separated list of valid authentication types")
-
-	cmd.MarkFlagRequired("Name")
-
-	return cmd
-}
-```
-
----
-
-### Step 6.2: Implement Sources List Operation
-
-**File**: `cmd/gonuget/commands/sources.go` (continued)
-
-```go
-func runSourcesList(console *output.Console, opts *sourcesOptions) error {
-	mgr, err := config.NewNuGetConfigManager(opts.configFile)
-	if err != nil {
-		return fmt.Errorf("failed to load config: %w", err)
-	}
-
-	sources := mgr.GetPackageSources()
-	if len(sources) == 0 {
-		console.Info("No package sources configured.")
-		return nil
-	}
-
-	// Match nuget.exe output format
-	console.Info("Registered Sources:")
-	console.Println("")
-
-	for i, source := range sources {
-		console.Info("  %d.  %s [%s]", i+1, source.Key, statusString(source.IsEnabled))
-		if opts.format == "Detailed" {
-			console.Detailed("      %s", source.Value)
-			console.Println("")
-		}
-	}
-
-	return nil
-}
-
-func statusString(enabled bool) string {
-	if enabled {
-		return "Enabled"
-	}
-	return "Disabled"
-}
-```
-
----
-
-### Step 6.3: Implement Sources Add Operation
-
-**File**: `cmd/gonuget/commands/sources.go` (continued)
-
-```go
-func runSourcesAdd(console *output.Console, opts *sourcesOptions) error {
+func runAddSource(console *output.Console, opts *sourceOptions) error {
 	// Validate source URL
 	if _, err := url.Parse(opts.source); err != nil {
 		return fmt.Errorf("invalid source URL: %w", err)
@@ -365,23 +303,53 @@ func runSourcesAdd(console *output.Console, opts *sourcesOptions) error {
 	console.Success("Package source with name '%s' added successfully.", opts.name)
 	return nil
 }
-
-// encodePassword provides basic password encoding (placeholder for future OS keychain integration)
-func encodePassword(password string) string {
-	// TODO: Use proper encryption with OS keychain in Phase 8
-	// For now, use base64 encoding as placeholder
-	return fmt.Sprintf("base64:%s", password)
-}
 ```
 
 ---
 
-### Step 6.4: Implement Sources Remove, Enable, Disable Operations
+### Step 6.4: Implement "remove source" Command
 
-**File**: `cmd/gonuget/commands/sources.go` (continued)
+**File**: `cmd/gonuget/commands/source_remove.go` (new)
 
 ```go
-func runSourcesRemove(console *output.Console, opts *sourcesOptions) error {
+package commands
+
+import (
+	"fmt"
+	"strings"
+
+	"github.com/spf13/cobra"
+	"github.com/willibrandon/gonuget/cmd/gonuget/config"
+	"github.com/willibrandon/gonuget/cmd/gonuget/output"
+)
+
+// NewRemoveSourceCommand creates the "remove source" command matching dotnet nuget
+func NewRemoveSourceCommand(console *output.Console) *cobra.Command {
+	opts := &sourceOptions{}
+
+	cmd := &cobra.Command{
+		Use:   "remove source",
+		Short: "Remove a package source",
+		Long: `Remove a package source from NuGet.config.
+
+This command matches: dotnet nuget remove source <NAME>
+
+Examples:
+  gonuget remove source MyFeed
+  gonuget remove source --configfile /path/to/NuGet.config MyFeed`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			opts.name = args[0]
+			return runRemoveSource(console, opts)
+		},
+	}
+
+	cmd.Flags().StringVar(&opts.configFile, "configfile", "", "NuGet configuration file to use")
+
+	return cmd
+}
+
+func runRemoveSource(console *output.Console, opts *sourceOptions) error {
 	mgr, err := config.NewNuGetConfigManager(opts.configFile)
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
@@ -414,8 +382,53 @@ func runSourcesRemove(console *output.Console, opts *sourcesOptions) error {
 	console.Success("Package source with name '%s' removed successfully.", opts.name)
 	return nil
 }
+```
 
-func runSourcesEnable(console *output.Console, opts *sourcesOptions) error {
+---
+
+### Step 6.5: Implement "enable source" and "disable source" Commands
+
+**File**: `cmd/gonuget/commands/source_enable.go` (new)
+
+```go
+package commands
+
+import (
+	"fmt"
+	"strings"
+
+	"github.com/spf13/cobra"
+	"github.com/willibrandon/gonuget/cmd/gonuget/config"
+	"github.com/willibrandon/gonuget/cmd/gonuget/output"
+)
+
+// NewEnableSourceCommand creates the "enable source" command matching dotnet nuget
+func NewEnableSourceCommand(console *output.Console) *cobra.Command {
+	opts := &sourceOptions{}
+
+	cmd := &cobra.Command{
+		Use:   "enable source",
+		Short: "Enable a package source",
+		Long: `Enable a previously disabled package source.
+
+This command matches: dotnet nuget enable source <NAME>
+
+Examples:
+  gonuget enable source MyFeed
+  gonuget enable source --configfile /path/to/NuGet.config MyFeed`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			opts.name = args[0]
+			return runEnableSource(console, opts)
+		},
+	}
+
+	cmd.Flags().StringVar(&opts.configFile, "configfile", "", "NuGet configuration file to use")
+
+	return cmd
+}
+
+func runEnableSource(console *output.Console, opts *sourceOptions) error {
 	mgr, err := config.NewNuGetConfigManager(opts.configFile)
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
@@ -452,8 +465,49 @@ func runSourcesEnable(console *output.Console, opts *sourcesOptions) error {
 	console.Success("Package source with name '%s' enabled successfully.", opts.name)
 	return nil
 }
+```
 
-func runSourcesDisable(console *output.Console, opts *sourcesOptions) error {
+**File**: `cmd/gonuget/commands/source_disable.go` (new)
+
+```go
+package commands
+
+import (
+	"fmt"
+	"strings"
+
+	"github.com/spf13/cobra"
+	"github.com/willibrandon/gonuget/cmd/gonuget/config"
+	"github.com/willibrandon/gonuget/cmd/gonuget/output"
+)
+
+// NewDisableSourceCommand creates the "disable source" command matching dotnet nuget
+func NewDisableSourceCommand(console *output.Console) *cobra.Command {
+	opts := &sourceOptions{}
+
+	cmd := &cobra.Command{
+		Use:   "disable source",
+		Short: "Disable a package source",
+		Long: `Disable a package source without removing it.
+
+This command matches: dotnet nuget disable source <NAME>
+
+Examples:
+  gonuget disable source MyFeed
+  gonuget disable source --configfile /path/to/NuGet.config MyFeed`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			opts.name = args[0]
+			return runDisableSource(console, opts)
+		},
+	}
+
+	cmd.Flags().StringVar(&opts.configFile, "configfile", "", "NuGet configuration file to use")
+
+	return cmd
+}
+
+func runDisableSource(console *output.Console, opts *sourceOptions) error {
 	mgr, err := config.NewNuGetConfigManager(opts.configFile)
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
@@ -490,8 +544,60 @@ func runSourcesDisable(console *output.Console, opts *sourcesOptions) error {
 	console.Success("Package source with name '%s' disabled successfully.", opts.name)
 	return nil
 }
+```
 
-func runSourcesUpdate(console *output.Console, opts *sourcesOptions) error {
+---
+
+### Step 6.6: Implement "update source" Command
+
+**File**: `cmd/gonuget/commands/source_update.go` (new)
+
+```go
+package commands
+
+import (
+	"fmt"
+	"net/url"
+	"strings"
+
+	"github.com/spf13/cobra"
+	"github.com/willibrandon/gonuget/cmd/gonuget/config"
+	"github.com/willibrandon/gonuget/cmd/gonuget/output"
+)
+
+// NewUpdateSourceCommand creates the "update source" command matching dotnet nuget
+func NewUpdateSourceCommand(console *output.Console) *cobra.Command {
+	opts := &sourceOptions{}
+
+	cmd := &cobra.Command{
+		Use:   "update source",
+		Short: "Update a package source",
+		Long: `Update properties of an existing package source.
+
+This command matches: dotnet nuget update source <NAME>
+
+Examples:
+  gonuget update source MyFeed --source https://new-url.org/v3/index.json
+  gonuget update source MyFeed --username newuser --password newpass
+  gonuget update source MyFeed --source https://updated.feed.com/v3/index.json --username user --password pass`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			opts.name = args[0]
+			return runUpdateSource(console, opts)
+		},
+	}
+
+	cmd.Flags().StringVar(&opts.source, "source", "", "New URL for the source")
+	cmd.Flags().StringVar(&opts.username, "username", "", "New username for authenticated feeds")
+	cmd.Flags().StringVar(&opts.password, "password", "", "New password for authenticated feeds")
+	cmd.Flags().BoolVar(&opts.storePasswordInClearText, "store-password-in-clear-text", false, "Store password in clear text")
+	cmd.Flags().StringVar(&opts.validAuthenticationTypes, "valid-authentication-types", "", "Comma-separated list of valid authentication types")
+	cmd.Flags().StringVar(&opts.configFile, "configfile", "", "NuGet configuration file to use")
+
+	return cmd
+}
+
+func runUpdateSource(console *output.Console, opts *sourceOptions) error {
 	mgr, err := config.NewNuGetConfigManager(opts.configFile)
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
@@ -553,9 +659,9 @@ func runSourcesUpdate(console *output.Console, opts *sourcesOptions) error {
 
 ---
 
-### Step 6.5: Add Missing Config Manager Methods
+### Step 6.7: Add Missing Config Manager Methods
 
-We need to add the missing methods to `config.NuGetConfigManager` for sources operations.
+We need to add the missing methods to `config.NuGetConfigManager` for source operations. These methods are shared across all source commands.
 
 **File**: `cmd/gonuget/config/manager.go`
 
@@ -678,9 +784,9 @@ func (m *NuGetConfigManager) AddPackageSourceCredential(sourceName string, cred 
 
 ---
 
-### Step 6.6: Create Sources Command Tests
+### Step 6.8: Create Source Command Tests
 
-**File**: `cmd/gonuget/commands/sources_test.go`
+**File**: `cmd/gonuget/commands/source_test.go` (new)
 
 ```go
 package commands
@@ -694,7 +800,7 @@ import (
 	"github.com/willibrandon/gonuget/cmd/gonuget/output"
 )
 
-func TestSourcesCommand(t *testing.T) {
+func TestSourceCommands(t *testing.T) {
 	// Create a temporary config file
 	tmpDir := t.TempDir()
 	configFile := filepath.Join(tmpDir, "NuGet.config")
@@ -713,28 +819,28 @@ func TestSourcesCommand(t *testing.T) {
 
 	console := output.NewConsole(os.Stdout, os.Stderr, output.VerbosityNormal, true)
 
-	t.Run("list sources", func(t *testing.T) {
-		opts := &sourcesOptions{
+	t.Run("list source", func(t *testing.T) {
+		opts := &sourceOptions{
 			configFile: configFile,
-			format:     "Detailed",
+			format:     "detailed",
 		}
 
-		err := runSourcesList(console, opts)
+		err := runListSource(console, opts)
 		if err != nil {
-			t.Errorf("runSourcesList() error = %v", err)
+			t.Errorf("runListSource() error = %v", err)
 		}
 	})
 
 	t.Run("add source", func(t *testing.T) {
-		opts := &sourcesOptions{
+		opts := &sourceOptions{
 			configFile: configFile,
 			name:       "TestFeed",
 			source:     "https://test.example.com/v3/index.json",
 		}
 
-		err := runSourcesAdd(console, opts)
+		err := runAddSource(console, opts)
 		if err != nil {
-			t.Errorf("runSourcesAdd() error = %v", err)
+			t.Errorf("runAddSource() error = %v", err)
 		}
 
 		// Verify source was added
@@ -756,14 +862,14 @@ func TestSourcesCommand(t *testing.T) {
 	})
 
 	t.Run("disable source", func(t *testing.T) {
-		opts := &sourcesOptions{
+		opts := &sourceOptions{
 			configFile: configFile,
 			name:       "TestFeed",
 		}
 
-		err := runSourcesDisable(console, opts)
+		err := runDisableSource(console, opts)
 		if err != nil {
-			t.Errorf("runSourcesDisable() error = %v", err)
+			t.Errorf("runDisableSource() error = %v", err)
 		}
 
 		// Verify source was disabled
@@ -780,14 +886,14 @@ func TestSourcesCommand(t *testing.T) {
 	})
 
 	t.Run("enable source", func(t *testing.T) {
-		opts := &sourcesOptions{
+		opts := &sourceOptions{
 			configFile: configFile,
 			name:       "TestFeed",
 		}
 
-		err := runSourcesEnable(console, opts)
+		err := runEnableSource(console, opts)
 		if err != nil {
-			t.Errorf("runSourcesEnable() error = %v", err)
+			t.Errorf("runEnableSource() error = %v", err)
 		}
 
 		// Verify source was enabled
@@ -804,15 +910,15 @@ func TestSourcesCommand(t *testing.T) {
 	})
 
 	t.Run("update source", func(t *testing.T) {
-		opts := &sourcesOptions{
+		opts := &sourceOptions{
 			configFile: configFile,
 			name:       "TestFeed",
 			source:     "https://updated.example.com/v3/index.json",
 		}
 
-		err := runSourcesUpdate(console, opts)
+		err := runUpdateSource(console, opts)
 		if err != nil {
-			t.Errorf("runSourcesUpdate() error = %v", err)
+			t.Errorf("runUpdateSource() error = %v", err)
 		}
 
 		// Verify source was updated
@@ -829,14 +935,14 @@ func TestSourcesCommand(t *testing.T) {
 	})
 
 	t.Run("remove source", func(t *testing.T) {
-		opts := &sourcesOptions{
+		opts := &sourceOptions{
 			configFile: configFile,
 			name:       "TestFeed",
 		}
 
-		err := runSourcesRemove(console, opts)
+		err := runRemoveSource(console, opts)
 		if err != nil {
-			t.Errorf("runSourcesRemove() error = %v", err)
+			t.Errorf("runRemoveSource() error = %v", err)
 		}
 
 		// Verify source was removed
@@ -850,32 +956,32 @@ func TestSourcesCommand(t *testing.T) {
 	})
 
 	t.Run("add duplicate source", func(t *testing.T) {
-		opts := &sourcesOptions{
+		opts := &sourceOptions{
 			configFile: configFile,
 			name:       "nuget.org",
 			source:     "https://duplicate.example.com/v3/index.json",
 		}
 
-		err := runSourcesAdd(console, opts)
+		err := runAddSource(console, opts)
 		if err == nil {
 			t.Error("expected error when adding duplicate source")
 		}
 	})
 
 	t.Run("remove non-existent source", func(t *testing.T) {
-		opts := &sourcesOptions{
+		opts := &sourceOptions{
 			configFile: configFile,
 			name:       "NonExistent",
 		}
 
-		err := runSourcesRemove(console, opts)
+		err := runRemoveSource(console, opts)
 		if err == nil {
 			t.Error("expected error when removing non-existent source")
 		}
 	})
 }
 
-func TestSourcesAddWithCredentials(t *testing.T) {
+func TestAddSourceWithCredentials(t *testing.T) {
 	tmpDir := t.TempDir()
 	configFile := filepath.Join(tmpDir, "NuGet.config")
 
@@ -892,7 +998,7 @@ func TestSourcesAddWithCredentials(t *testing.T) {
 
 	console := output.NewConsole(os.Stdout, os.Stderr, output.VerbosityNormal, true)
 
-	opts := &sourcesOptions{
+	opts := &sourceOptions{
 		configFile:                configFile,
 		name:                      "PrivateFeed",
 		source:                    "https://private.example.com/v3/index.json",
@@ -902,9 +1008,9 @@ func TestSourcesAddWithCredentials(t *testing.T) {
 		validAuthenticationTypes:  "basic,negotiate",
 	}
 
-	err := runSourcesAdd(console, opts)
+	err := runAddSource(console, opts)
 	if err != nil {
-		t.Fatalf("runSourcesAdd() error = %v", err)
+		t.Fatalf("runAddSource() error = %v", err)
 	}
 
 	// Verify credentials were stored
@@ -935,74 +1041,222 @@ func TestSourcesAddWithCredentials(t *testing.T) {
 
 ---
 
-### Step 6.7: Register Sources Command
+### Step 6.9: Register Source Commands
 
 **File**: `cmd/gonuget/cli/root.go` (modify)
 
 ```go
-// In Execute() function, add:
-rootCmd.AddCommand(commands.NewSourcesCommand(console))
+// In Execute() function, add all six source commands:
+rootCmd.AddCommand(commands.NewListSourceCommand(console))
+rootCmd.AddCommand(commands.NewAddSourceCommand(console))
+rootCmd.AddCommand(commands.NewRemoveSourceCommand(console))
+rootCmd.AddCommand(commands.NewEnableSourceCommand(console))
+rootCmd.AddCommand(commands.NewDisableSourceCommand(console))
+rootCmd.AddCommand(commands.NewUpdateSourceCommand(console))
 ```
 
 ---
 
 ### Verification
 
+Compare `gonuget` with `dotnet nuget` to ensure exact parity:
+
 ```bash
 # Build CLI
 go build -o gonuget ./cmd/gonuget
 
-# Test list (should show default nuget.org)
-./gonuget sources list
+# Test list source (compare with: dotnet nuget list source)
+./gonuget list source
+dotnet nuget list source
 
-# Test add
-./gonuget sources add -Name "TestFeed" -Source "https://test.example.com/v3/index.json"
+# Test add source (compare with: dotnet nuget add source)
+./gonuget add source https://test.example.com/v3/index.json --name "TestFeed"
+dotnet nuget add source https://test.example.com/v3/index.json --name "TestFeed"
 
 # Test list again (should show 2 sources)
-./gonuget sources list
+./gonuget list source
+dotnet nuget list source
 
-# Test disable
-./gonuget sources disable -Name "TestFeed"
-./gonuget sources list
+# Test disable source (compare with: dotnet nuget disable source)
+./gonuget disable source TestFeed
+dotnet nuget disable source TestFeed
+./gonuget list source
 
-# Test enable
-./gonuget sources enable -Name "TestFeed"
-./gonuget sources list
+# Test enable source (compare with: dotnet nuget enable source)
+./gonuget enable source TestFeed
+dotnet nuget enable source TestFeed
+./gonuget list source
 
-# Test update
-./gonuget sources update -Name "TestFeed" -Source "https://updated.example.com/v3/index.json"
-./gonuget sources list
+# Test update source (compare with: dotnet nuget update source)
+./gonuget update source TestFeed --source https://updated.example.com/v3/index.json
+dotnet nuget update source TestFeed --source https://updated.example.com/v3/index.json
+./gonuget list source
 
-# Test remove
-./gonuget sources remove -Name "TestFeed"
-./gonuget sources list
+# Test remove source (compare with: dotnet nuget remove source)
+./gonuget remove source TestFeed
+dotnet nuget remove source TestFeed
+./gonuget list source
 
 # Test with credentials
-./gonuget sources add -Name "PrivateFeed" -Source "https://private.example.com/v3/index.json" \
-  -Username "myuser" -Password "mypass"
+./gonuget add source https://private.example.com/v3/index.json --name "PrivateFeed" \
+  --username "myuser" --password "mypass"
 
 # Verify config file directly
 cat ~/.nuget/NuGet.config
 ```
 
+**Note**: Outputs should match `dotnet nuget` exactly for cross-platform compatibility.
+
 ---
 
-### Testing
+###CLI Interop Testing
+
+Add CLI interop test handlers for source commands.
+
+**File**: `cmd/gonuget-cli-interop-test/handlers_source.go` (new)
+
+```go
+package main
+
+import (
+	"encoding/json"
+	"os/exec"
+	"strings"
+)
+
+type ExecuteSourceCommandHandler struct{}
+
+func (h *ExecuteSourceCommandHandler) Handle(data json.RawMessage) (interface{}, error) {
+	var req struct {
+		Command    string   `json:"command"`     // "list", "add", "remove", "enable", "disable", "update"
+		Args       []string `json:"args"`        // Additional arguments
+		Flags      map[string]string `json:"flags"`       // Flag key-value pairs
+	}
+
+	if err := json.Unmarshal(data, &req); err != nil {
+		return nil, err
+	}
+
+	// Execute: dotnet nuget <command> source [args] [flags]
+	dotnetArgs := []string{"nuget", req.Command, "source"}
+	dotnetArgs = append(dotnetArgs, req.Args...)
+	for k, v := range req.Flags {
+		dotnetArgs = append(dotnetArgs, "--"+k, v)
+	}
+	dotnetResult, err := exec.Command("dotnet", dotnetArgs...).CombinedOutput()
+
+	// Execute: gonuget <command> source [args] [flags]
+	gonugetArgs := []string{req.Command, "source"}
+	gonugetArgs = append(gonugetArgs, req.Args...)
+	for k, v := range req.Flags {
+		gonugetArgs = append(gonugetArgs, "--"+k, v)
+	}
+	gonugetResult, err := exec.Command("gonuget", gonugetArgs...).CombinedOutput()
+
+	return ExecuteCommandPairResponse{
+		DotnetStdout: string(dotnetResult),
+		GonugetStdout: string(gonugetResult),
+	}, nil
+}
+
+func (h *ExecuteSourceCommandHandler) ErrorCode() string {
+	return "source_error"
+}
+```
+
+**File**: `tests/cli-interop/GonugetCliInterop.Tests/SourceTests.cs` (new)
+
+```csharp
+using Xunit;
+
+namespace GonugetCliInterop.Tests
+{
+    public class SourceTests : IDisposable
+    {
+        private readonly string _testConfigDir;
+
+        public SourceTests()
+        {
+            _testConfigDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
+            Directory.CreateDirectory(_testConfigDir);
+            Environment.SetEnvironmentVariable("NUGET_PACKAGES", _testConfigDir);
+        }
+
+        [Fact]
+        public void ListSource_OutputShouldMatchDotnetNuget()
+        {
+            var result = GonugetCliBridge.ExecuteSourceCommand("list", Array.Empty<string>(), new Dictionary<string, string>());
+
+            Assert.Equal(0, result.DotnetExitCode);
+            Assert.Equal(0, result.GonugetExitCode);
+
+            // Normalize output for comparison (paths, timestamps)
+            var dotnetNormalized = NormalizeOutput(result.DotnetStdout);
+            var gonugetNormalized = NormalizeOutput(result.GonugetStdout);
+
+            Assert.Equal(dotnetNormalized, gonugetNormalized);
+        }
+
+        [Fact]
+        public void AddSource_ShouldMatchDotnetNuget()
+        {
+            var url = "https://test.example.com/v3/index.json";
+            var name = "TestFeed";
+
+            var result = GonugetCliBridge.ExecuteSourceCommand("add",
+                new[] { url },
+                new Dictionary<string, string> { { "name", name } });
+
+            Assert.Equal(0, result.DotnetExitCode);
+            Assert.Equal(0, result.GonugetExitCode);
+        }
+
+        [Fact]
+        public void DisableSource_ShouldMatchDotnetNuget()
+        {
+            // Setup: Add a source first
+            GonugetCliBridge.ExecuteSourceCommand("add",
+                new[] { "https://test.example.com/v3/index.json" },
+                new Dictionary<string, string> { { "name", "TestFeed" } });
+
+            // Test disable
+            var result = GonugetCliBridge.ExecuteSourceCommand("disable",
+                new[] { "TestFeed" },
+                new Dictionary<string, string>());
+
+            Assert.Equal(0, result.DotnetExitCode);
+            Assert.Equal(0, result.GonugetExitCode);
+        }
+
+        public void Dispose()
+        {
+            if (Directory.Exists(_testConfigDir))
+            {
+                Directory.Delete(_testConfigDir, true);
+            }
+        }
+    }
+}
+```
+
+---
+
+### Unit Testing
 
 ```bash
-# Run all sources tests
-go test ./cmd/gonuget/commands -v -run TestSources
+# Run all source command tests
+go test ./cmd/gonuget/commands -v -run TestSource
 
 # Check coverage
 go test ./cmd/gonuget/commands -coverprofile=coverage.out
-go tool cover -func=coverage.out | grep sources
+go tool cover -func=coverage.out | grep source
 ```
 
 Expected output:
 ```
-sources.go:X:        runSourcesList           100.0%
-sources.go:Y:        runSourcesAdd            95.0%
-sources.go:Z:        runSourcesRemove         100.0%
+source_list.go:X:        runListSource            100.0%
+source_add.go:Y:         runAddSource             95.0%
+source_remove.go:Z:      runRemoveSource          100.0%
 ...
 ```
 
@@ -1011,38 +1265,46 @@ sources.go:Z:        runSourcesRemove         100.0%
 ### Commit
 
 ```bash
-git add cmd/gonuget/commands/sources.go
-git add cmd/gonuget/commands/sources_test.go
+git add cmd/gonuget/commands/source_*.go
+git add cmd/gonuget/commands/source_test.go
 git add cmd/gonuget/config/manager.go
 git add cmd/gonuget/cli/root.go
-git commit -m "feat(cli): add sources command
+git add cmd/gonuget-cli-interop-test/handlers_source.go
+git add tests/cli-interop/GonugetCliInterop.Tests/SourceTests.cs
+git commit -m "feat(cli): add source management commands
 
-- Implement list, add, remove, enable, disable, update subcommands
+- Implement list source, add source, remove source, enable source, disable source, update source commands
+- Follow dotnet nuget command structure (<verb> <noun> not <noun> <verb>)
+- Use kebab-case flags (--name, --source, --username)
 - Support credentials with username/password
 - Add placeholder password encryption (keychain in Phase 8)
-- Match nuget.exe output format exactly
-- Add comprehensive tests for all operations
+- Match dotnet nuget output format exactly
+- Add comprehensive unit tests for all operations
+- Add CLI interop tests validating parity with dotnet nuget
 
-Tests: Sources CRUD operations, credentials, error cases
-Commands: 3/20 complete (15%)
-Coverage: >85% for sources command"
+Tests: Source CRUD operations, credentials, error cases, CLI interop
+Commands: 8/21 complete (38%)
+Coverage: >85% for source commands"
 ```
 
 ---
 
 ## Chunk 7: Help Command
 
-**Objective**: Implement a comprehensive help command that matches nuget.exe help output, including command-specific help and general usage information.
+**Objective**: Implement a comprehensive help command that matches `dotnet nuget --help` output format, including command-specific help and general usage information.
 
 **Prerequisites**:
 - Chunks 1-6 complete
 - All commands registered with Cobra
 - Command descriptions and usage strings defined
+- Commands follow `<verb> <noun>` structure
 
 **Files to create/modify**:
 - `cmd/gonuget/commands/help.go` (new)
 - `cmd/gonuget/commands/help_test.go` (new)
 - `cmd/gonuget/cli/root.go` (add help command)
+
+**Note**: Unlike `nuget.exe` which groups commands differently, `dotnet nuget` has a flatter structure with verb-based commands.
 
 ---
 
@@ -1102,7 +1364,7 @@ func runHelp(console *output.Console, rootCmd *cobra.Command, opts *helpOptions)
 		return generateMarkdownDocs(console, rootCmd)
 	}
 
-	// Match nuget.exe help output format
+	// Match dotnet nuget help output format
 	console.Println("usage: gonuget <command> [args] [options]")
 	console.Println("")
 	console.Println("Type 'gonuget help <command>' for help on a specific command.")
@@ -1110,15 +1372,15 @@ func runHelp(console *output.Console, rootCmd *cobra.Command, opts *helpOptions)
 	console.Println("Available commands:")
 	console.Println("")
 
-	// Group commands by category
-	foundation := []string{"help", "version", "config", "sources"}
-	coreOps := []string{"search", "list", "install", "restore"}
-	packageOps := []string{"spec", "pack", "push"}
-	signing := []string{"sign", "verify", "trusted-signers", "client-certs"}
-	advanced := []string{"update", "locals", "add", "init", "delete", "setapikey"}
+	// Group commands by category (reflecting dotnet nuget structure)
+	foundation := []string{"help", "version", "config"}
+	sourceOps := []string{"list", "add", "remove", "enable", "disable", "update"}
+	packageOps := []string{"search", "install", "restore", "pack", "push", "delete"}
+	signing := []string{"sign", "verify", "trust"}
+	advanced := []string{"locals", "init"}
 
 	printCommandGroup(console, rootCmd, "Foundation", foundation, opts.all)
-	printCommandGroup(console, rootCmd, "Core Operations", coreOps, opts.all)
+	printCommandGroup(console, rootCmd, "Source Management", sourceOps, opts.all)
 	printCommandGroup(console, rootCmd, "Package Operations", packageOps, opts.all)
 	printCommandGroup(console, rootCmd, "Signing & Security", signing, opts.all)
 	printCommandGroup(console, rootCmd, "Advanced", advanced, opts.all)
@@ -1345,7 +1607,7 @@ func TestHelpCommand(t *testing.T) {
 		Short: "NuGet CLI for Go",
 	}
 
-	// Add some test commands
+	// Add some test commands (reflecting dotnet nuget structure)
 	versionCmd := &cobra.Command{
 		Use:   "version",
 		Short: "Display version information",
@@ -1356,12 +1618,17 @@ func TestHelpCommand(t *testing.T) {
 		Short: "Manage configuration",
 	}
 
-	sourcesCmd := &cobra.Command{
-		Use:   "sources",
-		Short: "Manage package sources",
+	listCmd := &cobra.Command{
+		Use:   "list source",
+		Short: "List package sources",
 	}
 
-	rootCmd.AddCommand(versionCmd, configCmd, sourcesCmd)
+	addCmd := &cobra.Command{
+		Use:   "add source",
+		Short: "Add a package source",
+	}
+
+	rootCmd.AddCommand(versionCmd, configCmd, listCmd, addCmd)
 
 	// Create console with buffer
 	var buf bytes.Buffer
@@ -1471,22 +1738,24 @@ func TestPrintCommandGroup(t *testing.T) {
 
 ### Verification
 
+Compare `gonuget help` with `dotnet nuget --help` to ensure similar structure:
+
 ```bash
 # Build CLI
 go build -o gonuget ./cmd/gonuget
 
-# Test general help
+# Test general help (compare with: dotnet nuget --help)
 ./gonuget help
+dotnet nuget --help
 
-# Test command-specific help
+# Test command-specific help (compare with: dotnet nuget list source --help)
+./gonuget help list
+dotnet nuget list source --help
+
 ./gonuget help version
 ./gonuget help config
-./gonuget help sources
 
-# Test help for subcommands
-./gonuget help sources add
-
-# Test --all flag
+# Test --all flag (shows hidden commands)
 ./gonuget help --all
 
 # Test markdown generation
@@ -1496,12 +1765,104 @@ cat docs/CLI-REFERENCE.md
 # Test help via -h flag
 ./gonuget -h
 ./gonuget version -h
-./gonuget sources add -h
+./gonuget list source -h
+./gonuget add source -h
+```
+
+**Note**: Command grouping should be logical and similar to `dotnet nuget --help` structure.
+
+---
+
+### CLI Interop Testing
+
+Add CLI interop test handler for help command output comparison.
+
+**File**: `cmd/gonuget-cli-interop-test/handlers_help.go` (new)
+
+```go
+package main
+
+import (
+	"encoding/json"
+	"os/exec"
+)
+
+type ExecuteHelpHandler struct{}
+
+func (h *ExecuteHelpHandler) Handle(data json.RawMessage) (interface{}, error) {
+	var req struct {
+		Command string `json:"command"` // Command to get help for (empty for general help)
+	}
+
+	if err := json.Unmarshal(data, &req); err != nil {
+		return nil, err
+	}
+
+	// Execute: dotnet nuget --help or dotnet nuget <command> --help
+	var dotnetResult []byte
+	if req.Command == "" {
+		dotnetResult, _ = exec.Command("dotnet", "nuget", "--help").CombinedOutput()
+	} else {
+		dotnetResult, _ = exec.Command("dotnet", "nuget", req.Command, "--help").CombinedOutput()
+	}
+
+	// Execute: gonuget help or gonuget help <command>
+	var gonugetResult []byte
+	if req.Command == "" {
+		gonugetResult, _ = exec.Command("gonuget", "help").CombinedOutput()
+	} else {
+		gonugetResult, _ = exec.Command("gonuget", "help", req.Command).CombinedOutput()
+	}
+
+	return ExecuteCommandPairResponse{
+		DotnetStdout:   string(dotnetResult),
+		GonugetStdout:  string(gonugetResult),
+	}, nil
+}
+
+func (h *ExecuteHelpHandler) ErrorCode() string {
+	return "help_error"
+}
+```
+
+**File**: `tests/cli-interop/GonugetCliInterop.Tests/HelpTests.cs` (new)
+
+```csharp
+using Xunit;
+
+namespace GonugetCliInterop.Tests
+{
+    public class HelpTests
+    {
+        [Fact]
+        public void Help_GeneralHelp_ShouldShowCommandList()
+        {
+            var result = GonugetCliBridge.ExecuteHelp("");
+
+            Assert.Equal(0, result.DotnetExitCode);
+            Assert.Equal(0, result.GonugetExitCode);
+
+            // Both should list available commands
+            Assert.Contains("version", result.DotnetStdout.ToLower());
+            Assert.Contains("version", result.GonugetStdout.ToLower());
+        }
+
+        [Fact]
+        public void Help_CommandSpecific_ShouldShowUsage()
+        {
+            var result = GonugetCliBridge.ExecuteHelp("list");
+
+            // Both should show usage information for list command
+            Assert.Contains("usage", result.DotnetStdout.ToLower());
+            Assert.Contains("usage", result.GonugetStdout.ToLower());
+        }
+    }
+}
 ```
 
 ---
 
-### Testing
+### Unit Testing
 
 ```bash
 # Run help tests
@@ -1520,17 +1881,21 @@ go tool cover -func=coverage.out | grep help
 git add cmd/gonuget/commands/help.go
 git add cmd/gonuget/commands/help_test.go
 git add cmd/gonuget/cli/root.go
+git add cmd/gonuget-cli-interop-test/handlers_help.go
+git add tests/cli-interop/GonugetCliInterop.Tests/HelpTests.cs
 git commit -m "feat(cli): add help command
 
-- Implement general help with command groups
+- Implement general help with command groups matching dotnet nuget structure
 - Support command-specific help
 - Generate markdown documentation with --markdown flag
 - Support --all flag to show hidden commands
-- Match nuget.exe help output format
-- Add comprehensive tests
+- Group commands by category (Foundation, Source Management, Package Operations, etc.)
+- Match dotnet nuget help output structure
+- Add comprehensive unit tests
+- Add CLI interop tests comparing with dotnet nuget --help
 
-Tests: Help output, command groups, markdown generation
-Commands: 4/20 complete (20%)
+Tests: Help output, command groups, markdown generation, CLI interop
+Commands: 9/21 complete (43%)
 Coverage: >90% for help command"
 ```
 
@@ -1538,7 +1903,7 @@ Coverage: >90% for help command"
 
 ## Chunk 8: Progress Bars and Spinners
 
-**Objective**: Implement progress reporting UI components (progress bars and spinners) for download operations, restore operations, and other long-running tasks.
+**Objective**: Implement progress reporting UI components (progress bars and spinners) for download operations, restore operations, and other long-running tasks. This provides similar UX to `dotnet nuget` commands that show progress (e.g., `dotnet nuget push`, `dotnet restore`).
 
 **Prerequisites**:
 - Console abstraction (Chunk 2) complete
@@ -2189,12 +2554,37 @@ func TestFormatDuration(t *testing.T) {
 
 ---
 
+### CLI Interop Testing
+
+**Note**: Progress bars and spinners are **NOT tested via CLI interop** because:
+
+1. **Dynamic Output**: Progress bars continuously update with timing information (speed, ETA) that varies between runs
+2. **ANSI Escape Codes**: Progress uses `\r` and ANSI codes for in-place updates, which are difficult to compare in text
+3. **Non-Deterministic**: Timing-dependent output makes exact string comparison impractical
+
+**Visual Verification**: Instead, manually compare the UX when running:
+- `dotnet nuget push <package> --source <url>` (shows upload progress)
+- `dotnet restore` (shows package download progress)
+- `gonuget` equivalent commands should show similar progress visualization
+
+**Behavioral Testing**: Unit tests verify:
+- Progress bar math (percentage, speed, ETA calculations)
+- Verbosity level handling (quiet mode suppresses output)
+- Multi-progress rendering
+- ProgressWriter integration with io.Copy
+
+---
+
 ### Verification
 
 ```bash
 # Run tests
 go test ./cmd/gonuget/output -v -run TestProgress
 go test ./cmd/gonuget/output -v -run TestSpinner
+
+# Visually compare progress UX with dotnet nuget
+# Compare with: dotnet restore (shows download progress)
+# Compare with: dotnet nuget push (shows upload progress)
 
 # Build a test program to manually verify
 cat > /tmp/test_progress.go <<'EOF'
@@ -2274,20 +2664,23 @@ git commit -m "feat(cli): add progress bars and spinners
 - Calculate speed and ETA
 - Format bytes and durations human-readable
 - Respect verbosity levels (hide in quiet mode)
+- UX matches dotnet nuget/dotnet restore progress display
 
 Tests: Progress bars, spinners, multi-progress, format helpers
-Coverage: >90% for progress components"
+Coverage: >90% for progress components
+Commands: 9/21 complete (43%) - UI infrastructure, no new commands"
 ```
 
 ---
 
-## Chunk 9: Integration Tests for Phase 1
+## Chunk 9: CLI Interop Tests for Phase 1
 
-**Objective**: Create comprehensive integration tests that verify all Phase 1 commands work together correctly in real scenarios.
+**Objective**: Create comprehensive CLI interop tests that verify all Phase 1 commands produce identical output to `dotnet nuget` in real scenarios. These tests complement the NuGet.Client library interop tests by validating CLI command-line behavior.
 
 **Prerequisites**:
 - Chunks 1-8 complete
-- All Phase 1 commands implemented (version, config, sources, help)
+- All Phase 1 commands implemented (version, config, list/add/remove/enable/disable/update source, help)
+- CLI interop test bridge (`cmd/gonuget-cli-interop-test`) implemented
 
 **Files to create/modify**:
 - `cmd/gonuget/integration_test.go` (new)
@@ -2507,10 +2900,12 @@ func TestConfigCommand(t *testing.T) {
 
 	t.Run("set and get config value", func(t *testing.T) {
 		// Set a value
-		env.runExpectSuccess("config", "-Set", "testKey=testValue")
+		// Matches: dotnet nuget config set --set testKey=testValue
+		env.runExpectSuccess("config", "set", "--set", "testKey=testValue")
 
 		// Get the value
-		stdout := env.runExpectSuccess("config", "testKey")
+		// Matches: dotnet nuget config get testKey
+		stdout := env.runExpectSuccess("config", "get", "testKey")
 
 		if !strings.Contains(stdout, "testValue") {
 			t.Errorf("config get should return 'testValue', got: %s", stdout)
@@ -2538,10 +2933,12 @@ func TestConfigCommand(t *testing.T) {
 
 	t.Run("list all config values", func(t *testing.T) {
 		// Set multiple values
-		env.runExpectSuccess("config", "-Set", "key1=value1", "-Set", "key2=value2")
+		env.runExpectSuccess("config", "set", "--set", "key1=value1")
+		env.runExpectSuccess("config", "set", "--set", "key2=value2")
 
 		// List all
-		stdout := env.runExpectSuccess("config")
+		// Matches: dotnet nuget config list
+		stdout := env.runExpectSuccess("config", "list")
 
 		if !strings.Contains(stdout, "key1") || !strings.Contains(stdout, "value1") {
 			t.Errorf("config list should show key1=value1, got: %s", stdout)
@@ -2556,7 +2953,7 @@ func TestConfigCommand(t *testing.T) {
 		customConfig := filepath.Join(env.tempDir, "custom.config")
 
 		// Set value in custom config
-		env.runExpectSuccess("config", "-ConfigFile", customConfig, "-Set", "customKey=customValue")
+		env.runExpectSuccess("config", "set", "--configfile", customConfig, "--set", "customKey=customValue")
 
 		// Verify custom config was created
 		if _, err := os.Stat(customConfig); os.IsNotExist(err) {
@@ -2564,7 +2961,7 @@ func TestConfigCommand(t *testing.T) {
 		}
 
 		// Get value from custom config
-		stdout := env.runExpectSuccess("config", "-ConfigFile", customConfig, "customKey")
+		stdout := env.runExpectSuccess("config", "get", "--configfile", customConfig, "customKey")
 
 		if !strings.Contains(stdout, "customValue") {
 			t.Errorf("custom config should contain customValue, got: %s", stdout)
@@ -2575,20 +2972,21 @@ func TestConfigCommand(t *testing.T) {
 
 ---
 
-### Step 9.4: Implement Sources Command Integration Tests
+### Step 9.4: Implement Source Commands Integration Tests
 
 **File**: `cmd/gonuget/integration_test.go` (continued)
 
 ```go
-func TestSourcesCommand(t *testing.T) {
+func TestSourceCommands(t *testing.T) {
 	env := newTestEnv(t)
 	defer env.cleanup()
 
 	t.Run("add source", func(t *testing.T) {
 		// Add a source
-		stdout := env.runExpectSuccess("sources", "add",
-			"-Name", "TestFeed",
-			"-Source", "https://test.example.com/v3/index.json")
+		// Matches: dotnet nuget add source https://test.example.com/v3/index.json --name TestFeed
+		stdout := env.runExpectSuccess("add", "source",
+			"https://test.example.com/v3/index.json",
+			"--name", "TestFeed")
 
 		if !strings.Contains(stdout, "added successfully") {
 			t.Errorf("add source should report success, got: %s", stdout)
@@ -2614,113 +3012,118 @@ func TestSourcesCommand(t *testing.T) {
 		}
 	})
 
-	t.Run("list sources", func(t *testing.T) {
+	t.Run("list source", func(t *testing.T) {
 		// Add multiple sources
-		env.runExpectSuccess("sources", "add", "-Name", "Feed1", "-Source", "https://feed1.com/v3/index.json")
-		env.runExpectSuccess("sources", "add", "-Name", "Feed2", "-Source", "https://feed2.com/v3/index.json")
+		env.runExpectSuccess("add", "source", "https://feed1.com/v3/index.json", "--name", "Feed1")
+		env.runExpectSuccess("add", "source", "https://feed2.com/v3/index.json", "--name", "Feed2")
 
 		// List sources
-		stdout := env.runExpectSuccess("sources", "list")
+		// Matches: dotnet nuget list source
+		stdout := env.runExpectSuccess("list", "source")
 
 		if !strings.Contains(stdout, "Feed1") {
-			t.Errorf("sources list should show Feed1, got: %s", stdout)
+			t.Errorf("list source should show Feed1, got: %s", stdout)
 		}
 
 		if !strings.Contains(stdout, "Feed2") {
-			t.Errorf("sources list should show Feed2, got: %s", stdout)
+			t.Errorf("list source should show Feed2, got: %s", stdout)
 		}
 
 		if !strings.Contains(stdout, "https://feed1.com/v3/index.json") {
-			t.Errorf("sources list should show Feed1 URL, got: %s", stdout)
+			t.Errorf("list source should show Feed1 URL, got: %s", stdout)
 		}
 	})
 
 	t.Run("disable and enable source", func(t *testing.T) {
 		// Add a source
-		env.runExpectSuccess("sources", "add", "-Name", "ToggleFeed", "-Source", "https://toggle.com/v3/index.json")
+		env.runExpectSuccess("add", "source", "https://toggle.com/v3/index.json", "--name", "ToggleFeed")
 
 		// Disable it
-		stdout := env.runExpectSuccess("sources", "disable", "-Name", "ToggleFeed")
+		// Matches: dotnet nuget disable source --name ToggleFeed
+		stdout := env.runExpectSuccess("disable", "source", "--name", "ToggleFeed")
 		if !strings.Contains(stdout, "disabled successfully") {
 			t.Errorf("disable should report success, got: %s", stdout)
 		}
 
 		// List should show disabled
-		stdout = env.runExpectSuccess("sources", "list")
+		stdout = env.runExpectSuccess("list", "source")
 		if !strings.Contains(stdout, "Disabled") {
-			t.Errorf("sources list should show Disabled status, got: %s", stdout)
+			t.Errorf("list source should show Disabled status, got: %s", stdout)
 		}
 
 		// Enable it
-		stdout = env.runExpectSuccess("sources", "enable", "-Name", "ToggleFeed")
+		// Matches: dotnet nuget enable source --name ToggleFeed
+		stdout = env.runExpectSuccess("enable", "source", "--name", "ToggleFeed")
 		if !strings.Contains(stdout, "enabled successfully") {
 			t.Errorf("enable should report success, got: %s", stdout)
 		}
 
 		// List should show enabled
-		stdout = env.runExpectSuccess("sources", "list")
+		stdout = env.runExpectSuccess("list", "source")
 		if !strings.Contains(stdout, "Enabled") {
-			t.Errorf("sources list should show Enabled status, got: %s", stdout)
+			t.Errorf("list source should show Enabled status, got: %s", stdout)
 		}
 	})
 
 	t.Run("update source", func(t *testing.T) {
 		// Add a source
-		env.runExpectSuccess("sources", "add", "-Name", "UpdateFeed", "-Source", "https://old.com/v3/index.json")
+		env.runExpectSuccess("add", "source", "https://old.com/v3/index.json", "--name", "UpdateFeed")
 
 		// Update it
-		stdout := env.runExpectSuccess("sources", "update",
-			"-Name", "UpdateFeed",
-			"-Source", "https://new.com/v3/index.json")
+		// Matches: dotnet nuget update source --name UpdateFeed --source https://new.com/v3/index.json
+		stdout := env.runExpectSuccess("update", "source",
+			"--name", "UpdateFeed",
+			"--source", "https://new.com/v3/index.json")
 
 		if !strings.Contains(stdout, "updated successfully") {
 			t.Errorf("update should report success, got: %s", stdout)
 		}
 
 		// Verify new URL
-		stdout = env.runExpectSuccess("sources", "list")
+		stdout = env.runExpectSuccess("list", "source")
 		if !strings.Contains(stdout, "https://new.com/v3/index.json") {
-			t.Errorf("sources list should show updated URL, got: %s", stdout)
+			t.Errorf("list source should show updated URL, got: %s", stdout)
 		}
 
 		if strings.Contains(stdout, "https://old.com/v3/index.json") {
-			t.Errorf("sources list should not show old URL, got: %s", stdout)
+			t.Errorf("list source should not show old URL, got: %s", stdout)
 		}
 	})
 
 	t.Run("remove source", func(t *testing.T) {
 		// Add a source
-		env.runExpectSuccess("sources", "add", "-Name", "RemoveFeed", "-Source", "https://remove.com/v3/index.json")
+		env.runExpectSuccess("add", "source", "https://remove.com/v3/index.json", "--name", "RemoveFeed")
 
 		// Remove it
-		stdout := env.runExpectSuccess("sources", "remove", "-Name", "RemoveFeed")
+		// Matches: dotnet nuget remove source --name RemoveFeed
+		stdout := env.runExpectSuccess("remove", "source", "--name", "RemoveFeed")
 		if !strings.Contains(stdout, "removed successfully") {
 			t.Errorf("remove should report success, got: %s", stdout)
 		}
 
 		// Verify it's gone
-		stdout = env.runExpectSuccess("sources", "list")
+		stdout = env.runExpectSuccess("list", "source")
 		if strings.Contains(stdout, "RemoveFeed") {
-			t.Errorf("sources list should not show removed feed, got: %s", stdout)
+			t.Errorf("list source should not show removed feed, got: %s", stdout)
 		}
 	})
 
 	t.Run("error cases", func(t *testing.T) {
 		// Add duplicate source
-		env.runExpectSuccess("sources", "add", "-Name", "DupFeed", "-Source", "https://dup.com/v3/index.json")
-		stderr := env.runExpectError("sources", "add", "-Name", "DupFeed", "-Source", "https://dup2.com/v3/index.json")
+		env.runExpectSuccess("add", "source", "https://dup.com/v3/index.json", "--name", "DupFeed")
+		stderr := env.runExpectError("add", "source", "https://dup2.com/v3/index.json", "--name", "DupFeed")
 		if !strings.Contains(stderr, "already exists") {
 			t.Errorf("duplicate source should error, got: %s", stderr)
 		}
 
 		// Remove non-existent source
-		stderr = env.runExpectError("sources", "remove", "-Name", "NonExistent")
+		stderr = env.runExpectError("remove", "source", "--name", "NonExistent")
 		if !strings.Contains(stderr, "not found") {
 			t.Errorf("remove non-existent should error, got: %s", stderr)
 		}
 
 		// Enable non-existent source
-		stderr = env.runExpectError("sources", "enable", "-Name", "NonExistent")
+		stderr = env.runExpectError("enable", "source", "--name", "NonExistent")
 		if !strings.Contains(stderr, "not found") {
 			t.Errorf("enable non-existent should error, got: %s", stderr)
 		}
@@ -2740,6 +3143,7 @@ func TestHelpCommand(t *testing.T) {
 	defer env.cleanup()
 
 	t.Run("general help", func(t *testing.T) {
+		// Matches: dotnet nuget --help
 		stdout := env.runExpectSuccess("help")
 
 		// Should list available commands
@@ -2754,18 +3158,35 @@ func TestHelpCommand(t *testing.T) {
 		if !strings.Contains(stdout, "config") {
 			t.Errorf("help should list config command, got: %s", stdout)
 		}
+
+		// Should list source commands (add, list, remove, etc.)
+		if !strings.Contains(stdout, "add") || !strings.Contains(stdout, "list") {
+			t.Errorf("help should list add and list commands, got: %s", stdout)
+		}
 	})
 
-	t.Run("command-specific help", func(t *testing.T) {
-		stdout := env.runExpectSuccess("help", "sources")
+	t.Run("command-specific help for list", func(t *testing.T) {
+		// Matches: dotnet nuget list --help
+		stdout := env.runExpectSuccess("help", "list")
 
-		// Should show sources command help
-		if !strings.Contains(stdout, "sources") {
-			t.Errorf("help sources should show sources info, got: %s", stdout)
+		// Should show list command help
+		if !strings.Contains(stdout, "list") {
+			t.Errorf("help list should show list info, got: %s", stdout)
+		}
+	})
+
+	t.Run("command-specific help for add source", func(t *testing.T) {
+		// Matches: dotnet nuget add source --help
+		stdout := env.runExpectSuccess("add", "source", "--help")
+
+		// Should show add source help
+		if !strings.Contains(stdout, "add") && !strings.Contains(stdout, "source") {
+			t.Errorf("add source --help should show add source info, got: %s", stdout)
 		}
 
-		if !strings.Contains(stdout, "add") || !strings.Contains(stdout, "remove") {
-			t.Errorf("help sources should list subcommands, got: %s", stdout)
+		// Should mention required flags like --name
+		if !strings.Contains(stdout, "--name") {
+			t.Errorf("add source help should mention --name flag, got: %s", stdout)
 		}
 	})
 
@@ -2777,11 +3198,12 @@ func TestHelpCommand(t *testing.T) {
 		}
 	})
 
-	t.Run("command help flag", func(t *testing.T) {
-		stdout := env.runExpectSuccess("sources", "--help")
+	t.Run("config command help flag", func(t *testing.T) {
+		// Matches: dotnet nuget config --help
+		stdout := env.runExpectSuccess("config", "--help")
 
-		if !strings.Contains(stdout, "sources") {
-			t.Errorf("sources --help should show help, got: %s", stdout)
+		if !strings.Contains(stdout, "config") {
+			t.Errorf("config --help should show help, got: %s", stdout)
 		}
 	})
 }
@@ -2799,60 +3221,70 @@ func TestEndToEndWorkflow(t *testing.T) {
 	defer env.cleanup()
 
 	// 1. Check version
+	// Matches: dotnet nuget --version (or gonuget --version)
 	stdout := env.runExpectSuccess("version")
 	if !strings.Contains(stdout, "gonuget version") {
 		t.Fatal("version command failed")
 	}
 
 	// 2. Set configuration
-	env.runExpectSuccess("config", "-Set", "globalPackagesFolder=~/.nuget/packages")
-	env.runExpectSuccess("config", "-Set", "http_proxy=http://proxy.example.com:8080")
+	// Matches: dotnet nuget config set --set <key>=<value>
+	env.runExpectSuccess("config", "set", "--set", "globalPackagesFolder=~/.nuget/packages")
+	env.runExpectSuccess("config", "set", "--set", "http_proxy=http://proxy.example.com:8080")
 
 	// 3. Add multiple package sources
-	env.runExpectSuccess("sources", "add", "-Name", "nuget.org", "-Source", "https://api.nuget.org/v3/index.json")
-	env.runExpectSuccess("sources", "add", "-Name", "myget", "-Source", "https://www.myget.org/F/myfeed/api/v3/index.json")
-	env.runExpectSuccess("sources", "add", "-Name", "local", "-Source", "/var/packages")
+	// Matches: dotnet nuget add source <url> --name <name>
+	env.runExpectSuccess("add", "source", "https://api.nuget.org/v3/index.json", "--name", "nuget.org")
+	env.runExpectSuccess("add", "source", "https://www.myget.org/F/myfeed/api/v3/index.json", "--name", "myget")
+	env.runExpectSuccess("add", "source", "/var/packages", "--name", "local")
 
 	// 4. Disable one source
-	env.runExpectSuccess("sources", "disable", "-Name", "local")
+	// Matches: dotnet nuget disable source --name <name>
+	env.runExpectSuccess("disable", "source", "--name", "local")
 
 	// 5. List sources
-	stdout = env.runExpectSuccess("sources", "list")
+	// Matches: dotnet nuget list source
+	stdout = env.runExpectSuccess("list", "source")
 	if !strings.Contains(stdout, "nuget.org") || !strings.Contains(stdout, "myget") {
-		t.Fatal("sources list failed")
+		t.Fatal("list source failed")
 	}
 
 	// 6. Update a source
-	env.runExpectSuccess("sources", "update", "-Name", "myget", "-Source", "https://www.myget.org/F/newfeed/api/v3/index.json")
+	// Matches: dotnet nuget update source --name <name> --source <url>
+	env.runExpectSuccess("update", "source", "--name", "myget", "--source", "https://www.myget.org/F/newfeed/api/v3/index.json")
 
 	// 7. List config values
-	stdout = env.runExpectSuccess("config")
+	// Matches: dotnet nuget config list
+	stdout = env.runExpectSuccess("config", "list")
 	if !strings.Contains(stdout, "globalPackagesFolder") || !strings.Contains(stdout, "http_proxy") {
 		t.Fatal("config list failed")
 	}
 
 	// 8. Get specific config value
-	stdout = env.runExpectSuccess("config", "globalPackagesFolder")
+	// Matches: dotnet nuget config get <key>
+	stdout = env.runExpectSuccess("config", "get", "globalPackagesFolder")
 	if !strings.Contains(stdout, "~/.nuget/packages") {
 		t.Fatal("config get failed")
 	}
 
 	// 9. Remove a source
-	env.runExpectSuccess("sources", "remove", "-Name", "local")
+	// Matches: dotnet nuget remove source --name <name>
+	env.runExpectSuccess("remove", "source", "--name", "local")
 
 	// 10. Verify final state
-	stdout = env.runExpectSuccess("sources", "list")
+	stdout = env.runExpectSuccess("list", "source")
 	if strings.Contains(stdout, "local") {
 		t.Fatal("source removal failed")
 	}
 
 	// 11. Check help
+	// Matches: dotnet nuget --help
 	stdout = env.runExpectSuccess("help")
 	if !strings.Contains(stdout, "Available commands:") {
 		t.Fatal("help command failed")
 	}
 
-	t.Log("✓ End-to-end workflow completed successfully")
+	t.Log("✓ End-to-end workflow completed successfully (dotnet nuget parity)")
 }
 ```
 
@@ -2861,15 +3293,25 @@ func TestEndToEndWorkflow(t *testing.T) {
 ### Verification
 
 ```bash
-# Run integration tests
+# Run CLI interop tests
 go test -tags=integration ./cmd/gonuget -v
 
 # Run specific integration test
 go test -tags=integration ./cmd/gonuget -v -run TestVersionCommand
 go test -tags=integration ./cmd/gonuget -v -run TestConfigCommand
-go test -tags=integration ./cmd/gonuget -v -run TestSourcesCommand
+go test -tags=integration ./cmd/gonuget -v -run TestSourceCommands
 go test -tags=integration ./cmd/gonuget -v -run TestHelpCommand
 go test -tags=integration ./cmd/gonuget -v -run TestEndToEndWorkflow
+
+# Compare with dotnet nuget manually
+dotnet nuget --version
+gonuget --version
+
+dotnet nuget list source
+gonuget list source
+
+dotnet nuget add source https://test.com/v3/index.json --name test
+gonuget add source https://test.com/v3/index.json --name test
 
 # Run with race detector
 go test -tags=integration -race ./cmd/gonuget -v
@@ -2907,18 +3349,21 @@ go test -tags=integration ./cmd/gonuget -v
 
 ```bash
 git add cmd/gonuget/integration_test.go
-git commit -m "test(cli): add Phase 1 integration tests
+git commit -m "test(cli): add Phase 1 CLI interop tests
 
 - Create isolated test environment with temp directories
 - Test version command (command and flags)
-- Test config command (get, set, list, custom file)
-- Test sources command (add, list, enable, disable, update, remove)
+- Test config command (get, set, list with dotnet nuget parity)
+- Test source commands (add/list/enable/disable/update/remove source)
 - Test help command (general, command-specific, flags)
-- Test end-to-end workflow with multiple operations
+- Test end-to-end workflow with dotnet nuget equivalent commands
 - Verify config file contents with XML parsing
 - Test error cases (duplicates, non-existent items)
+- All tests use dotnet nuget command structure (<verb> <noun>)
+- Flags use kebab-case (--name, --source, --set, --configfile)
 
-Coverage: Full integration coverage for Phase 1 commands
+Coverage: Full CLI interop coverage for Phase 1 commands
+Commands: 9/21 complete (43%)
 Run with: go test -tags=integration ./cmd/gonuget -v"
 ```
 
@@ -2926,11 +3371,11 @@ Run with: go test -tags=integration ./cmd/gonuget -v"
 
 ## Chunk 10: Performance Benchmarks
 
-**Objective**: Create performance benchmarks for Phase 1 operations to establish baseline performance metrics and ensure CLI startup time meets targets (<50ms P50).
+**Objective**: Create performance benchmarks for Phase 1 operations to establish baseline performance metrics and ensure CLI startup time meets targets (<50ms P50). Benchmarks validate that `gonuget` achieves comparable performance to `dotnet nuget` for common operations.
 
 **Prerequisites**:
 - All Phase 1 chunks complete
-- Integration tests passing
+- CLI interop tests passing
 
 **Files to create/modify**:
 - `cmd/gonuget/benchmark_test.go` (new)
@@ -2998,6 +3443,7 @@ func BenchmarkVersionCommand(b *testing.B) {
 }
 
 // Benchmark config read operations
+// Matches: dotnet nuget config get <key>
 func BenchmarkConfigRead(b *testing.B) {
 	binPath := buildBinary(b)
 	configFile := setupTestConfig(b)
@@ -3006,7 +3452,7 @@ func BenchmarkConfigRead(b *testing.B) {
 	b.ReportAllocs()
 
 	for i := 0; i < b.N; i++ {
-		cmd := exec.Command(binPath, "config", "-ConfigFile", configFile, "testKey")
+		cmd := exec.Command(binPath, "config", "get", "--configfile", configFile, "testKey")
 		cmd.Stdout = &bytes.Buffer{}
 		if err := cmd.Run(); err != nil {
 			b.Fatalf("config command failed: %v", err)
@@ -3015,6 +3461,7 @@ func BenchmarkConfigRead(b *testing.B) {
 }
 
 // Benchmark config write operations
+// Matches: dotnet nuget config set --set <key>=<value>
 func BenchmarkConfigWrite(b *testing.B) {
 	binPath := buildBinary(b)
 	tempDir := b.TempDir()
@@ -3024,7 +3471,7 @@ func BenchmarkConfigWrite(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		configFile := filepath.Join(tempDir, "NuGet.config."+string(rune(i)))
-		cmd := exec.Command(binPath, "config", "-ConfigFile", configFile, "-Set", "key=value")
+		cmd := exec.Command(binPath, "config", "set", "--configfile", configFile, "--set", "key=value")
 		cmd.Stdout = &bytes.Buffer{}
 		if err := cmd.Run(); err != nil {
 			b.Fatalf("config write failed: %v", err)
@@ -3032,8 +3479,9 @@ func BenchmarkConfigWrite(b *testing.B) {
 	}
 }
 
-// Benchmark sources list operation
-func BenchmarkSourcesList(b *testing.B) {
+// Benchmark list source operation
+// Matches: dotnet nuget list source
+func BenchmarkListSource(b *testing.B) {
 	binPath := buildBinary(b)
 	configFile := setupTestConfigWithSources(b, 10)
 
@@ -3041,16 +3489,17 @@ func BenchmarkSourcesList(b *testing.B) {
 	b.ReportAllocs()
 
 	for i := 0; i < b.N; i++ {
-		cmd := exec.Command(binPath, "sources", "-ConfigFile", configFile, "list")
+		cmd := exec.Command(binPath, "list", "source", "--configfile", configFile)
 		cmd.Stdout = &bytes.Buffer{}
 		if err := cmd.Run(); err != nil {
-			b.Fatalf("sources list failed: %v", err)
+			b.Fatalf("list source failed: %v", err)
 		}
 	}
 }
 
-// Benchmark sources add operation
-func BenchmarkSourcesAdd(b *testing.B) {
+// Benchmark add source operation
+// Matches: dotnet nuget add source <url> --name <name>
+func BenchmarkAddSource(b *testing.B) {
 	binPath := buildBinary(b)
 	tempDir := b.TempDir()
 
@@ -3059,12 +3508,13 @@ func BenchmarkSourcesAdd(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		configFile := filepath.Join(tempDir, "NuGet.config."+string(rune(i)))
-		cmd := exec.Command(binPath, "sources", "-ConfigFile", configFile, "add",
-			"-Name", "TestFeed",
-			"-Source", "https://test.example.com/v3/index.json")
+		cmd := exec.Command(binPath, "add", "source",
+			"https://test.example.com/v3/index.json",
+			"--configfile", configFile,
+			"--name", "TestFeed")
 		cmd.Stdout = &bytes.Buffer{}
 		if err := cmd.Run(); err != nil {
-			b.Fatalf("sources add failed: %v", err)
+			b.Fatalf("add source failed: %v", err)
 		}
 	}
 }
@@ -3296,7 +3746,7 @@ echo ""
 # Run command benchmarks
 go test -tags=benchmark -bench=BenchmarkVersion -benchmem ./cmd/gonuget
 go test -tags=benchmark -bench=BenchmarkConfig -benchmem ./cmd/gonuget
-go test -tags=benchmark -bench=BenchmarkSources -benchmem ./cmd/gonuget
+go test -tags=benchmark -bench=Benchmark.*Source -benchmem ./cmd/gonuget
 go test -tags=benchmark -bench=BenchmarkHelp -benchmem ./cmd/gonuget
 
 echo ""
@@ -3351,7 +3801,7 @@ chmod +x scripts/bench.sh
 ```markdown
 # gonuget CLI Benchmarks
 
-Performance benchmarks for the gonuget CLI tool.
+Performance benchmarks for the gonuget CLI tool. These benchmarks ensure that `gonuget` achieves comparable performance to `dotnet nuget` for common operations.
 
 ## Running Benchmarks
 
@@ -3515,18 +3965,20 @@ git add cmd/gonuget/benchmarks/README.md
 git commit -m "perf(cli): add Phase 1 performance benchmarks
 
 - Benchmark startup time (target: <50ms P50)
-- Benchmark version, config, sources, help commands
+- Benchmark version, config, source commands, help
 - Add package-level benchmarks for output and config
 - Create benchmark runner script with targets
 - Document profiling and optimization techniques
 - Set memory and performance targets
+- All benchmarks use dotnet nuget command structure
 
 Benchmarks:
 - Startup: BenchmarkStartup (100 iterations)
-- Commands: Version, Config (read/write), Sources, Help
+- Commands: Version, Config (get/set), ListSource, AddSource, Help
 - Packages: Console output, Config parsing
 - Memory: Track allocations per operation
 
+Commands: 9/21 complete (43%)
 Run with: ./scripts/bench.sh
 Profile with: -cpuprofile/-memprofile flags"
 ```
@@ -3535,47 +3987,56 @@ Profile with: -cpuprofile/-memprofile flags"
 
 ## Phase 1 Summary
 
-You've now completed **CLI Milestone 1: Foundation** with all 10 chunks:
+You've now completed **CLI Milestone 1: Foundation** with all 10 chunks targeting **100% dotnet nuget parity**:
 
 ### ✅ Completed Features
 
 1. **Project Structure** - Cobra-based CLI with signal handling
 2. **Console Abstraction** - Verbosity levels, colored output
 3. **Configuration Management** - NuGet.config XML parsing/writing
-4. **Version Command** - Display version information
-5. **Config Command** - Get/set configuration values
-6. **Sources Command** - Manage package sources (CRUD operations)
+4. **Version Command** - `gonuget --version` (matches `dotnet nuget --version`)
+5. **Config Commands** - `config get/set/list` (matches `dotnet nuget config`)
+6. **Source Commands** - Six separate commands:
+   - `list source` (matches `dotnet nuget list source`)
+   - `add source` (matches `dotnet nuget add source`)
+   - `remove source` (matches `dotnet nuget remove source`)
+   - `enable source` (matches `dotnet nuget enable source`)
+   - `disable source` (matches `dotnet nuget disable source`)
+   - `update source` (matches `dotnet nuget update source`)
 7. **Help Command** - Comprehensive help system
-8. **Progress UI** - Progress bars, spinners, multi-progress
-9. **Integration Tests** - Full E2E workflow testing
+8. **Progress UI** - Progress bars, spinners, multi-progress (dotnet nuget UX)
+9. **CLI Interop Tests** - Full E2E workflow testing with dotnet nuget parity
 10. **Performance Benchmarks** - Startup time and command benchmarks
 
 ### 📊 Progress
 
-- **Commands Implemented**: 4/20 (20%)
+- **Commands Implemented**: 9/21 (43%) - targeting dotnet nuget parity
+- **Command Structure**: `<verb> <noun>` (e.g., `add source`, not `sources add`)
+- **Flags**: kebab-case (e.g., `--name`, `--source`, `--configfile`)
 - **Test Coverage**: >85%
 - **Startup Time**: <50ms (target met)
-- **Files Created**: ~15 files (~3,500 lines)
+- **Files Created**: ~20 files (~4,000 lines)
 
 ### 🎯 Acceptance Criteria
 
-- ✅ Version command functional
-- ✅ Config command functional (get/set)
-- ✅ Sources command functional (list/add/remove/enable/disable/update)
+- ✅ Version command functional (dotnet nuget parity)
+- ✅ Config command functional (get/set/list with dotnet nuget parity)
+- ✅ Source commands functional (6 separate commands: list/add/remove/enable/disable/update)
 - ✅ Help command functional
 - ✅ Progress UI components implemented
-- ✅ Integration tests passing
+- ✅ CLI interop tests passing
 - ✅ Performance benchmarks passing
 - ✅ Documentation complete
+- ✅ 100% dotnet nuget command structure compatibility
 
 ### ➡️ Next Phase
 
 **CLI-M2-CORE-OPERATIONS.md** will cover:
 - Search command (V3 + V2 protocols)
-- List command
+- List command (package search/list)
 - Install command (download, extract, framework compat, packages.config)
 
-**Commands to add**: 3 (5/20 total = 25%)
+**Commands to add**: 3 (12/21 total = 57%)
 
 ---
 
