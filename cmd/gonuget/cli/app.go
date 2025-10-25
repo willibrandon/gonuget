@@ -3,6 +3,7 @@ package cli
 
 import (
 	"github.com/spf13/cobra"
+	"github.com/willibrandon/gonuget/cmd/gonuget/output"
 )
 
 var rootCmd = &cobra.Command{
@@ -19,18 +20,31 @@ Complete documentation is available at https://github.com/willibrandon/gonuget`,
 	},
 }
 
+// Console is the global console for CLI commands
+var Console *output.Console
+
 // Execute runs the root command
 func Execute() error {
 	return rootCmd.Execute()
 }
 
 func init() {
-	// Handle --version flag
-	rootCmd.SetVersionTemplate(GetFullVersion() + "\n")
-	rootCmd.Version = GetVersion()
+	// Initialize console
+	Console = output.DefaultConsole()
 
 	// Add common flags that will be used by subcommands
 	rootCmd.PersistentFlags().StringP("configfile", "", "", "NuGet configuration file to use")
 	rootCmd.PersistentFlags().StringP("verbosity", "", "normal", "Display verbosity (quiet, normal, detailed)")
 	rootCmd.PersistentFlags().BoolP("non-interactive", "", false, "Do not prompt for user input or confirmations")
+}
+
+// SetupVersion configures version information after variables are set
+func SetupVersion() {
+	rootCmd.SetVersionTemplate(GetFullVersion() + "\n")
+	rootCmd.Version = GetVersion()
+}
+
+// AddCommand adds a command to the root command
+func AddCommand(cmd *cobra.Command) {
+	rootCmd.AddCommand(cmd)
 }

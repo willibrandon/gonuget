@@ -7,6 +7,7 @@ import (
 	"syscall"
 
 	"github.com/willibrandon/gonuget/cmd/gonuget/cli"
+	"github.com/willibrandon/gonuget/cmd/gonuget/commands"
 )
 
 // Version information (set via ldflags during build)
@@ -23,6 +24,12 @@ func main() {
 	cli.Commit = commit
 	cli.Date = date
 	cli.BuiltBy = builtBy
+
+	// Setup version after variables are set
+	cli.SetupVersion()
+
+	// Register commands
+	cli.AddCommand(commands.NewVersionCommand(cli.Console))
 
 	// Handle signals for graceful shutdown
 	sigChan := make(chan os.Signal, 1)
