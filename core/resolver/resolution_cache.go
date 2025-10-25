@@ -12,18 +12,16 @@ type OperationCache struct {
 	// Maps cache key to operation state
 	operations sync.Map // key -> *operationState
 
-	// Tracks operation start times for timeout
-	startTimes sync.Map // key -> time.Time
-
 	// TTL for cache entries (0 = no expiration)
 	ttl time.Duration
 }
 
 // operationState holds the state of an in-flight operation
 type operationState struct {
-	once   sync.Once
-	result *cacheResult
-	done   chan struct{}
+	once      sync.Once
+	result    *cacheResult
+	done      chan struct{}
+	startTime time.Time
 }
 
 // NewOperationCache creates a new operation cache
@@ -40,43 +38,42 @@ func (oc *OperationCache) GetOrStart(
 	key string,
 	operation func(context.Context) (*PackageDependencyInfo, error),
 ) (*PackageDependencyInfo, error) {
-	// Check if expired first
-	if oc.isExpired(key) {
-		oc.operations.Delete(key)
-		oc.startTimes.Delete(key)
-	}
+	for {
+		// Create new operation state with current time
+		state := &operationState{
+			done:      make(chan struct{}),
+			startTime: time.Now(),
+		}
 
-	// Create new operation state or get existing
-	state := &operationState{
-		done: make(chan struct{}),
-	}
+		// Try to store our state, or get existing
+		actual, loaded := oc.operations.LoadOrStore(key, state)
+		state = actual.(*operationState)
 
-	actual, loaded := oc.operations.LoadOrStore(key, state)
-	state = actual.(*operationState)
+		if !loaded {
+			// We created the operation - run it
+			state.once.Do(func() {
+				info, err := operation(ctx)
+				state.result = &cacheResult{info: info, err: err}
+				close(state.done)
 
-	if !loaded {
-		// We created the operation - run it
-		oc.startTimes.Store(key, time.Now())
-
-		state.once.Do(func() {
-			info, err := operation(ctx)
-			state.result = &cacheResult{info: info, err: err}
-			close(state.done)
-
-			// Clean up after a delay
-			time.AfterFunc(5*time.Second, func() {
-				oc.operations.Delete(key)
-				oc.startTimes.Delete(key)
+				// Clean up after a delay
+				time.AfterFunc(5*time.Second, func() {
+					oc.operations.Delete(key)
+				})
 			})
-		})
-	}
+		} else if oc.ttl > 0 && time.Since(state.startTime) > oc.ttl {
+			// Got existing operation - expired, delete and retry
+			oc.operations.Delete(key)
+			continue
+		}
 
-	// Wait for operation to complete
-	select {
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	case <-state.done:
-		return state.result.info, state.result.err
+		// Wait for operation to complete
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-state.done:
+			return state.result.info, state.result.err
+		}
 	}
 }
 
@@ -85,29 +82,10 @@ type cacheResult struct {
 	err  error
 }
 
-// isExpired checks if a cache entry has exceeded TTL
-func (oc *OperationCache) isExpired(key string) bool {
-	if oc.ttl == 0 {
-		return false
-	}
-
-	value, ok := oc.startTimes.Load(key)
-	if !ok {
-		return true
-	}
-
-	startTime := value.(time.Time)
-	return time.Since(startTime) > oc.ttl
-}
-
 // Clear removes all cached operations
 func (oc *OperationCache) Clear() {
 	oc.operations.Range(func(key, value any) bool {
 		oc.operations.Delete(key)
-		return true
-	})
-	oc.startTimes.Range(func(key, value any) bool {
-		oc.startTimes.Delete(key)
 		return true
 	})
 }
