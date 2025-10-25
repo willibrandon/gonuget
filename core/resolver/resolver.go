@@ -10,17 +10,23 @@ type Resolver struct {
 	walker           *DependencyWalker
 	conflictDetector *ConflictDetector
 	conflictResolver *ConflictResolver
+	parallelResolver *ParallelResolver
 	targetFramework  string
 }
 
 // NewResolver creates a new resolver.
 func NewResolver(client PackageMetadataClient, sources []string, targetFramework string) *Resolver {
-	return &Resolver{
+	r := &Resolver{
 		walker:           NewDependencyWalker(client, sources, targetFramework),
 		conflictDetector: NewConflictDetector(),
 		conflictResolver: NewConflictResolver(),
 		targetFramework:  targetFramework,
 	}
+
+	// Add parallel resolver
+	r.parallelResolver = NewParallelResolver(r, 10)
+
+	return r
 }
 
 // Resolve performs complete dependency resolution with conflict resolution.
@@ -124,4 +130,21 @@ func (r *Resolver) ResolveProject(
 ) (*ResolutionResult, error) {
 	transitiveResolver := NewTransitiveResolver(r)
 	return transitiveResolver.ResolveMultipleRoots(ctx, dependencies)
+}
+
+// ResolveMultiple resolves multiple packages in parallel.
+func (r *Resolver) ResolveMultiple(
+	ctx context.Context,
+	packages []PackageDependency,
+) ([]*ResolutionResult, error) {
+	return r.parallelResolver.ResolveMultiplePackages(ctx, packages)
+}
+
+// ResolveBatch resolves packages in batches for better resource control.
+func (r *Resolver) ResolveBatch(
+	ctx context.Context,
+	packages []PackageDependency,
+	batchSize int,
+) ([]*ResolutionResult, error) {
+	return r.parallelResolver.BatchResolve(ctx, packages, batchSize)
 }
