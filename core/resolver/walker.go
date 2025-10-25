@@ -315,7 +315,8 @@ func (w *DependencyWalker) fetchDependency(
 			continue
 		}
 
-		// Find best match for version range (return highest version that satisfies range)
+		// Find best match for version range (return lowest version that satisfies range)
+		// NuGet uses "minimum dependency version" strategy to ensure compatibility
 		var bestMatch *PackageDependencyInfo
 		for _, pkg := range packages {
 			pkgVersion, err := version.Parse(pkg.Version)
@@ -325,12 +326,12 @@ func (w *DependencyWalker) fetchDependency(
 
 			// Check if this version satisfies the range
 			if versionRange.Satisfies(pkgVersion) {
-				// Keep the highest satisfying version
+				// Keep the lowest satisfying version (NuGet's minimum dependency version strategy)
 				if bestMatch == nil {
 					bestMatch = pkg
 				} else {
 					bestVersion, _ := version.Parse(bestMatch.Version)
-					if pkgVersion.Compare(bestVersion) > 0 {
+					if pkgVersion.Compare(bestVersion) < 0 {
 						bestMatch = pkg
 					}
 				}

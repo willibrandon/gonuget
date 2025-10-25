@@ -111,6 +111,8 @@ func main() {
 	// Resolver operations
 	case "walk_graph":
 		handler = &WalkGraphHandler{}
+	case "resolve_conflicts":
+		handler = &ResolveConflictsHandler{}
 
 	default:
 		sendError("ACT_001", "Unknown action", fmt.Sprintf("action=%s", req.Action))

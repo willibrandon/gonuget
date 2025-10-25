@@ -691,6 +691,7 @@ func (m *mockPackageMetadataClient) GetPackageMetadata(
 
 func TestDependencyWalker_MultipleVersions(t *testing.T) {
 	// Test version range matching with multiple versions available
+	// NuGet uses "minimum dependency version" strategy - select lowest version that satisfies range
 	client := &mockPackageMetadataClient{
 		packages: map[string]*PackageDependencyInfo{
 			"A|1.0.0": {
@@ -714,13 +715,13 @@ func TestDependencyWalker_MultipleVersions(t *testing.T) {
 		t.Fatalf("Walk() failed: %v", err)
 	}
 
-	// Should select highest version in range [1.0.0, 2.0.0) which is 1.5.0
+	// Should select lowest version in range [1.0.0, 2.0.0) which is 1.0.0 (minimum dependency version)
 	if len(node.InnerNodes) != 1 {
 		t.Fatalf("Expected 1 child, got %d", len(node.InnerNodes))
 	}
 
-	if node.InnerNodes[0].Item.Version != "1.5.0" {
-		t.Errorf("Expected B version 1.5.0 (highest in range), got %s", node.InnerNodes[0].Item.Version)
+	if node.InnerNodes[0].Item.Version != "1.0.0" {
+		t.Errorf("Expected B version 1.0.0 (lowest in range), got %s", node.InnerNodes[0].Item.Version)
 	}
 }
 
@@ -858,5 +859,167 @@ func TestDependencyWalker_StackTraversalOrder(t *testing.T) {
 	}
 	if c.InnerNodes[0].Depth != 2 {
 		t.Errorf("Expected E depth 2, got %d", c.InnerNodes[0].Depth)
+	}
+}
+
+// TestDependencyWalker_MinimumVersionStrategy_ExactVersion verifies that exact version
+// constraints [x.y.z] select exactly that version, matching NuGet.Client behavior.
+func TestDependencyWalker_MinimumVersionStrategy_ExactVersion(t *testing.T) {
+	client := &mockPackageMetadataClient{
+		packages: map[string]*PackageDependencyInfo{
+			"A|1.0.0": {
+				ID:      "A",
+				Version: "1.0.0",
+				Dependencies: []PackageDependency{
+					{ID: "B", VersionRange: "[2.0.0]"}, // Exact version
+				},
+			},
+			"B|1.0.0": {ID: "B", Version: "1.0.0", Dependencies: []PackageDependency{}},
+			"B|2.0.0": {ID: "B", Version: "2.0.0", Dependencies: []PackageDependency{}},
+			"B|3.0.0": {ID: "B", Version: "3.0.0", Dependencies: []PackageDependency{}},
+		},
+	}
+
+	walker := NewDependencyWalker(client, []string{"source1"}, "net8.0")
+	node, err := walker.Walk(context.Background(), "A", "[1.0.0]", "net8.0")
+
+	if err != nil {
+		t.Fatalf("Walk() failed: %v", err)
+	}
+
+	// Exact version [2.0.0] should select only 2.0.0
+	if len(node.InnerNodes) != 1 {
+		t.Fatalf("Expected 1 child, got %d", len(node.InnerNodes))
+	}
+	if node.InnerNodes[0].Item.Version != "2.0.0" {
+		t.Errorf("Expected B version 2.0.0, got %s", node.InnerNodes[0].Item.Version)
+	}
+}
+
+// TestDependencyWalker_MinimumVersionStrategy_MinimumInclusive verifies that
+// minimum inclusive constraints (x.y.z,) select the lowest version >= x.y.z,
+// matching NuGet.Client's minimum dependency version strategy.
+func TestDependencyWalker_MinimumVersionStrategy_MinimumInclusive(t *testing.T) {
+	client := &mockPackageMetadataClient{
+		packages: map[string]*PackageDependencyInfo{
+			"A|1.0.0": {
+				ID:      "A",
+				Version: "1.0.0",
+				Dependencies: []PackageDependency{
+					{ID: "B", VersionRange: "2.0.0"}, // Minimum version (open-ended)
+				},
+			},
+			"B|1.0.0": {ID: "B", Version: "1.0.0", Dependencies: []PackageDependency{}},
+			"B|2.0.0": {ID: "B", Version: "2.0.0", Dependencies: []PackageDependency{}},
+			"B|3.0.0": {ID: "B", Version: "3.0.0", Dependencies: []PackageDependency{}},
+		},
+	}
+
+	walker := NewDependencyWalker(client, []string{"source1"}, "net8.0")
+	node, err := walker.Walk(context.Background(), "A", "[1.0.0]", "net8.0")
+
+	if err != nil {
+		t.Fatalf("Walk() failed: %v", err)
+	}
+
+	// Open-ended range >=2.0.0 should select minimum satisfying version (2.0.0, not 3.0.0)
+	if len(node.InnerNodes) != 1 {
+		t.Fatalf("Expected 1 child, got %d", len(node.InnerNodes))
+	}
+	if node.InnerNodes[0].Item.Version != "2.0.0" {
+		t.Errorf("Expected B version 2.0.0 (minimum in range), got %s", node.InnerNodes[0].Item.Version)
+	}
+}
+
+// TestDependencyWalker_MinimumVersionStrategy_RangeExclusiveMax verifies that
+// range constraints [x,y) select the lowest version in range, matching NuGet.Client.
+func TestDependencyWalker_MinimumVersionStrategy_RangeExclusiveMax(t *testing.T) {
+	client := &mockPackageMetadataClient{
+		packages: map[string]*PackageDependencyInfo{
+			"A|1.0.0": {
+				ID:      "A",
+				Version: "1.0.0",
+				Dependencies: []PackageDependency{
+					{ID: "B", VersionRange: "[2.0.0,4.0.0)"}, // Range with exclusive max
+				},
+			},
+			"B|1.0.0": {ID: "B", Version: "1.0.0", Dependencies: []PackageDependency{}},
+			"B|2.0.0": {ID: "B", Version: "2.0.0", Dependencies: []PackageDependency{}},
+			"B|2.5.0": {ID: "B", Version: "2.5.0", Dependencies: []PackageDependency{}},
+			"B|3.0.0": {ID: "B", Version: "3.0.0", Dependencies: []PackageDependency{}},
+			"B|4.0.0": {ID: "B", Version: "4.0.0", Dependencies: []PackageDependency{}},
+		},
+	}
+
+	walker := NewDependencyWalker(client, []string{"source1"}, "net8.0")
+	node, err := walker.Walk(context.Background(), "A", "[1.0.0]", "net8.0")
+
+	if err != nil {
+		t.Fatalf("Walk() failed: %v", err)
+	}
+
+	// Range [2.0.0,4.0.0) should select minimum (2.0.0), not maximum (3.0.0)
+	if len(node.InnerNodes) != 1 {
+		t.Fatalf("Expected 1 child, got %d", len(node.InnerNodes))
+	}
+	if node.InnerNodes[0].Item.Version != "2.0.0" {
+		t.Errorf("Expected B version 2.0.0 (minimum in range), got %s", node.InnerNodes[0].Item.Version)
+	}
+}
+
+// TestDependencyWalker_MinimumVersionStrategy_TransitiveDeps verifies that
+// transitive dependencies also use minimum version selection, matching NuGet.Client.
+func TestDependencyWalker_MinimumVersionStrategy_TransitiveDeps(t *testing.T) {
+	client := &mockPackageMetadataClient{
+		packages: map[string]*PackageDependencyInfo{
+			"A|1.0.0": {
+				ID:      "A",
+				Version: "1.0.0",
+				Dependencies: []PackageDependency{
+					{ID: "B", VersionRange: "[1.0.0,2.0.0)"},
+				},
+			},
+			"B|1.0.0": {
+				ID:      "B",
+				Version: "1.0.0",
+				Dependencies: []PackageDependency{
+					{ID: "C", VersionRange: "[3.0.0,5.0.0)"}, // Transitive dep
+				},
+			},
+			"B|1.5.0": {
+				ID:      "B",
+				Version: "1.5.0",
+				Dependencies: []PackageDependency{
+					{ID: "C", VersionRange: "[4.0.0,5.0.0)"},
+				},
+			},
+			"C|3.0.0": {ID: "C", Version: "3.0.0", Dependencies: []PackageDependency{}},
+			"C|4.0.0": {ID: "C", Version: "4.0.0", Dependencies: []PackageDependency{}},
+			"C|4.5.0": {ID: "C", Version: "4.5.0", Dependencies: []PackageDependency{}},
+		},
+	}
+
+	walker := NewDependencyWalker(client, []string{"source1"}, "net8.0")
+	node, err := walker.Walk(context.Background(), "A", "[1.0.0]", "net8.0")
+
+	if err != nil {
+		t.Fatalf("Walk() failed: %v", err)
+	}
+
+	// Should select B 1.0.0 (minimum)
+	if len(node.InnerNodes) != 1 {
+		t.Fatalf("Expected 1 child, got %d", len(node.InnerNodes))
+	}
+	bNode := node.InnerNodes[0]
+	if bNode.Item.Version != "1.0.0" {
+		t.Errorf("Expected B version 1.0.0, got %s", bNode.Item.Version)
+	}
+
+	// Should select C 3.0.0 (minimum for B 1.0.0's range [3.0.0,5.0.0))
+	if len(bNode.InnerNodes) != 1 {
+		t.Fatalf("Expected 1 grandchild, got %d", len(bNode.InnerNodes))
+	}
+	if bNode.InnerNodes[0].Item.Version != "3.0.0" {
+		t.Errorf("Expected C version 3.0.0 (minimum in transitive range), got %s", bNode.InnerNodes[0].Item.Version)
 	}
 }

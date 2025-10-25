@@ -1,5 +1,3 @@
-using System.Collections.Generic;
-
 namespace GonugetInterop.Tests.TestHelpers;
 
 /// <summary>
@@ -8,11 +6,6 @@ namespace GonugetInterop.Tests.TestHelpers;
 /// </summary>
 public sealed class GraphNodeData
 {
-    /// <summary>
-    /// Unique key for this node (packageID|version).
-    /// </summary>
-    public string Key { get; set; } = string.Empty;
-
     /// <summary>
     /// Package ID.
     /// </summary>
@@ -34,12 +27,7 @@ public sealed class GraphNodeData
     public int Depth { get; set; }
 
     /// <summary>
-    /// Child nodes (dependencies).
+    /// Package IDs of dependencies (just IDs, not full node data).
     /// </summary>
-    public List<GraphNodeData> InnerNodes { get; set; } = new();
-
-    /// <summary>
-    /// Edge from parent to this node (null for root).
-    /// </summary>
-    public GraphEdgeData? OuterEdge { get; set; }
+    public string[] Dependencies { get; set; } = [];
 }

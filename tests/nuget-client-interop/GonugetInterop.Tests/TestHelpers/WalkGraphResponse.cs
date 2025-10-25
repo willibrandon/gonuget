@@ -6,7 +6,17 @@ namespace GonugetInterop.Tests.TestHelpers;
 public sealed class WalkGraphResponse
 {
     /// <summary>
-    /// Root node of the dependency graph.
+    /// All nodes in the graph as a flat array.
     /// </summary>
-    public GraphNodeData RootNode { get; set; } = null!;
+    public GraphNodeData[] Nodes { get; set; } = [];
+
+    /// <summary>
+    /// Package IDs that created cycles (e.g., "A -> B -> A").
+    /// </summary>
+    public string[] Cycles { get; set; } = [];
+
+    /// <summary>
+    /// Detected downgrade warnings.
+    /// </summary>
+    public DowngradeInfo[] Downgrades { get; set; } = [];
 }

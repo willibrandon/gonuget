@@ -234,9 +234,7 @@ func (h *VerifySignatureHandler) Handle(data json.RawMessage) (interface{}, erro
 	for _, err := range result.Errors {
 		resp.Errors = append(resp.Errors, err.Error())
 	}
-	for _, warn := range result.Warnings {
-		resp.Warnings = append(resp.Warnings, warn)
-	}
+	resp.Warnings = append(resp.Warnings, result.Warnings...)
 
 	// Extract signer subject if available
 	if sig.SignerCertificate != nil {

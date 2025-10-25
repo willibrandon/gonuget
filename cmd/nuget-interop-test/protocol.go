@@ -434,57 +434,75 @@ type WalkGraphRequest struct {
 	Sources []string `json:"sources"`
 }
 
-// WalkGraphResponse contains the dependency graph.
+// WalkGraphResponse contains the dependency graph in flat array format.
 type WalkGraphResponse struct {
-	// RootNode is the root of the dependency graph.
-	RootNode GraphNodeData `json:"rootNode"`
+	// Nodes is the flat array of all graph nodes.
+	Nodes []GraphNodeData `json:"nodes"`
+
+	// Cycles is the array of detected circular dependencies (package IDs).
+	Cycles []string `json:"cycles"`
+
+	// Downgrades is the array of detected version downgrades.
+	Downgrades []DowngradeInfo `json:"downgrades"`
 }
 
 // GraphNodeData represents a node in the dependency graph.
 // Matches the C# GraphNodeData structure.
 type GraphNodeData struct {
-	// Key is the unique identifier for this node (packageID|version).
-	Key string `json:"key"`
-
 	// PackageID is the package identifier.
 	PackageID string `json:"packageId"`
 
 	// Version is the package version.
 	Version string `json:"version"`
 
-	// Disposition is the node state (Acceptable, Rejected, Cycle, etc.).
+	// Disposition is the node state (Acceptable, Rejected, Accepted, PotentiallyDowngraded, Cycle).
 	Disposition string `json:"disposition"`
 
 	// Depth is the distance from root (0 for root).
 	Depth int `json:"depth"`
 
-	// InnerNodes are the child nodes (dependencies).
-	InnerNodes []GraphNodeData `json:"innerNodes"`
-
-	// OuterEdge is the edge from parent to this node (nil for root).
-	OuterEdge *GraphEdgeData `json:"outerEdge,omitempty"`
+	// Dependencies are the package IDs of direct dependencies (not full node data).
+	Dependencies []string `json:"dependencies"`
 }
 
-// GraphEdgeData represents an edge between nodes in the dependency graph.
-type GraphEdgeData struct {
-	// ParentPackageID is the package ID of the parent node.
-	ParentPackageID string `json:"parentPackageId"`
+// DowngradeInfo represents a detected version downgrade.
+type DowngradeInfo struct {
+	// PackageID is the package being downgraded.
+	PackageID string `json:"packageId"`
 
-	// ParentVersion is the version of the parent node.
-	ParentVersion string `json:"parentVersion"`
+	// FromVersion is the current (higher) version.
+	FromVersion string `json:"fromVersion"`
 
-	// Dependency is the dependency that created this edge.
-	Dependency DependencyData `json:"dependency"`
+	// ToVersion is the target (lower) version.
+	ToVersion string `json:"toVersion"`
 }
 
-// DependencyData represents a package dependency.
-type DependencyData struct {
-	// ID is the package ID of the dependency.
-	ID string `json:"id"`
+// ResolveConflictsRequest resolves version conflicts in a dependency set.
+type ResolveConflictsRequest struct {
+	// PackageIDs are the package identifiers to resolve.
+	PackageIDs []string `json:"packageIds"`
 
-	// VersionRange is the version constraint.
-	VersionRange string `json:"versionRange"`
+	// VersionRanges are the version constraints for each package.
+	VersionRanges []string `json:"versionRanges"`
 
-	// TargetFramework is the target framework (empty for all frameworks).
+	// TargetFramework is the target framework.
 	TargetFramework string `json:"targetFramework"`
+}
+
+// ResolveConflictsResponse contains the resolved packages.
+type ResolveConflictsResponse struct {
+	// Packages are the resolved packages after conflict resolution.
+	Packages []ResolvedPackage `json:"packages"`
+}
+
+// ResolvedPackage represents a package after conflict resolution.
+type ResolvedPackage struct {
+	// PackageID is the package identifier.
+	PackageID string `json:"packageId"`
+
+	// Version is the selected version.
+	Version string `json:"version"`
+
+	// Depth is the depth in the dependency graph.
+	Depth int `json:"depth"`
 }

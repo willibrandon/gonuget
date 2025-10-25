@@ -96,8 +96,3 @@ func isPFX(data []byte) bool {
 	}
 	return data[0] == 0x30
 }
-
-// formatError formats an error with context for debugging.
-func formatError(operation string, err error) error {
-	return fmt.Errorf("%s: %w", operation, err)
-}

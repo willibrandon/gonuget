@@ -506,6 +506,28 @@ public static class GonugetBridge
     }
 
     /// <summary>
+    /// Resolves version conflicts in a dependency graph.
+    /// </summary>
+    public static ResolveConflictsResponse ResolveConflicts(
+        string[] packageIds,
+        string[] versionRanges,
+        string targetFramework)
+    {
+        var request = new
+        {
+            action = "resolve_conflicts",
+            data = new
+            {
+                packageIds,
+                versionRanges,
+                targetFramework
+            }
+        };
+
+        return Execute<ResolveConflictsResponse>(request);
+    }
+
+    /// <summary>
     /// Finds the gonuget executable in the test output directory or build location.
     /// </summary>
     private static string FindGonugetExecutable()
