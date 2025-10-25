@@ -79,7 +79,7 @@ Create a bidirectional interop test suite using C# projects that consume NuGet.C
         ┌─────────────────────┼─────────────────────┐
         │                     │                     │
         ▼                     ▼                     ▼
-┌──────────────┐    ┌──────────────────┐   ┌──────────────┐
+┌──────────────┐    ┌──────────────────┐    ┌──────────────┐
 │   C# Test    │◄──►│  Go CLI Bridge   │◄──►│  gonuget     │
 │   Project    │    │  (JSON/Process)  │    │  Library     │
 │  (xUnit)     │    └──────────────────┘    └──────────────┘
