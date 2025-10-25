@@ -82,21 +82,21 @@ func (c *Console) SetColors(enabled bool) {
 func (c *Console) Print(a ...any) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	fmt.Fprint(c.out, a...)
+	_, _ = fmt.Fprint(c.out, a...)
 }
 
 // Println writes line to output
 func (c *Console) Println(a ...any) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	fmt.Fprintln(c.out, a...)
+	_, _ = fmt.Fprintln(c.out, a...)
 }
 
 // Printf writes formatted output
 func (c *Console) Printf(format string, a ...any) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	fmt.Fprintf(c.out, format, a...)
+	_, _ = fmt.Fprintf(c.out, format, a...)
 }
 
 // Success writes success message (green)
@@ -105,9 +105,9 @@ func (c *Console) Success(format string, a ...any) {
 		c.mu.Lock()
 		defer c.mu.Unlock()
 		if c.colors {
-			ColorSuccess.Fprintf(c.out, format+"\n", a...)
+			_, _ = ColorSuccess.Fprintf(c.out, format+"\n", a...)
 		} else {
-			fmt.Fprintf(c.out, format+"\n", a...)
+			_, _ = fmt.Fprintf(c.out, format+"\n", a...)
 		}
 	}
 }
@@ -117,9 +117,9 @@ func (c *Console) Error(format string, a ...any) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.colors {
-		ColorError.Fprintf(c.err, "Error: "+format+"\n", a...)
+		_, _ = ColorError.Fprintf(c.err, "Error: "+format+"\n", a...)
 	} else {
-		fmt.Fprintf(c.err, "Error: "+format+"\n", a...)
+		_, _ = fmt.Fprintf(c.err, "Error: "+format+"\n", a...)
 	}
 }
 
@@ -129,9 +129,9 @@ func (c *Console) Warning(format string, a ...any) {
 		c.mu.Lock()
 		defer c.mu.Unlock()
 		if c.colors {
-			ColorWarning.Fprintf(c.out, "Warning: "+format+"\n", a...)
+			_, _ = ColorWarning.Fprintf(c.out, "Warning: "+format+"\n", a...)
 		} else {
-			fmt.Fprintf(c.out, "Warning: "+format+"\n", a...)
+			_, _ = fmt.Fprintf(c.out, "Warning: "+format+"\n", a...)
 		}
 	}
 }
@@ -142,9 +142,9 @@ func (c *Console) Info(format string, a ...any) {
 		c.mu.Lock()
 		defer c.mu.Unlock()
 		if c.colors {
-			ColorInfo.Fprintf(c.out, format+"\n", a...)
+			_, _ = ColorInfo.Fprintf(c.out, format+"\n", a...)
 		} else {
-			fmt.Fprintf(c.out, format+"\n", a...)
+			_, _ = fmt.Fprintf(c.out, format+"\n", a...)
 		}
 	}
 }
@@ -155,9 +155,9 @@ func (c *Console) Debug(format string, a ...any) {
 		c.mu.Lock()
 		defer c.mu.Unlock()
 		if c.colors {
-			ColorDebug.Fprintf(c.out, "[DEBUG] "+format+"\n", a...)
+			_, _ = ColorDebug.Fprintf(c.out, "[DEBUG] "+format+"\n", a...)
 		} else {
-			fmt.Fprintf(c.out, "[DEBUG] "+format+"\n", a...)
+			_, _ = fmt.Fprintf(c.out, "[DEBUG] "+format+"\n", a...)
 		}
 	}
 }
@@ -167,6 +167,6 @@ func (c *Console) Detail(format string, a ...any) {
 	if c.verbosity >= VerbosityDetailed {
 		c.mu.Lock()
 		defer c.mu.Unlock()
-		fmt.Fprintf(c.out, format+"\n", a...)
+		_, _ = fmt.Fprintf(c.out, format+"\n", a...)
 	}
 }

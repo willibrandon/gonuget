@@ -86,7 +86,7 @@ func LoadNuGetConfig(path string) (*NuGetConfig, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to open config file: %w", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	return ParseNuGetConfig(f)
 }
@@ -115,7 +115,7 @@ func SaveNuGetConfig(path string, config *NuGetConfig) error {
 	if err != nil {
 		return fmt.Errorf("failed to create config file: %w", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	return WriteNuGetConfig(f, config)
 }

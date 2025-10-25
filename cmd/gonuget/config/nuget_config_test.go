@@ -391,9 +391,9 @@ func TestFindConfigFile_WithExisting(t *testing.T) {
 
 	// Change to temp directory
 	origDir, _ := os.Getwd()
-	defer os.Chdir(origDir)
+	defer func() { _ = os.Chdir(origDir) }()
 
-	os.Chdir(tmpDir)
+	_ = os.Chdir(tmpDir)
 
 	// Create config in current directory
 	configPath := tmpDir + "/NuGet.config"

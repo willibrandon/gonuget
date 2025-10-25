@@ -30,6 +30,7 @@ func main() {
 
 	// Register commands
 	cli.AddCommand(commands.NewVersionCommand(cli.Console))
+	cli.AddCommand(commands.NewConfigCommand(cli.Console))
 
 	// Handle signals for graceful shutdown
 	sigChan := make(chan os.Signal, 1)
