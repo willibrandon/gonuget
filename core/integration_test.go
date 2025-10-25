@@ -362,3 +362,91 @@ func TestIntegration_Client_GetCompatibleDependencies(t *testing.T) {
 	// Just verify no error - Newtonsoft.Json may or may not have deps
 	_ = deps
 }
+
+// TestIntegration_Client_ResolvePackageDependencies tests dependency resolution
+// against real NuGet.org packages
+func TestIntegration_Client_ResolvePackageDependencies(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
+	httpClient := nugethttp.NewClient(nil)
+	repoManager := NewRepositoryManager()
+
+	repo := NewSourceRepository(RepositoryConfig{
+		Name:       "nuget.org",
+		SourceURL:  nugetOrgV3,
+		HTTPClient: httpClient,
+	})
+	err := repoManager.AddRepository(repo)
+	if err != nil {
+		t.Fatalf("Failed to add repository: %v", err)
+	}
+
+	// Create client with target framework
+	fw, err := frameworks.ParseFramework("net8.0")
+	if err != nil {
+		t.Fatalf("ParseFramework() error = %v", err)
+	}
+
+	client := NewClient(ClientConfig{
+		RepositoryManager: repoManager,
+		TargetFramework:   fw,
+	})
+
+	ctx := context.Background()
+
+	// Test resolving Microsoft.Extensions.Logging 8.0.0
+	// This package has known dependencies we can verify
+	result, err := client.ResolvePackageDependencies(ctx, "Microsoft.Extensions.Logging", "8.0.0")
+	if err != nil {
+		t.Fatalf("ResolvePackageDependencies() error = %v", err)
+	}
+
+	// Verify result structure
+	if result == nil {
+		t.Fatal("ResolvePackageDependencies() returned nil result")
+	}
+
+	// Verify we got packages back
+	if len(result.Packages) == 0 {
+		t.Fatal("ResolvePackageDependencies() returned no packages")
+	}
+
+	// Verify the root package is included
+	foundRoot := false
+	for _, pkg := range result.Packages {
+		if pkg.ID == "Microsoft.Extensions.Logging" && pkg.Version == "8.0.0" {
+			foundRoot = true
+			break
+		}
+	}
+	if !foundRoot {
+		t.Error("ResolvePackageDependencies() result missing root package Microsoft.Extensions.Logging 8.0.0")
+	}
+
+	// Verify known dependencies are included (Microsoft.Extensions.Logging 8.0.0 depends on these)
+	expectedDeps := []string{
+		"Microsoft.Extensions.Logging.Abstractions",
+		"Microsoft.Extensions.DependencyInjection",
+		"Microsoft.Extensions.DependencyInjection.Abstractions",
+		"Microsoft.Extensions.Options",
+	}
+
+	for _, expectedDep := range expectedDeps {
+		found := false
+		for _, pkg := range result.Packages {
+			if pkg.ID == expectedDep {
+				found = true
+				// For 8.0.0, dependencies should also be 8.0.0 (minimum dependency version)
+				if pkg.Version != "8.0.0" {
+					t.Errorf("Package %s has version %s, expected 8.0.0 (minimum dependency version)", pkg.ID, pkg.Version)
+				}
+				break
+			}
+		}
+		if !found {
+			t.Errorf("ResolvePackageDependencies() result missing expected dependency: %s", expectedDep)
+		}
+	}
+}
