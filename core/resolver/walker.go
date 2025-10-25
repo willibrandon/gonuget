@@ -296,53 +296,51 @@ func (w *DependencyWalker) fetchDependency(
 	dep PackageDependency,
 	targetFramework string,
 ) (*PackageDependencyInfo, error) {
-	// Check cache first
 	cacheKey := fmt.Sprintf("%s|%s|%s", dep.ID, dep.VersionRange, targetFramework)
-	if cached := w.cache.Get(cacheKey); cached != nil {
-		return cached, nil
-	}
 
-	// Parse version range
-	versionRange, err := version.ParseVersionRange(dep.VersionRange)
-	if err != nil {
-		return nil, fmt.Errorf("parse version range %q: %w", dep.VersionRange, err)
-	}
-
-	// Try all sources
-	for _, source := range w.sources {
-		packages, err := w.client.GetPackageMetadata(ctx, source, dep.ID)
+	// Use operation cache to deduplicate concurrent fetches
+	return w.cache.GetOrFetch(ctx, cacheKey, func(ctx context.Context) (*PackageDependencyInfo, error) {
+		// Parse version range
+		versionRange, err := version.ParseVersionRange(dep.VersionRange)
 		if err != nil {
-			continue
+			return nil, fmt.Errorf("parse version range %q: %w", dep.VersionRange, err)
 		}
 
-		// Find best match for version range (return lowest version that satisfies range)
-		// NuGet uses "minimum dependency version" strategy to ensure compatibility
-		var bestMatch *PackageDependencyInfo
-		for _, pkg := range packages {
-			pkgVersion, err := version.Parse(pkg.Version)
+		// Try all sources
+		for _, source := range w.sources {
+			packages, err := w.client.GetPackageMetadata(ctx, source, dep.ID)
 			if err != nil {
-				continue // Skip invalid versions
+				continue
 			}
 
-			// Check if this version satisfies the range
-			if versionRange.Satisfies(pkgVersion) {
-				// Keep the lowest satisfying version (NuGet's minimum dependency version strategy)
-				if bestMatch == nil {
-					bestMatch = pkg
-				} else {
-					bestVersion, _ := version.Parse(bestMatch.Version)
-					if pkgVersion.Compare(bestVersion) < 0 {
+			// Find best match for version range (return lowest version that satisfies range)
+			// NuGet uses "minimum dependency version" strategy to ensure compatibility
+			var bestMatch *PackageDependencyInfo
+			for _, pkg := range packages {
+				pkgVersion, err := version.Parse(pkg.Version)
+				if err != nil {
+					continue // Skip invalid versions
+				}
+
+				// Check if this version satisfies the range
+				if versionRange.Satisfies(pkgVersion) {
+					// Keep the lowest satisfying version (NuGet's minimum dependency version strategy)
+					if bestMatch == nil {
 						bestMatch = pkg
+					} else {
+						bestVersion, _ := version.Parse(bestMatch.Version)
+						if pkgVersion.Compare(bestVersion) < 0 {
+							bestMatch = pkg
+						}
 					}
 				}
 			}
+
+			if bestMatch != nil {
+				return bestMatch, nil
+			}
 		}
 
-		if bestMatch != nil {
-			w.cache.Set(cacheKey, bestMatch)
-			return bestMatch, nil
-		}
-	}
-
-	return nil, nil // Not found
+		return nil, nil // Not found
+	})
 }
