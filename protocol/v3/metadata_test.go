@@ -111,7 +111,7 @@ func TestMetadataClient_GetPackageMetadata(t *testing.T) {
 
 	ctx := context.Background()
 
-	index, err := client.GetPackageMetadata(ctx, server.URL, "Newtonsoft.Json")
+	index, err := client.GetPackageMetadata(ctx, server.URL+"/index.json", "Newtonsoft.Json")
 	if err != nil {
 		t.Fatalf("GetPackageMetadata() error = %v", err)
 	}
@@ -162,7 +162,7 @@ func TestMetadataClient_GetVersionMetadata(t *testing.T) {
 
 	ctx := context.Background()
 
-	catalog, err := client.GetVersionMetadata(ctx, server.URL, "Newtonsoft.Json", "13.0.3")
+	catalog, err := client.GetVersionMetadata(ctx, server.URL+"/index.json", "Newtonsoft.Json", "13.0.3")
 	if err != nil {
 		t.Fatalf("GetVersionMetadata() error = %v", err)
 	}
@@ -186,7 +186,7 @@ func TestMetadataClient_GetVersionMetadata_NotFound(t *testing.T) {
 
 	ctx := context.Background()
 
-	_, err := client.GetVersionMetadata(ctx, server.URL, "Newtonsoft.Json", "99.0.0")
+	_, err := client.GetVersionMetadata(ctx, server.URL+"/index.json", "Newtonsoft.Json", "99.0.0")
 	if err == nil {
 		t.Error("expected error for non-existent version")
 	}
@@ -203,7 +203,7 @@ func TestMetadataClient_ListVersions(t *testing.T) {
 
 	ctx := context.Background()
 
-	versions, err := client.ListVersions(ctx, server.URL, "Newtonsoft.Json")
+	versions, err := client.ListVersions(ctx, server.URL+"/index.json", "Newtonsoft.Json")
 	if err != nil {
 		t.Fatalf("ListVersions() error = %v", err)
 	}
@@ -226,7 +226,7 @@ func TestMetadataClient_PackageNotFound(t *testing.T) {
 
 	ctx := context.Background()
 
-	_, err := client.GetPackageMetadata(ctx, server.URL, "NonExistent.Package")
+	_, err := client.GetPackageMetadata(ctx, server.URL+"/index.json", "NonExistent.Package")
 	if err == nil {
 		t.Error("expected error for non-existent package")
 	}

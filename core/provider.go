@@ -141,30 +141,33 @@ func (f *ProviderFactory) CreateProvider(ctx context.Context, sourceURL string) 
 	// directly using the HTTPClient interface.
 
 	// Try v3 first (modern protocol) - make direct HTTP call with authentication
-	indexURL := sourceURL
-	if indexURL[len(indexURL)-1] != '/' {
-		indexURL += "/"
-	}
-	indexURL += "index.json"
-
-	resp, err := f.httpClient.Get(ctx, indexURL)
+	// Use source URL as-is for NuGet.Client parity (M6.1)
+	// Callers must provide full service index URL (e.g., https://api.nuget.org/v3/index.json)
+	resp, err := f.httpClient.Get(ctx, sourceURL)
 	if err == nil {
 		_ = resp.Body.Close()
 		if resp.StatusCode == http.StatusOK {
-			// V3 feed detected
-			return NewV3ResourceProvider(sourceURL, f.httpClient, f.cache), nil
+			contentType := resp.Header.Get("Content-Type")
+			// V3 service index should return JSON
+			if strings.Contains(contentType, "json") {
+				// V3 feed detected
+				return NewV3ResourceProvider(sourceURL, f.httpClient, f.cache), nil
+			}
 		}
 	}
 
 	// Try v2 - make direct HTTP call with authentication
-	resp, err = f.httpClient.Get(ctx, sourceURL)
+	// For V2 detection, strip /index.json if present (V2 doesn't use service index)
+	v2URL := strings.TrimSuffix(sourceURL, "/index.json")
+
+	resp, err = f.httpClient.Get(ctx, v2URL)
 	if err == nil {
 		defer func() { _ = resp.Body.Close() }()
 		if resp.StatusCode == http.StatusOK {
 			contentType := resp.Header.Get("Content-Type")
 			// V2 feeds typically return XML
 			if strings.Contains(contentType, "xml") || strings.Contains(contentType, "atom") {
-				return NewV2ResourceProvider(sourceURL, f.httpClient, f.cache), nil
+				return NewV2ResourceProvider(v2URL, f.httpClient, f.cache), nil
 			}
 		}
 	}

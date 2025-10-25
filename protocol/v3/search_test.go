@@ -84,7 +84,7 @@ func TestSearchClient_Search(t *testing.T) {
 
 	ctx := context.Background()
 
-	resp, err := client.Search(ctx, server.URL, SearchOptions{
+	resp, err := client.Search(ctx, server.URL+"/index.json", SearchOptions{
 		Query:      "newtonsoft",
 		Take:       20,
 		Prerelease: true,
@@ -161,7 +161,7 @@ func TestSearchClient_SearchWithPagination(t *testing.T) {
 
 	ctx := context.Background()
 
-	_, err := client.Search(ctx, server.URL, SearchOptions{
+	_, err := client.Search(ctx, server.URL+"/index.json", SearchOptions{
 		Query: "test",
 		Skip:  10,
 		Take:  5,
@@ -178,7 +178,7 @@ func TestSearchClient_SearchSimple(t *testing.T) {
 
 	ctx := context.Background()
 
-	resp, err := client.SearchSimple(ctx, server.URL, "newtonsoft")
+	resp, err := client.SearchSimple(ctx, server.URL+"/index.json", "newtonsoft")
 	if err != nil {
 		t.Fatalf("SearchSimple() error = %v", err)
 	}

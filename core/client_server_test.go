@@ -84,6 +84,7 @@ func createTestServer() *httptest.Server {
 
 		case r.URL.Path == "/index.json":
 			// Service index (must come AFTER more specific paths like /registration/)
+			w.Header().Set("Content-Type", "application/json")
 			index := map[string]any{
 				"version": "3.0.0",
 				"resources": []map[string]any{
@@ -137,7 +138,7 @@ func TestClient_FindBestVersion(t *testing.T) {
 
 	repo := NewSourceRepository(RepositoryConfig{
 		Name:       "test",
-		SourceURL:  server.URL,
+		SourceURL:  server.URL + "/index.json",
 		HTTPClient: httpClient,
 	})
 	_ = repoManager.AddRepository(repo)
@@ -168,7 +169,7 @@ func TestClient_FindBestVersion_NoMatch(t *testing.T) {
 
 	repo := NewSourceRepository(RepositoryConfig{
 		Name:       "test",
-		SourceURL:  server.URL,
+		SourceURL:  server.URL + "/index.json",
 		HTTPClient: httpClient,
 	})
 	_ = repoManager.AddRepository(repo)
@@ -195,7 +196,7 @@ func TestClient_ResolvePackageVersion_Exact(t *testing.T) {
 
 	repo := NewSourceRepository(RepositoryConfig{
 		Name:       "test",
-		SourceURL:  server.URL,
+		SourceURL:  server.URL + "/index.json",
 		HTTPClient: httpClient,
 	})
 	_ = repoManager.AddRepository(repo)
@@ -224,7 +225,7 @@ func TestClient_ResolvePackageVersion_Range(t *testing.T) {
 
 	repo := NewSourceRepository(RepositoryConfig{
 		Name:       "test",
-		SourceURL:  server.URL,
+		SourceURL:  server.URL + "/index.json",
 		HTTPClient: httpClient,
 	})
 	_ = repoManager.AddRepository(repo)
@@ -253,7 +254,7 @@ func TestClient_ResolvePackageVersion_NotFound(t *testing.T) {
 
 	repo := NewSourceRepository(RepositoryConfig{
 		Name:       "test",
-		SourceURL:  server.URL,
+		SourceURL:  server.URL + "/index.json",
 		HTTPClient: httpClient,
 	})
 	_ = repoManager.AddRepository(repo)
@@ -278,7 +279,7 @@ func TestClient_SearchPackages(t *testing.T) {
 
 	repo := NewSourceRepository(RepositoryConfig{
 		Name:       "test",
-		SourceURL:  server.URL,
+		SourceURL:  server.URL + "/index.json",
 		HTTPClient: httpClient,
 	})
 	_ = repoManager.AddRepository(repo)
@@ -309,7 +310,7 @@ func TestSourceRepository_GetMetadata(t *testing.T) {
 	httpClient := nugethttp.NewClient(nil)
 	repo := NewSourceRepository(RepositoryConfig{
 		Name:       "test",
-		SourceURL:  server.URL,
+		SourceURL:  server.URL + "/index.json",
 		HTTPClient: httpClient,
 	})
 
@@ -331,7 +332,7 @@ func TestSourceRepository_ListVersions(t *testing.T) {
 	httpClient := nugethttp.NewClient(nil)
 	repo := NewSourceRepository(RepositoryConfig{
 		Name:       "test",
-		SourceURL:  server.URL,
+		SourceURL:  server.URL + "/index.json",
 		HTTPClient: httpClient,
 	})
 
@@ -353,7 +354,7 @@ func TestSourceRepository_Search(t *testing.T) {
 	httpClient := nugethttp.NewClient(nil)
 	repo := NewSourceRepository(RepositoryConfig{
 		Name:       "test",
-		SourceURL:  server.URL,
+		SourceURL:  server.URL + "/index.json",
 		HTTPClient: httpClient,
 	})
 
@@ -375,7 +376,7 @@ func TestSourceRepository_DownloadPackage(t *testing.T) {
 	httpClient := nugethttp.NewClient(nil)
 	repo := NewSourceRepository(RepositoryConfig{
 		Name:       "test",
-		SourceURL:  server.URL,
+		SourceURL:  server.URL + "/index.json",
 		HTTPClient: httpClient,
 	})
 
@@ -401,12 +402,12 @@ func TestRepositoryManager_SearchAll(t *testing.T) {
 
 	repo1 := NewSourceRepository(RepositoryConfig{
 		Name:       "repo1",
-		SourceURL:  server.URL,
+		SourceURL:  server.URL + "/index.json",
 		HTTPClient: httpClient,
 	})
 	repo2 := NewSourceRepository(RepositoryConfig{
 		Name:       "repo2",
-		SourceURL:  server.URL,
+		SourceURL:  server.URL + "/index.json",
 		HTTPClient: httpClient,
 	})
 
@@ -442,12 +443,12 @@ func TestClient_GetPackageMetadata_MultipleRepos(t *testing.T) {
 	// Add two repos
 	repo1 := NewSourceRepository(RepositoryConfig{
 		Name:       "repo1",
-		SourceURL:  server.URL,
+		SourceURL:  server.URL + "/index.json",
 		HTTPClient: httpClient,
 	})
 	repo2 := NewSourceRepository(RepositoryConfig{
 		Name:       "repo2",
-		SourceURL:  server.URL,
+		SourceURL:  server.URL + "/index.json",
 		HTTPClient: httpClient,
 	})
 
@@ -479,12 +480,12 @@ func TestClient_ListVersions_MultipleRepos(t *testing.T) {
 	// Add two repos (both will return same versions, should be deduplicated)
 	repo1 := NewSourceRepository(RepositoryConfig{
 		Name:       "repo1",
-		SourceURL:  server.URL,
+		SourceURL:  server.URL + "/index.json",
 		HTTPClient: httpClient,
 	})
 	repo2 := NewSourceRepository(RepositoryConfig{
 		Name:       "repo2",
-		SourceURL:  server.URL,
+		SourceURL:  server.URL + "/index.json",
 		HTTPClient: httpClient,
 	})
 
@@ -516,7 +517,7 @@ func TestClient_DownloadPackage_MultipleRepos(t *testing.T) {
 
 	repo := NewSourceRepository(RepositoryConfig{
 		Name:       "test",
-		SourceURL:  server.URL,
+		SourceURL:  server.URL + "/index.json",
 		HTTPClient: httpClient,
 	})
 	_ = repoManager.AddRepository(repo)

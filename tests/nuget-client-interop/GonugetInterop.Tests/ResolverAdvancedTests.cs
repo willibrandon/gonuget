@@ -25,7 +25,7 @@ namespace GonugetInterop.Tests;
 public class ResolverAdvancedTests : IDisposable
 {
     private readonly ITestOutputHelper _output;
-    private static readonly string[] s_nugetSources = ["https://api.nuget.org/v3/"];
+    private static readonly string[] s_nugetSources = ["https://api.nuget.org/v3/index.json"];
     private readonly SourceRepository _sourceRepository;
     private readonly SourceCacheContext _cacheContext;
 

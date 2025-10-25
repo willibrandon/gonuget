@@ -254,14 +254,14 @@ func TestClient_GetPackageMetadata_RepositoryErrors(t *testing.T) {
 	// Add two repositories that will both fail
 	repo1 := NewSourceRepository(RepositoryConfig{
 		Name:       "repo-404",
-		SourceURL:  server404.URL,
+		SourceURL:  server404.URL + "/index.json",
 		HTTPClient: httpClient,
 	})
 	_ = repoManager.AddRepository(repo1)
 
 	repo2 := NewSourceRepository(RepositoryConfig{
 		Name:       "repo-500",
-		SourceURL:  server500.URL,
+		SourceURL:  server500.URL + "/index.json",
 		HTTPClient: httpClient,
 	})
 	_ = repoManager.AddRepository(repo2)
@@ -301,7 +301,7 @@ func TestClient_GetPackageMetadata_FallbackToSecondRepo(t *testing.T) {
 	// Add failing repository first
 	repoFail := NewSourceRepository(RepositoryConfig{
 		Name:       "repo-fail",
-		SourceURL:  serverFail.URL,
+		SourceURL:  serverFail.URL + "/index.json",
 		HTTPClient: httpClient,
 	})
 	_ = repoManager.AddRepository(repoFail)
@@ -309,7 +309,7 @@ func TestClient_GetPackageMetadata_FallbackToSecondRepo(t *testing.T) {
 	// Add working repository second
 	repoSuccess := NewSourceRepository(RepositoryConfig{
 		Name:       "repo-success",
-		SourceURL:  serverSuccess.URL,
+		SourceURL:  serverSuccess.URL + "/index.json",
 		HTTPClient: httpClient,
 	})
 	_ = repoManager.AddRepository(repoSuccess)

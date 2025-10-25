@@ -58,7 +58,7 @@ func TestFullStack_WithRealNuGetOrg(t *testing.T) {
 	// 4. Create repository with full stack
 	repo := NewSourceRepository(RepositoryConfig{
 		Name:       "nuget.org",
-		SourceURL:  "https://api.nuget.org/v3", // Base URL without /index.json
+		SourceURL:  "https://api.nuget.org/v3/index.json",
 		HTTPClient: httpClient,
 		Cache:      mtCache,
 		Logger:     testLogger,
@@ -442,7 +442,7 @@ func TestFullStack_ObservabilityExport(t *testing.T) {
 
 	repo := NewSourceRepository(RepositoryConfig{
 		Name:       "nuget.org",
-		SourceURL:  "https://api.nuget.org/v3",
+		SourceURL:  "https://api.nuget.org/v3/index.json",
 		HTTPClient: httpClient,
 		Cache:      mtCache,
 		Logger:     testLogger,
@@ -586,7 +586,7 @@ func TestFullStack_E2E_LiveObservability(t *testing.T) {
 
 	repo := NewSourceRepository(RepositoryConfig{
 		Name:       "nuget.org",
-		SourceURL:  "https://api.nuget.org/v3",
+		SourceURL:  "https://api.nuget.org/v3/index.json",
 		HTTPClient: httpClient,
 		Cache:      mtCache,
 		Logger:     testLogger,

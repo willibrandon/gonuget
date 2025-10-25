@@ -19,7 +19,7 @@ type ConcurrencyTracker interface {
 type ParallelResolver struct {
 	resolver   *Resolver
 	maxWorkers int
-	semaphore  chan struct{} // Limits concurrent operations
+	semaphore  chan struct{}      // Limits concurrent operations
 	tracker    ConcurrencyTracker // Optional concurrency tracker
 }
 

@@ -95,7 +95,7 @@ func TestDownloadClient_DownloadPackage(t *testing.T) {
 
 	ctx := context.Background()
 
-	body, err := client.DownloadPackage(ctx, server.URL, "Newtonsoft.Json", "13.0.3")
+	body, err := client.DownloadPackage(ctx, server.URL+"/index.json", "Newtonsoft.Json", "13.0.3")
 	if err != nil {
 		t.Fatalf("DownloadPackage() error = %v", err)
 	}
@@ -122,7 +122,7 @@ func TestDownloadClient_DownloadPackage_NotFound(t *testing.T) {
 
 	ctx := context.Background()
 
-	_, err := client.DownloadPackage(ctx, server.URL, "NonExistent.Package", "1.0.0")
+	_, err := client.DownloadPackage(ctx, server.URL+"/index.json", "NonExistent.Package", "1.0.0")
 	if err == nil {
 		t.Error("expected error for non-existent package")
 	}
@@ -138,7 +138,7 @@ func TestDownloadClient_DownloadNuspec(t *testing.T) {
 
 	ctx := context.Background()
 
-	body, err := client.DownloadNuspec(ctx, server.URL, "Newtonsoft.Json", "13.0.3")
+	body, err := client.DownloadNuspec(ctx, server.URL+"/index.json", "Newtonsoft.Json", "13.0.3")
 	if err != nil {
 		t.Fatalf("DownloadNuspec() error = %v", err)
 	}
@@ -170,7 +170,7 @@ func TestDownloadClient_DownloadNuspec_NotFound(t *testing.T) {
 
 	ctx := context.Background()
 
-	_, err := client.DownloadNuspec(ctx, server.URL, "NonExistent.Package", "1.0.0")
+	_, err := client.DownloadNuspec(ctx, server.URL+"/index.json", "NonExistent.Package", "1.0.0")
 	if err == nil {
 		t.Error("expected error for non-existent nuspec")
 	}
@@ -186,7 +186,7 @@ func TestDownloadClient_GetPackageVersions(t *testing.T) {
 
 	ctx := context.Background()
 
-	versions, err := client.GetPackageVersions(ctx, server.URL, "Newtonsoft.Json")
+	versions, err := client.GetPackageVersions(ctx, server.URL+"/index.json", "Newtonsoft.Json")
 	if err != nil {
 		t.Fatalf("GetPackageVersions() error = %v", err)
 	}
@@ -209,7 +209,7 @@ func TestDownloadClient_GetPackageVersions_NotFound(t *testing.T) {
 
 	ctx := context.Background()
 
-	_, err := client.GetPackageVersions(ctx, server.URL, "NonExistent.Package")
+	_, err := client.GetPackageVersions(ctx, server.URL+"/index.json", "NonExistent.Package")
 	if err == nil {
 		t.Error("expected error for non-existent package")
 	}

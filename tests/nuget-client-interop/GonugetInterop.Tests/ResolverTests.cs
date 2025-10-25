@@ -81,7 +81,7 @@ public sealed class ResolverTests
             packageId: packageId,
             versionRange: versionRange,
             targetFramework: "net8.0",
-            sources: ["https://api.nuget.org/v3/"]
+            sources: ["https://api.nuget.org/v3/index.json"]
         );
 
         // Assert: Compare root node
@@ -124,7 +124,7 @@ public sealed class ResolverTests
             packageId: packageId,
             versionRange: versionRange,
             targetFramework: "net8.0",
-            sources: ["https://api.nuget.org/v3/"]
+            sources: ["https://api.nuget.org/v3/index.json"]
         );
 
         // Assert: Compare root node
@@ -201,7 +201,7 @@ public sealed class ResolverTests
             packageId: packageId,
             versionRange: versionRange,
             targetFramework: "net8.0",
-            sources: ["https://api.nuget.org/v3/"]
+            sources: ["https://api.nuget.org/v3/index.json"]
         );
 
         // Assert: Compare disposition states
@@ -266,7 +266,7 @@ public sealed class ResolverTests
             packageId: packageId,
             versionRange: versionRange,
             targetFramework: "net8.0",
-            sources: ["https://api.nuget.org/v3/"]
+            sources: ["https://api.nuget.org/v3/index.json"]
         );
 
         // Assert - Compare disposition
@@ -310,7 +310,7 @@ public sealed class ResolverTests
             packageId: packageId,
             versionRange: versionRange,
             targetFramework: "net8.0",
-            sources: ["https://api.nuget.org/v3/"]
+            sources: ["https://api.nuget.org/v3/index.json"]
         );
 
         // Assert - Compare root
@@ -373,14 +373,14 @@ public sealed class ResolverTests
             packageId: packageId,
             versionRange: $"[{version}]",
             targetFramework: "net6.0",
-            sources: ["https://api.nuget.org/v3/"]
+            sources: ["https://api.nuget.org/v3/index.json"]
         );
 
         var gonugetNet8Result = GonugetBridge.WalkGraph(
             packageId: packageId,
             versionRange: $"[{version}]",
             targetFramework: "net8.0",
-            sources: ["https://api.nuget.org/v3/"]
+            sources: ["https://api.nuget.org/v3/index.json"]
         );
 
         // Assert - Both should resolve same root package
@@ -436,7 +436,7 @@ public sealed class ResolverTests
             packageId: packageId,
             versionRange: $"[{version}]",
             targetFramework: "net8.0",
-            sources: ["https://api.nuget.org/v3/"]
+            sources: ["https://api.nuget.org/v3/index.json"]
         );
 
         // Assert - Verify both handle the package the same way
@@ -500,7 +500,7 @@ public sealed class ResolverTests
             packageId: packageId,
             versionRange: $"[{version}]",
             targetFramework: "net8.0",
-            sources: ["https://api.nuget.org/v3/"]
+            sources: ["https://api.nuget.org/v3/index.json"]
         );
 
         // Assert - Downgrades array should exist

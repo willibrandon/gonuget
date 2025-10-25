@@ -48,7 +48,7 @@ func TestServiceIndexClient_GetServiceIndex(t *testing.T) {
 	client := NewServiceIndexClient(httpClient)
 	ctx := context.Background()
 
-	index, err := client.GetServiceIndex(ctx, server.URL)
+	index, err := client.GetServiceIndex(ctx, server.URL+"/index.json")
 	if err != nil {
 		t.Fatalf("GetServiceIndex() error = %v", err)
 	}
@@ -77,7 +77,7 @@ func TestServiceIndexClient_Cache(t *testing.T) {
 	ctx := context.Background()
 
 	// First call - should hit server
-	_, err := client.GetServiceIndex(ctx, server.URL)
+	_, err := client.GetServiceIndex(ctx, server.URL+"/index.json")
 	if err != nil {
 		t.Fatalf("GetServiceIndex() error = %v", err)
 	}
@@ -87,7 +87,7 @@ func TestServiceIndexClient_Cache(t *testing.T) {
 	}
 
 	// Second call - should use cache
-	_, err = client.GetServiceIndex(ctx, server.URL)
+	_, err = client.GetServiceIndex(ctx, server.URL+"/index.json")
 	if err != nil {
 		t.Fatalf("GetServiceIndex() error = %v", err)
 	}
@@ -112,7 +112,7 @@ func TestServiceIndexClient_CacheExpiration(t *testing.T) {
 	ctx := context.Background()
 
 	// First call
-	_, err := client.GetServiceIndex(ctx, server.URL)
+	_, err := client.GetServiceIndex(ctx, server.URL+"/index.json")
 	if err != nil {
 		t.Fatalf("GetServiceIndex() error = %v", err)
 	}
@@ -125,7 +125,7 @@ func TestServiceIndexClient_CacheExpiration(t *testing.T) {
 	client.mu.Unlock()
 
 	// Second call - cache expired, should hit server again
-	_, err = client.GetServiceIndex(ctx, server.URL)
+	_, err = client.GetServiceIndex(ctx, server.URL+"/index.json")
 	if err != nil {
 		t.Fatalf("GetServiceIndex() error = %v", err)
 	}
@@ -170,7 +170,7 @@ func TestServiceIndexClient_GetResourceURL(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.resourceType, func(t *testing.T) {
-			got, err := client.GetResourceURL(ctx, server.URL, tt.resourceType)
+			got, err := client.GetResourceURL(ctx, server.URL+"/index.json", tt.resourceType)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("GetResourceURL() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -211,7 +211,7 @@ func TestServiceIndexClient_GetAllResourceURLs(t *testing.T) {
 	client := NewServiceIndexClient(httpClient)
 	ctx := context.Background()
 
-	urls, err := client.GetAllResourceURLs(ctx, server.URL, ResourceTypeSearchQueryService)
+	urls, err := client.GetAllResourceURLs(ctx, server.URL+"/index.json", ResourceTypeSearchQueryService)
 	if err != nil {
 		t.Fatalf("GetAllResourceURLs() error = %v", err)
 	}
@@ -244,7 +244,7 @@ func TestServiceIndexClient_ClearCache(t *testing.T) {
 	ctx := context.Background()
 
 	// Populate cache
-	_, err := client.GetServiceIndex(ctx, server.URL)
+	_, err := client.GetServiceIndex(ctx, server.URL+"/index.json")
 	if err != nil {
 		t.Fatalf("GetServiceIndex() error = %v", err)
 	}

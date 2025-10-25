@@ -116,7 +116,7 @@ func (h *ResolveConflictsHandler) Handle(data json.RawMessage) (interface{}, err
 	}
 
 	// Use default source (NuGet.org V3) if not provided
-	sources := []string{"https://api.nuget.org/v3/"}
+	sources := []string{"https://api.nuget.org/v3/index.json"}
 
 	// Create real NuGet V3 metadata client
 	httpClient := nugethttp.NewClient(nil)

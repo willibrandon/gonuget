@@ -63,14 +63,9 @@ func (c *ServiceIndexClient) GetServiceIndex(ctx context.Context, sourceURL stri
 }
 
 func (c *ServiceIndexClient) fetchServiceIndex(ctx context.Context, sourceURL string) (*ServiceIndex, error) {
-	// Ensure URL ends with /index.json
-	indexURL := sourceURL
-	if len(indexURL) > 0 && indexURL[len(indexURL)-1] != '/' {
-		indexURL += "/"
-	}
-	indexURL += "index.json"
-
-	resp, err := c.httpClient.DoWithRetry(ctx, mustNewRequest("GET", indexURL, nil))
+	// Use source URL as-is for NuGet.Client parity
+	// Callers must provide full service index URL (e.g., https://api.nuget.org/v3/index.json)
+	resp, err := c.httpClient.DoWithRetry(ctx, mustNewRequest("GET", sourceURL, nil))
 	if err != nil {
 		return nil, fmt.Errorf("fetch service index: %w", err)
 	}

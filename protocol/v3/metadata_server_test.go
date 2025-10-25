@@ -76,7 +76,7 @@ func TestMetadataClient_GetPackageMetadata_WithPaginatedPages(t *testing.T) {
 	client := NewMetadataClient(httpClient, serviceIndexClient)
 
 	ctx := context.Background()
-	index, err := client.GetPackageMetadata(ctx, server.URL, "testpkg")
+	index, err := client.GetPackageMetadata(ctx, server.URL+"/index.json", "testpkg")
 	if err != nil {
 		t.Fatalf("GetPackageMetadata() error = %v", err)
 	}
@@ -148,7 +148,7 @@ func TestMetadataClient_GetPackageMetadata_PageFetchError(t *testing.T) {
 	client := NewMetadataClient(httpClient, serviceIndexClient)
 
 	ctx := context.Background()
-	_, err := client.GetPackageMetadata(ctx, server.URL, "testpkg")
+	_, err := client.GetPackageMetadata(ctx, server.URL+"/index.json", "testpkg")
 	if err == nil {
 		t.Error("GetPackageMetadata() expected error when page fetch fails")
 	}
@@ -188,7 +188,7 @@ func TestMetadataClient_GetPackageMetadata_NotFound(t *testing.T) {
 	client := NewMetadataClient(httpClient, serviceIndexClient)
 
 	ctx := context.Background()
-	_, err := client.GetPackageMetadata(ctx, server.URL, "nonexistent")
+	_, err := client.GetPackageMetadata(ctx, server.URL+"/index.json", "nonexistent")
 	if err == nil {
 		t.Error("GetPackageMetadata() expected error for non-existent package")
 	}
@@ -224,7 +224,7 @@ func TestMetadataClient_GetPackageMetadata_InvalidJSON(t *testing.T) {
 	client := NewMetadataClient(httpClient, serviceIndexClient)
 
 	ctx := context.Background()
-	_, err := client.GetPackageMetadata(ctx, server.URL, "badpkg")
+	_, err := client.GetPackageMetadata(ctx, server.URL+"/index.json", "badpkg")
 	if err == nil {
 		t.Error("GetPackageMetadata() expected error for invalid JSON")
 	}
@@ -284,7 +284,7 @@ func TestMetadataClient_GetVersionMetadata_Success(t *testing.T) {
 	client := NewMetadataClient(httpClient, serviceIndexClient)
 
 	ctx := context.Background()
-	metadata, err := client.GetVersionMetadata(ctx, server.URL, "testpkg", "1.5.0")
+	metadata, err := client.GetVersionMetadata(ctx, server.URL+"/index.json", "testpkg", "1.5.0")
 	if err != nil {
 		t.Fatalf("GetVersionMetadata() error = %v", err)
 	}
@@ -346,7 +346,7 @@ func TestMetadataClient_GetVersionMetadata_VersionNotFound(t *testing.T) {
 	client := NewMetadataClient(httpClient, serviceIndexClient)
 
 	ctx := context.Background()
-	_, err := client.GetVersionMetadata(ctx, server.URL, "testpkg", "99.99.99")
+	_, err := client.GetVersionMetadata(ctx, server.URL+"/index.json", "testpkg", "99.99.99")
 	if err == nil {
 		t.Error("GetVersionMetadata() expected error for non-existent version")
 	}
@@ -412,7 +412,7 @@ func TestMetadataClient_ListVersions_Success(t *testing.T) {
 	client := NewMetadataClient(httpClient, serviceIndexClient)
 
 	ctx := context.Background()
-	versions, err := client.ListVersions(ctx, server.URL, "testpkg")
+	versions, err := client.ListVersions(ctx, server.URL+"/index.json", "testpkg")
 	if err != nil {
 		t.Fatalf("ListVersions() error = %v", err)
 	}
@@ -503,7 +503,7 @@ func TestMetadataClient_ListVersions_ErrorPaths(t *testing.T) {
 			client := NewMetadataClient(httpClient, serviceIndexClient)
 
 			ctx := context.Background()
-			_, err := client.ListVersions(ctx, server.URL, "testpkg")
+			_, err := client.ListVersions(ctx, server.URL+"/index.json", "testpkg")
 
 			if (err != nil) != tt.wantErr {
 				t.Errorf("ListVersions() error = %v, wantErr %v", err, tt.wantErr)
@@ -556,7 +556,7 @@ func TestMetadataClient_fetchRegistrationPage_InvalidJSON(t *testing.T) {
 	client := NewMetadataClient(httpClient, serviceIndexClient)
 
 	ctx := context.Background()
-	_, err := client.GetPackageMetadata(ctx, server.URL, "testpkg")
+	_, err := client.GetPackageMetadata(ctx, server.URL+"/index.json", "testpkg")
 	if err == nil {
 		t.Error("GetPackageMetadata() expected error when page returns invalid JSON")
 	}

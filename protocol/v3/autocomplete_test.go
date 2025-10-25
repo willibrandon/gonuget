@@ -91,7 +91,7 @@ func TestAutocompleteClient_AutocompletePackageIDs(t *testing.T) {
 
 	ctx := context.Background()
 
-	result, err := client.AutocompletePackageIDs(ctx, server.URL, "newtonsoft", 0, 20, false)
+	result, err := client.AutocompletePackageIDs(ctx, server.URL+"/index.json", "newtonsoft", 0, 20, false)
 	if err != nil {
 		t.Fatalf("AutocompletePackageIDs() error = %v", err)
 	}
@@ -118,7 +118,7 @@ func TestAutocompleteClient_AutocompletePackageIDs_EmptyQuery(t *testing.T) {
 
 	ctx := context.Background()
 
-	result, err := client.AutocompletePackageIDs(ctx, server.URL, "", 0, 20, false)
+	result, err := client.AutocompletePackageIDs(ctx, server.URL+"/index.json", "", 0, 20, false)
 	if err != nil {
 		t.Fatalf("AutocompletePackageIDs() error = %v", err)
 	}
@@ -138,7 +138,7 @@ func TestAutocompleteClient_AutocompletePackageIDs_WithPagination(t *testing.T) 
 
 	ctx := context.Background()
 
-	result, err := client.AutocompletePackageIDs(ctx, server.URL, "newtonsoft", 10, 5, true)
+	result, err := client.AutocompletePackageIDs(ctx, server.URL+"/index.json", "newtonsoft", 10, 5, true)
 	if err != nil {
 		t.Fatalf("AutocompletePackageIDs() error = %v", err)
 	}
@@ -154,7 +154,7 @@ func TestAutocompleteClient_AutocompletePackageVersions(t *testing.T) {
 
 	ctx := context.Background()
 
-	result, err := client.AutocompletePackageVersions(ctx, server.URL, "Newtonsoft.Json", false)
+	result, err := client.AutocompletePackageVersions(ctx, server.URL+"/index.json", "Newtonsoft.Json", false)
 	if err != nil {
 		t.Fatalf("AutocompletePackageVersions() error = %v", err)
 	}
@@ -181,7 +181,7 @@ func TestAutocompleteClient_AutocompletePackageVersions_NotFound(t *testing.T) {
 
 	ctx := context.Background()
 
-	_, err := client.AutocompletePackageVersions(ctx, server.URL, "NonExistent.Package", false)
+	_, err := client.AutocompletePackageVersions(ctx, server.URL+"/index.json", "NonExistent.Package", false)
 	if err == nil {
 		t.Error("expected error for non-existent package")
 	}

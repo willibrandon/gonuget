@@ -33,6 +33,11 @@ func setupV3TestServer() *httptest.Server {
 
 func setupV2TestServer() *httptest.Server {
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/index.json" {
+			// V2 servers don't have service index - return 404 to trigger V2 fallback
+			http.NotFound(w, r)
+			return
+		}
 		if r.URL.Path == "/" || r.URL.Path == "" {
 			w.Header().Set("Content-Type", "application/xml")
 			_, _ = w.Write([]byte(`<?xml version="1.0"?>
@@ -58,7 +63,7 @@ func TestProviderFactory_CreateProvider_V3(t *testing.T) {
 	factory := NewProviderFactory(httpClient, nil)
 
 	ctx := context.Background()
-	provider, err := factory.CreateProvider(ctx, server.URL)
+	provider, err := factory.CreateProvider(ctx, server.URL+"/index.json")
 	if err != nil {
 		t.Fatalf("CreateProvider() error = %v", err)
 	}
@@ -67,8 +72,8 @@ func TestProviderFactory_CreateProvider_V3(t *testing.T) {
 		t.Errorf("ProtocolVersion() = %q, want v3", provider.ProtocolVersion())
 	}
 
-	if provider.SourceURL() != server.URL {
-		t.Errorf("SourceURL() = %q, want %q", provider.SourceURL(), server.URL)
+	if provider.SourceURL() != server.URL+"/index.json" {
+		t.Errorf("SourceURL() = %q, want %q", provider.SourceURL(), server.URL+"/index.json")
 	}
 }
 

@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	nugetOrgV3 = "https://api.nuget.org/v3"
+	nugetOrgV3 = "https://api.nuget.org/v3/index.json"
 )
 
 // TestIntegration_Client_SearchPackages tests search against real NuGet.org

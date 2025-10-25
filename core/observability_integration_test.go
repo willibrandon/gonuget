@@ -269,7 +269,7 @@ func TestObservability_Repository_LoggingIntegration(t *testing.T) {
 
 	repo := NewSourceRepository(RepositoryConfig{
 		Name:       "test",
-		SourceURL:  server.URL,
+		SourceURL:  server.URL + "/index.json",
 		HTTPClient: httpClient,
 		Logger:     testLogger,
 	})

@@ -17,6 +17,7 @@ func TestV3Provider_GetMetadata_CacheHit(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/index.json":
+			w.Header().Set("Content-Type", "application/json")
 			// Service index
 			index := map[string]any{
 				"version": "3.0.0",
@@ -69,7 +70,7 @@ func TestV3Provider_GetMetadata_CacheHit(t *testing.T) {
 	httpClient := nugethttp.NewClient(nil)
 	repo := NewSourceRepository(RepositoryConfig{
 		Name:       "test",
-		SourceURL:  server.URL,
+		SourceURL:  server.URL + "/index.json",
 		HTTPClient: httpClient,
 		Cache:      mtCache,
 	})
@@ -114,6 +115,7 @@ func TestV3Provider_GetMetadata_NoCache(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/index.json":
+			w.Header().Set("Content-Type", "application/json")
 			index := map[string]any{
 				"version": "3.0.0",
 				"resources": []map[string]any{
@@ -163,7 +165,7 @@ func TestV3Provider_GetMetadata_NoCache(t *testing.T) {
 	httpClient := nugethttp.NewClient(nil)
 	repo := NewSourceRepository(RepositoryConfig{
 		Name:       "test",
-		SourceURL:  server.URL,
+		SourceURL:  server.URL + "/index.json",
 		HTTPClient: httpClient,
 		Cache:      mtCache,
 	})
@@ -198,6 +200,7 @@ func TestV3Provider_GetMetadata_NilCacheContext(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/index.json":
+			w.Header().Set("Content-Type", "application/json")
 			index := map[string]any{
 				"version": "3.0.0",
 				"resources": []map[string]any{
@@ -246,7 +249,7 @@ func TestV3Provider_GetMetadata_NilCacheContext(t *testing.T) {
 	httpClient := nugethttp.NewClient(nil)
 	repo := NewSourceRepository(RepositoryConfig{
 		Name:       "test",
-		SourceURL:  server.URL,
+		SourceURL:  server.URL + "/index.json",
 		HTTPClient: httpClient,
 		Cache:      mtCache,
 	})
@@ -268,6 +271,7 @@ func TestV3Provider_DownloadPackage_CacheHit(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/index.json":
+			w.Header().Set("Content-Type", "application/json")
 			index := map[string]any{
 				"version": "3.0.0",
 				"resources": []map[string]any{
@@ -299,7 +303,7 @@ func TestV3Provider_DownloadPackage_CacheHit(t *testing.T) {
 	httpClient := nugethttp.NewClient(nil)
 	repo := NewSourceRepository(RepositoryConfig{
 		Name:       "test",
-		SourceURL:  server.URL,
+		SourceURL:  server.URL + "/index.json",
 		HTTPClient: httpClient,
 		Cache:      mtCache,
 	})
@@ -336,6 +340,7 @@ func TestV3Provider_DownloadPackage_DirectDownload(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/index.json":
+			w.Header().Set("Content-Type", "application/json")
 			index := map[string]any{
 				"version": "3.0.0",
 				"resources": []map[string]any{
@@ -366,7 +371,7 @@ func TestV3Provider_DownloadPackage_DirectDownload(t *testing.T) {
 	httpClient := nugethttp.NewClient(nil)
 	repo := NewSourceRepository(RepositoryConfig{
 		Name:       "test",
-		SourceURL:  server.URL,
+		SourceURL:  server.URL + "/index.json",
 		HTTPClient: httpClient,
 		Cache:      mtCache,
 	})
@@ -403,6 +408,7 @@ func TestV3Provider_ListVersions_CacheHit(t *testing.T) {
 		callCount++
 		switch r.URL.Path {
 		case "/index.json":
+			w.Header().Set("Content-Type", "application/json")
 			index := map[string]any{
 				"version": "3.0.0",
 				"resources": []map[string]any{
@@ -441,7 +447,7 @@ func TestV3Provider_ListVersions_CacheHit(t *testing.T) {
 	httpClient := nugethttp.NewClient(nil)
 	repo := NewSourceRepository(RepositoryConfig{
 		Name:       "test",
-		SourceURL:  server.URL,
+		SourceURL:  server.URL + "/index.json",
 		HTTPClient: httpClient,
 		Cache:      mtCache,
 	})
@@ -479,6 +485,7 @@ func TestV3Provider_NoCacheConfigured(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/index.json":
+			w.Header().Set("Content-Type", "application/json")
 			index := map[string]any{
 				"version": "3.0.0",
 				"resources": []map[string]any{
@@ -520,7 +527,7 @@ func TestV3Provider_NoCacheConfigured(t *testing.T) {
 	httpClient := nugethttp.NewClient(nil)
 	repo := NewSourceRepository(RepositoryConfig{
 		Name:       "test",
-		SourceURL:  server.URL,
+		SourceURL:  server.URL + "/index.json",
 		HTTPClient: httpClient,
 		Cache:      nil, // No cache
 	})
@@ -541,6 +548,7 @@ func TestV3Provider_CacheMaxAge(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/index.json":
+			w.Header().Set("Content-Type", "application/json")
 			index := map[string]any{
 				"version": "3.0.0",
 				"resources": []map[string]any{
@@ -589,7 +597,7 @@ func TestV3Provider_CacheMaxAge(t *testing.T) {
 	httpClient := nugethttp.NewClient(nil)
 	repo := NewSourceRepository(RepositoryConfig{
 		Name:       "test",
-		SourceURL:  server.URL,
+		SourceURL:  server.URL + "/index.json",
 		HTTPClient: httpClient,
 		Cache:      mtCache,
 	})
@@ -624,6 +632,7 @@ func TestV2Provider_GetMetadata_CacheHit(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/index.json":
+			w.Header().Set("Content-Type", "application/json")
 			// Return 404 for V3 index check - triggers V2 detection
 			http.NotFound(w, r)
 		case "/", "":
@@ -665,7 +674,7 @@ func TestV2Provider_GetMetadata_CacheHit(t *testing.T) {
 	httpClient := nugethttp.NewClient(nil)
 	repo := NewSourceRepository(RepositoryConfig{
 		Name:       "test",
-		SourceURL:  server.URL,
+		SourceURL:  server.URL + "/index.json",
 		HTTPClient: httpClient,
 		Cache:      mtCache,
 	})
@@ -704,6 +713,7 @@ func TestV2Provider_DownloadPackage_CacheHit(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/index.json":
+			w.Header().Set("Content-Type", "application/json")
 			// Return 404 for V3 index check - triggers V2 detection
 			http.NotFound(w, r)
 		case "/", "":
@@ -737,7 +747,7 @@ func TestV2Provider_DownloadPackage_CacheHit(t *testing.T) {
 	httpClient := nugethttp.NewClient(nil)
 	repo := NewSourceRepository(RepositoryConfig{
 		Name:       "test",
-		SourceURL:  server.URL,
+		SourceURL:  server.URL + "/index.json",
 		HTTPClient: httpClient,
 		Cache:      mtCache,
 	})
@@ -774,6 +784,7 @@ func TestV2Provider_ListVersions_CacheHit(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/index.json":
+			w.Header().Set("Content-Type", "application/json")
 			// Return 404 for V3 index check - triggers V2 detection
 			http.NotFound(w, r)
 			return
@@ -819,7 +830,7 @@ func TestV2Provider_ListVersions_CacheHit(t *testing.T) {
 	httpClient := nugethttp.NewClient(nil)
 	repo := NewSourceRepository(RepositoryConfig{
 		Name:       "test",
-		SourceURL:  server.URL,
+		SourceURL:  server.URL + "/index.json",
 		HTTPClient: httpClient,
 		Cache:      mtCache,
 	})

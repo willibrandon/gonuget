@@ -39,7 +39,7 @@ func TestSourceRepository_GetProvider(t *testing.T) {
 
 	repo := NewSourceRepository(RepositoryConfig{
 		Name:      "test",
-		SourceURL: server.URL,
+		SourceURL: server.URL + "/index.json",
 	})
 
 	ctx := context.Background()
@@ -88,7 +88,7 @@ func TestSourceRepository_WithAuthentication(t *testing.T) {
 
 	repo := NewSourceRepository(RepositoryConfig{
 		Name:          "test",
-		SourceURL:     server.URL,
+		SourceURL:     server.URL + "/index.json",
 		Authenticator: authenticator,
 	})
 

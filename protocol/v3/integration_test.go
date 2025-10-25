@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	nugetOrgV3 = "https://api.nuget.org/v3"
+	nugetOrgV3 = "https://api.nuget.org/v3/index.json"
 )
 
 // TestIntegration_ServiceIndex tests against real NuGet.org
