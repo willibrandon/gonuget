@@ -38,7 +38,11 @@ func (r *Resolver) Resolve(
 	// Step 2: Detect conflicts and downgrades
 	conflicts, downgrades := r.conflictDetector.DetectFromGraph(rootNode)
 
-	// Step 3: Resolve conflicts
+	// Step 3: Analyze cycles
+	cycleAnalyzer := NewCycleAnalyzer()
+	cycles := cycleAnalyzer.AnalyzeCycles(rootNode)
+
+	// Step 4: Resolve conflicts
 	resolvedPackages := make([]*PackageDependencyInfo, 0)
 
 	if len(conflicts) > 0 {
@@ -62,6 +66,7 @@ func (r *Resolver) Resolve(
 		Packages:   resolvedPackages,
 		Conflicts:  conflicts,
 		Downgrades: downgrades,
+		Cycles:     cycles,
 	}, nil
 }
 

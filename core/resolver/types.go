@@ -87,6 +87,7 @@ type ResolutionResult struct {
 	Packages   []*PackageDependencyInfo
 	Conflicts  []VersionConflict
 	Downgrades []DowngradeWarning
+	Cycles     []CycleReport
 }
 
 // VersionConflict represents a version conflict between dependencies
@@ -102,4 +103,19 @@ type DowngradeWarning struct {
 	CurrentVersion string
 	TargetVersion  string
 	Path           []string // Path from root to downgrade
+}
+
+// CycleReport provides detailed information about a detected cycle
+type CycleReport struct {
+	// PackageID involved in the cycle
+	PackageID string
+
+	// PathToSelf from root to the cycle point
+	PathToSelf []string
+
+	// Depth at which cycle was detected
+	Depth int
+
+	// Description is a human-readable description
+	Description string
 }
