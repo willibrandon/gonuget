@@ -506,3 +506,231 @@ type ResolvedPackage struct {
 	// Depth is the depth in the dependency graph.
 	Depth int `json:"depth"`
 }
+
+// AnalyzeCyclesRequest analyzes dependency graph for circular dependencies (M5.5).
+// InMemoryPackage represents a package definition for testing (M5.5).
+// Allows sharing test package graphs across the CLI bridge.
+type InMemoryPackage struct {
+	// ID is the package identifier.
+	ID string `json:"id"`
+
+	// Version is the package version.
+	Version string `json:"version"`
+
+	// Dependencies are the package dependencies.
+	Dependencies []PackageDependencyRef `json:"dependencies,omitempty"`
+}
+
+// PackageDependencyRef represents a dependency reference.
+type PackageDependencyRef struct {
+	// ID is the dependency package identifier.
+	ID string `json:"id"`
+
+	// VersionRange is the version constraint.
+	VersionRange string `json:"versionRange"`
+}
+
+type AnalyzeCyclesRequest struct {
+	// PackageID is the package identifier (e.g., "Newtonsoft.Json").
+	PackageID string `json:"packageId"`
+
+	// VersionRange is the version constraint (e.g., "[13.0.1]").
+	VersionRange string `json:"versionRange"`
+
+	// TargetFramework is the target framework (e.g., "net8.0").
+	TargetFramework string `json:"targetFramework"`
+
+	// Sources is the list of package sources to query.
+	Sources []string `json:"sources"`
+
+	// InMemoryPackages optionally provides in-memory packages for testing.
+	// When provided, these packages are used instead of fetching from sources.
+	InMemoryPackages []InMemoryPackage `json:"inMemoryPackages,omitempty"`
+}
+
+// AnalyzeCyclesResponse contains detected cycles.
+type AnalyzeCyclesResponse struct {
+	// Cycles is the array of detected circular dependency chains.
+	Cycles []CycleInfo `json:"cycles"`
+}
+
+// CycleInfo represents a circular dependency chain.
+type CycleInfo struct {
+	// PackageIDs are the packages forming the cycle (e.g., ["A", "B", "C", "A"]).
+	PackageIDs []string `json:"packageIds"`
+
+	// Length is the number of packages in the cycle.
+	Length int `json:"length"`
+}
+
+// ResolveTransitiveRequest resolves transitive dependencies for multiple roots (M5.6).
+type ResolveTransitiveRequest struct {
+	// RootPackages are the direct dependencies to resolve.
+	RootPackages []PackageSpec `json:"rootPackages"`
+
+	// TargetFramework is the target framework.
+	TargetFramework string `json:"targetFramework"`
+
+	// Sources is the list of package sources to query.
+	Sources []string `json:"sources"`
+}
+
+// PackageSpec specifies a package ID and version range.
+type PackageSpec struct {
+	// ID is the package identifier.
+	ID string `json:"id"`
+
+	// VersionRange is the version constraint.
+	VersionRange string `json:"versionRange"`
+}
+
+// ResolveTransitiveResponse contains the complete closure.
+type ResolveTransitiveResponse struct {
+	// Packages are all resolved packages (roots + transitive).
+	Packages []ResolvedPackage `json:"packages"`
+
+	// Conflicts are any version conflicts detected.
+	Conflicts []ConflictInfo `json:"conflicts"`
+
+	// Downgrades are any version downgrades detected.
+	Downgrades []DowngradeInfo `json:"downgrades"`
+}
+
+// ConflictInfo represents a version conflict.
+type ConflictInfo struct {
+	// PackageID is the package with conflicting versions.
+	PackageID string `json:"packageId"`
+
+	// Versions are the conflicting version requirements.
+	Versions []string `json:"versions"`
+
+	// WinnerVersion is the resolved version.
+	WinnerVersion string `json:"winnerVersion"`
+}
+
+// BenchmarkCacheRequest benchmarks cache deduplication (M5.7).
+type BenchmarkCacheRequest struct {
+	// PackageID is the package to resolve.
+	PackageID string `json:"packageId"`
+
+	// VersionRange is the version constraint.
+	VersionRange string `json:"versionRange"`
+
+	// TargetFramework is the target framework.
+	TargetFramework string `json:"targetFramework"`
+
+	// Sources is the list of package sources.
+	Sources []string `json:"sources"`
+
+	// ConcurrentRequests is the number of concurrent requests to make.
+	ConcurrentRequests int `json:"concurrentRequests"`
+}
+
+// BenchmarkCacheResponse contains cache deduplication metrics.
+type BenchmarkCacheResponse struct {
+	// TotalRequests is the number of requests made.
+	TotalRequests int `json:"totalRequests"`
+
+	// ActualFetches is the number of actual fetches (should be 1 with deduplication).
+	ActualFetches int `json:"actualFetches"`
+
+	// DurationMs is the total duration in milliseconds.
+	DurationMs int64 `json:"durationMs"`
+
+	// DeduplicationWorked is true if ActualFetches == 1.
+	DeduplicationWorked bool `json:"deduplicationWorked"`
+}
+
+// ResolveWithTTLRequest resolves package with cache TTL (M5.7).
+type ResolveWithTTLRequest struct {
+	// PackageID is the package identifier.
+	PackageID string `json:"packageId"`
+
+	// VersionRange is the version constraint.
+	VersionRange string `json:"versionRange"`
+
+	// TargetFramework is the target framework.
+	TargetFramework string `json:"targetFramework"`
+
+	// Sources is the list of package sources.
+	Sources []string `json:"sources"`
+
+	// TTLSeconds is the cache TTL in seconds (0 = no expiration).
+	TTLSeconds int `json:"ttlSeconds"`
+}
+
+// ResolveWithTTLResponse contains the resolution result.
+type ResolveWithTTLResponse struct {
+	// Packages are the resolved packages.
+	Packages []ResolvedPackage `json:"packages"`
+
+	// WasCached indicates if the result came from cache.
+	WasCached bool `json:"wasCached"`
+}
+
+// BenchmarkParallelRequest benchmarks parallel resolution (M5.8).
+type BenchmarkParallelRequest struct {
+	// PackageSpecs are the packages to resolve in parallel.
+	PackageSpecs []PackageSpec `json:"packageSpecs"`
+
+	// TargetFramework is the target framework.
+	TargetFramework string `json:"targetFramework"`
+
+	// Sources is the list of package sources.
+	Sources []string `json:"sources"`
+
+	// Sequential runs sequentially for comparison if true.
+	Sequential bool `json:"sequential"`
+
+	// Recursive enables transitive dependency resolution (default: true).
+	// When false, only direct packages are resolved (matches NuGet.Client's recursive: false).
+	Recursive *bool `json:"recursive,omitempty"`
+}
+
+// BenchmarkParallelResponse contains parallel resolution metrics.
+type BenchmarkParallelResponse struct {
+	// PackageCount is the number of packages resolved.
+	PackageCount int `json:"packageCount"`
+
+	// DurationMs is the total duration in milliseconds.
+	DurationMs int64 `json:"durationMs"`
+
+	// WasParallel indicates if parallel resolution was used.
+	WasParallel bool `json:"wasParallel"`
+}
+
+// ResolveWithWorkerLimitRequest resolves packages with worker pool limit (M5.8).
+type ResolveWithWorkerLimitRequest struct {
+	// PackageSpecs are the packages to resolve.
+	PackageSpecs []PackageSpec `json:"packageSpecs"`
+
+	// TargetFramework is the target framework.
+	TargetFramework string `json:"targetFramework"`
+
+	// Sources is the list of package sources.
+	Sources []string `json:"sources"`
+
+	// MaxWorkers is the worker pool limit.
+	MaxWorkers int `json:"maxWorkers"`
+}
+
+// ResolveWithWorkerLimitResponse contains the resolution results.
+type ResolveWithWorkerLimitResponse struct {
+	// Results are the resolution results for each package.
+	Results []ResolveResult `json:"results"`
+
+	// MaxConcurrent is the maximum concurrent operations observed.
+	MaxConcurrent int `json:"maxConcurrent"`
+}
+
+// ResolveResult represents a single package resolution result.
+type ResolveResult struct {
+	// PackageID is the package identifier.
+	PackageID string `json:"packageId"`
+
+	// Packages are the resolved packages (root + transitive).
+	Packages []ResolvedPackage `json:"packages"`
+
+	// Error is any error that occurred (empty if successful).
+	Error string `json:"error,omitempty"`
+}

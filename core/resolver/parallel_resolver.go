@@ -6,12 +6,21 @@ import (
 	"sync"
 )
 
+// ConcurrencyTracker optionally tracks concurrent operations in ParallelResolver.
+type ConcurrencyTracker interface {
+	// Enter is called when a worker starts (after acquiring semaphore).
+	Enter()
+	// Exit is called when a worker finishes (before releasing semaphore).
+	Exit()
+}
+
 // ParallelResolver provides advanced parallel resolution strategies.
 // Matches NuGet.Client's parallel restoration capabilities.
 type ParallelResolver struct {
 	resolver   *Resolver
 	maxWorkers int
 	semaphore  chan struct{} // Limits concurrent operations
+	tracker    ConcurrencyTracker // Optional concurrency tracker
 }
 
 // NewParallelResolver creates a new parallel resolver.
@@ -25,6 +34,12 @@ func NewParallelResolver(resolver *Resolver, maxWorkers int) *ParallelResolver {
 		maxWorkers: maxWorkers,
 		semaphore:  make(chan struct{}, maxWorkers),
 	}
+}
+
+// WithTracker sets an optional concurrency tracker.
+func (pr *ParallelResolver) WithTracker(tracker ConcurrencyTracker) *ParallelResolver {
+	pr.tracker = tracker
+	return pr
 }
 
 // ResolveMultiplePackages resolves multiple packages in parallel.
@@ -50,6 +65,12 @@ func (pr *ParallelResolver) ResolveMultiplePackages(
 			case <-ctx.Done():
 				errors[index] = ctx.Err()
 				return
+			}
+
+			// Track concurrency if tracker is set
+			if pr.tracker != nil {
+				pr.tracker.Enter()
+				defer pr.tracker.Exit()
 			}
 
 			// Resolve package

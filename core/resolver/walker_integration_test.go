@@ -84,7 +84,7 @@ func TestWalkRealPackage_NewtonsoftJson(t *testing.T) {
 	walker := NewDependencyWalker(adapter, []string{"https://api.nuget.org/v3/"}, "net8.0")
 
 	// Walk Newtonsoft.Json 13.0.1 (has no dependencies)
-	node, err := walker.Walk(context.Background(), "Newtonsoft.Json", "[13.0.1]", "net8.0")
+	node, err := walker.Walk(context.Background(), "Newtonsoft.Json", "[13.0.1]", "net8.0", true)
 
 	if err != nil {
 		t.Fatalf("Walk() failed: %v", err)
@@ -135,7 +135,7 @@ func TestWalkRealPackage_WithDependencies(t *testing.T) {
 	walker := NewDependencyWalker(adapter, []string{"https://api.nuget.org/v3/"}, "net8.0")
 
 	// Walk Microsoft.Extensions.Logging 8.0.0 (has dependencies)
-	node, err := walker.Walk(context.Background(), "Microsoft.Extensions.Logging", "[8.0.0]", "net8.0")
+	node, err := walker.Walk(context.Background(), "Microsoft.Extensions.Logging", "[8.0.0]", "net8.0", true)
 
 	if err != nil {
 		t.Fatalf("Walk() failed: %v", err)
@@ -205,7 +205,7 @@ func TestWalkRealPackage_DeepGraph(t *testing.T) {
 	walker := NewDependencyWalker(adapter, []string{"https://api.nuget.org/v3/"}, "net8.0")
 
 	// Walk a package with a deeper dependency tree
-	node, err := walker.Walk(context.Background(), "Microsoft.Extensions.DependencyInjection", "[8.0.0]", "net8.0")
+	node, err := walker.Walk(context.Background(), "Microsoft.Extensions.DependencyInjection", "[8.0.0]", "net8.0", true)
 
 	if err != nil {
 		t.Fatalf("Walk() failed: %v", err)
@@ -267,7 +267,7 @@ func TestWalkRealPackage_VerifyNoCycles(t *testing.T) {
 	walker := NewDependencyWalker(adapter, []string{"https://api.nuget.org/v3/"}, "net8.0")
 
 	// Walk a real package - NuGet packages should not have cycles
-	node, err := walker.Walk(context.Background(), "Microsoft.Extensions.Logging", "[8.0.0]", "net8.0")
+	node, err := walker.Walk(context.Background(), "Microsoft.Extensions.Logging", "[8.0.0]", "net8.0", true)
 
 	if err != nil {
 		t.Fatalf("Walk() failed: %v", err)

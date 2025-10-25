@@ -113,6 +113,18 @@ func main() {
 		handler = &WalkGraphHandler{}
 	case "resolve_conflicts":
 		handler = &ResolveConflictsHandler{}
+	case "analyze_cycles":
+		handler = &AnalyzeCyclesHandler{}
+	case "resolve_transitive":
+		handler = &ResolveTransitiveHandler{}
+	case "benchmark_cache":
+		handler = &BenchmarkCacheHandler{}
+	case "resolve_with_ttl":
+		handler = &ResolveWithTTLHandler{}
+	case "benchmark_parallel":
+		handler = &BenchmarkParallelHandler{}
+	case "resolve_with_worker_limit":
+		handler = &ResolveWithWorkerLimitHandler{}
 
 	default:
 		sendError("ACT_001", "Unknown action", fmt.Sprintf("action=%s", req.Action))

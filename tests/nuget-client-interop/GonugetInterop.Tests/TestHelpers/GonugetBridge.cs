@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -547,6 +548,182 @@ public static class GonugetBridge
         throw new FileNotFoundException(
             "gonuget-interop-test executable not found. " +
             "Run 'go build -o gonuget-interop-test ./cmd/nuget-interop-test' before running tests.");
+    }
+
+    /// <summary>
+    /// Analyzes dependency graph for circular dependencies (M5.5).
+    /// </summary>
+    public static AnalyzeCyclesResponse AnalyzeCycles(
+        string packageId,
+        string versionRange,
+        string targetFramework,
+        string[] sources,
+        InMemoryDependencyProvider? inMemoryProvider = null)
+    {
+        var data = new Dictionary<string, object>
+        {
+            ["packageId"] = packageId,
+            ["versionRange"] = versionRange,
+            ["targetFramework"] = targetFramework,
+            ["sources"] = sources
+        };
+
+        // Add in-memory packages if provider is given
+        if (inMemoryProvider != null)
+        {
+            data["inMemoryPackages"] = SerializeInMemoryPackages(inMemoryProvider);
+        }
+
+        var request = new
+        {
+            action = "analyze_cycles",
+            data
+        };
+
+        return Execute<AnalyzeCyclesResponse>(request);
+    }
+
+    /// <summary>
+    /// Serializes in-memory packages to JSON format for the CLI bridge.
+    /// </summary>
+    private static object[] SerializeInMemoryPackages(InMemoryDependencyProvider provider)
+    {
+        return provider.GetAllPackages()
+            .Select(pkg => new
+            {
+                id = pkg.Id,
+                version = pkg.Version.ToString(),
+                dependencies = pkg.Dependencies.Select(d => new
+                {
+                    id = d.Id,
+                    versionRange = d.VersionRange.ToString()
+                }).ToArray()
+            })
+            .ToArray();
+    }
+
+    /// <summary>
+    /// Resolves transitive dependencies for multiple root packages (M5.6).
+    /// </summary>
+    public static ResolveTransitiveResponse ResolveTransitive(
+        PackageSpec[] rootPackages,
+        string targetFramework,
+        string[] sources)
+    {
+        var request = new
+        {
+            action = "resolve_transitive",
+            data = new
+            {
+                rootPackages,
+                targetFramework,
+                sources
+            }
+        };
+
+        return Execute<ResolveTransitiveResponse>(request);
+    }
+
+    /// <summary>
+    /// Benchmarks cache deduplication with concurrent requests (M5.7).
+    /// </summary>
+    public static BenchmarkCacheResponse BenchmarkCache(
+        string packageId,
+        string versionRange,
+        string targetFramework,
+        string[] sources,
+        int concurrentRequests)
+    {
+        var request = new
+        {
+            action = "benchmark_cache",
+            data = new
+            {
+                packageId,
+                versionRange,
+                targetFramework,
+                sources,
+                concurrentRequests
+            }
+        };
+
+        return Execute<BenchmarkCacheResponse>(request);
+    }
+
+    /// <summary>
+    /// Resolves package with cache TTL (M5.7).
+    /// </summary>
+    public static ResolveWithTTLResponse ResolveWithTTL(
+        string packageId,
+        string versionRange,
+        string targetFramework,
+        string[] sources,
+        int ttlSeconds)
+    {
+        var request = new
+        {
+            action = "resolve_with_ttl",
+            data = new
+            {
+                packageId,
+                versionRange,
+                targetFramework,
+                sources,
+                ttlSeconds
+            }
+        };
+
+        return Execute<ResolveWithTTLResponse>(request);
+    }
+
+    /// <summary>
+    /// Benchmarks parallel resolution performance (M5.8).
+    /// </summary>
+    public static BenchmarkParallelResponse BenchmarkParallel(
+        PackageSpec[] packageSpecs,
+        string targetFramework,
+        string[] sources,
+        bool sequential = false,
+        bool recursive = true)
+    {
+        var request = new
+        {
+            action = "benchmark_parallel",
+            data = new
+            {
+                packageSpecs,
+                targetFramework,
+                sources,
+                sequential,
+                recursive
+            }
+        };
+
+        return Execute<BenchmarkParallelResponse>(request);
+    }
+
+    /// <summary>
+    /// Resolves packages with worker pool limits (M5.8).
+    /// </summary>
+    public static ResolveWithWorkerLimitResponse ResolveWithWorkerLimit(
+        PackageSpec[] packageSpecs,
+        string targetFramework,
+        string[] sources,
+        int maxWorkers)
+    {
+        var request = new
+        {
+            action = "resolve_with_worker_limit",
+            data = new
+            {
+                packageSpecs,
+                targetFramework,
+                sources,
+                maxWorkers
+            }
+        };
+
+        return Execute<ResolveWithWorkerLimitResponse>(request);
     }
 
     // Internal response envelope types

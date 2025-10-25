@@ -53,13 +53,14 @@ func (tr *TransitiveResolver) ResolveMultipleRoots(
 		OuterEdge:   nil,
 	}
 
-	// Walk each root dependency
+	// Walk each root dependency (recursive=true for transitive resolution)
 	for _, dep := range roots {
 		childNode, err := tr.resolver.walker.Walk(
 			ctx,
 			dep.ID,
 			dep.VersionRange,
 			tr.resolver.targetFramework,
+			true,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("walk dependency %s: %w", dep.ID, err)

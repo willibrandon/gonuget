@@ -40,7 +40,7 @@ The bridge uses a simple JSON-RPC protocol:
 
 ## Supported Actions
 
-The bridge exposes 15 actions across 5 functional categories:
+The bridge exposes 20 actions across 6 functional categories:
 
 ### Signature Operations
 - **`sign_package`** - Create PKCS#7 package signatures
@@ -103,6 +103,28 @@ The bridge exposes 15 actions across 5 functional categories:
 - **`are_runtimes_compatible`** - Check RID compatibility
   - Inputs: targetRid, packageRid
   - Output: compatible (boolean)
+
+### Resolver Operations
+- **`analyze_cycles`** - Detect dependency cycles in package graph
+  - Inputs: packageId, versionRange, targetFramework, sources[], inMemoryPackages[] (optional)
+  - Output: cycles[] with path and description
+  - Note: inMemoryPackages parameter allows sharing test harness between C# and Go
+
+- **`resolve_transitive`** - Resolve transitive dependencies
+  - Inputs: packageId, versionRange, targetFramework, sources[]
+  - Output: packages[] with resolved dependency tree
+
+- **`benchmark_cache`** - Benchmark cache performance
+  - Inputs: packageId, versionRange, targetFramework, sources[], iterations
+  - Output: deduplicationRate, avgLookupTimeMs
+
+- **`benchmark_parallel`** - Benchmark parallel resolution
+  - Inputs: packageIds[], versionRanges[], targetFramework, sources[], parallelism
+  - Output: totalTimeMs, avgPackageTimeMs
+
+- **`resolve_with_worker_limit`** - Resolve with worker pool limit
+  - Inputs: packageId, versionRange, targetFramework, sources[], maxWorkers
+  - Output: packages[], workerPoolSize
 
 ## Building
 
@@ -191,4 +213,4 @@ Example error response:
 
 - **C# Test Suite**: `tests/nuget-client-interop/GonugetInterop.Tests/`
 - **Bridge Client**: `tests/nuget-client-interop/GonugetInterop.Tests/TestHelpers/GonugetBridge.cs`
-- **Test Coverage**: 327 tests across 8 test classes validating all 15 actions
+- **Test Coverage**: 491 tests across 9 test classes validating all 20 actions

@@ -25,7 +25,7 @@ func TestDependencyWalker_SimpleDependency(t *testing.T) {
 
 	walker := NewDependencyWalker(client, []string{"source1"}, "net8.0")
 
-	node, err := walker.Walk(context.Background(), "A", "[1.0.0]", "net8.0")
+	node, err := walker.Walk(context.Background(), "A", "[1.0.0]", "net8.0", true)
 
 	if err != nil {
 		t.Fatalf("Walk() failed: %v", err)
@@ -72,7 +72,7 @@ func TestDependencyWalker_CycleDetection(t *testing.T) {
 
 	walker := NewDependencyWalker(client, []string{"source1"}, "net8.0")
 
-	node, err := walker.Walk(context.Background(), "A", "[1.0.0]", "net8.0")
+	node, err := walker.Walk(context.Background(), "A", "[1.0.0]", "net8.0", true)
 
 	if err != nil {
 		t.Fatalf("Walk() should not error on cycle, got: %v", err)
@@ -132,7 +132,7 @@ func TestDependencyWalker_SuppressParent(t *testing.T) {
 
 	walker := NewDependencyWalker(client, []string{"source1"}, "net8.0")
 
-	node, err := walker.Walk(context.Background(), "A", "[1.0.0]", "net8.0")
+	node, err := walker.Walk(context.Background(), "A", "[1.0.0]", "net8.0", true)
 
 	if err != nil {
 		t.Fatalf("Walk() failed: %v", err)
@@ -171,7 +171,7 @@ func TestDependencyWalker_MultipleDependencies(t *testing.T) {
 
 	walker := NewDependencyWalker(client, []string{"source1"}, "net8.0")
 
-	node, err := walker.Walk(context.Background(), "A", "[1.0.0]", "net8.0")
+	node, err := walker.Walk(context.Background(), "A", "[1.0.0]", "net8.0", true)
 
 	if err != nil {
 		t.Fatalf("Walk() failed: %v", err)
@@ -223,7 +223,7 @@ func TestDependencyWalker_DeepDependencies(t *testing.T) {
 
 	walker := NewDependencyWalker(client, []string{"source1"}, "net8.0")
 
-	node, err := walker.Walk(context.Background(), "A", "[1.0.0]", "net8.0")
+	node, err := walker.Walk(context.Background(), "A", "[1.0.0]", "net8.0", true)
 
 	if err != nil {
 		t.Fatalf("Walk() failed: %v", err)
@@ -266,7 +266,7 @@ func TestDependencyWalker_MissingPackage(t *testing.T) {
 
 	walker := NewDependencyWalker(client, []string{"source1"}, "net8.0")
 
-	node, err := walker.Walk(context.Background(), "A", "[1.0.0]", "net8.0")
+	node, err := walker.Walk(context.Background(), "A", "[1.0.0]", "net8.0", true)
 
 	if err != nil {
 		t.Fatalf("Walk() failed: %v", err)
@@ -302,7 +302,7 @@ func TestDependencyWalker_GraphEdgeChain(t *testing.T) {
 
 	walker := NewDependencyWalker(client, []string{"source1"}, "net8.0")
 
-	node, err := walker.Walk(context.Background(), "A", "[1.0.0]", "net8.0")
+	node, err := walker.Walk(context.Background(), "A", "[1.0.0]", "net8.0", true)
 
 	if err != nil {
 		t.Fatalf("Walk() failed: %v", err)
@@ -354,7 +354,7 @@ func TestGraphNode_PathFromRoot(t *testing.T) {
 
 	walker := NewDependencyWalker(client, []string{"source1"}, "net8.0")
 
-	node, err := walker.Walk(context.Background(), "A", "[1.0.0]", "net8.0")
+	node, err := walker.Walk(context.Background(), "A", "[1.0.0]", "net8.0", true)
 	if err != nil {
 		t.Fatalf("Walk() failed: %v", err)
 	}
@@ -404,7 +404,7 @@ func TestDependencyWalker_FrameworkSpecificDependencies(t *testing.T) {
 
 	walker := NewDependencyWalker(client, []string{"source1"}, "net8.0")
 
-	node, err := walker.Walk(context.Background(), "A", "[1.0.0]", "net8.0")
+	node, err := walker.Walk(context.Background(), "A", "[1.0.0]", "net8.0", true)
 
 	if err != nil {
 		t.Fatalf("Walk() failed: %v", err)
@@ -436,7 +436,7 @@ func TestDependencyWalker_ContextCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // Cancel immediately
 
-	_, err := walker.Walk(ctx, "A", "[1.0.0]", "net8.0")
+	_, err := walker.Walk(ctx, "A", "[1.0.0]", "net8.0", true)
 
 	if err == nil {
 		t.Error("Expected error from cancelled context, got nil")
@@ -460,7 +460,7 @@ func TestDependencyWalker_CachingWorks(t *testing.T) {
 	walker := NewDependencyWalker(client, []string{"source1"}, "net8.0")
 
 	// First walk
-	_, err := walker.Walk(context.Background(), "A", "[1.0.0]", "net8.0")
+	_, err := walker.Walk(context.Background(), "A", "[1.0.0]", "net8.0", true)
 	if err != nil {
 		t.Fatalf("First Walk() failed: %v", err)
 	}
@@ -468,7 +468,7 @@ func TestDependencyWalker_CachingWorks(t *testing.T) {
 	firstCallCount := callCount
 
 	// Second walk - should use cache
-	_, err = walker.Walk(context.Background(), "A", "[1.0.0]", "net8.0")
+	_, err = walker.Walk(context.Background(), "A", "[1.0.0]", "net8.0", true)
 	if err != nil {
 		t.Fatalf("Second Walk() failed: %v", err)
 	}
@@ -535,7 +535,7 @@ func TestDependencyWalker_RootPackageNotFound(t *testing.T) {
 
 	walker := NewDependencyWalker(client, []string{"source1"}, "net8.0")
 
-	_, err := walker.Walk(context.Background(), "Missing", "[1.0.0]", "net8.0")
+	_, err := walker.Walk(context.Background(), "Missing", "[1.0.0]", "net8.0", true)
 
 	if err == nil {
 		t.Error("Expected error when root package not found, got nil")
@@ -564,7 +564,7 @@ func TestDependencyWalker_EmptyFrameworkGroup(t *testing.T) {
 
 	walker := NewDependencyWalker(client, []string{"source1"}, "net8.0")
 
-	node, err := walker.Walk(context.Background(), "A", "[1.0.0]", "net8.0")
+	node, err := walker.Walk(context.Background(), "A", "[1.0.0]", "net8.0", true)
 
 	if err != nil {
 		t.Fatalf("Walk() failed: %v", err)
@@ -709,7 +709,7 @@ func TestDependencyWalker_MultipleVersions(t *testing.T) {
 
 	walker := NewDependencyWalker(client, []string{"source1"}, "net8.0")
 
-	node, err := walker.Walk(context.Background(), "A", "[1.0.0]", "net8.0")
+	node, err := walker.Walk(context.Background(), "A", "[1.0.0]", "net8.0", true)
 
 	if err != nil {
 		t.Fatalf("Walk() failed: %v", err)
@@ -741,7 +741,7 @@ func TestDependencyWalker_InvalidVersionRange(t *testing.T) {
 
 	walker := NewDependencyWalker(client, []string{"source1"}, "net8.0")
 
-	_, err := walker.Walk(context.Background(), "A", "[1.0.0]", "net8.0")
+	_, err := walker.Walk(context.Background(), "A", "[1.0.0]", "net8.0", true)
 
 	if err == nil {
 		t.Error("Expected error for invalid version range, got nil")
@@ -770,7 +770,7 @@ func TestDependencyWalker_NoMatchingFramework(t *testing.T) {
 
 	walker := NewDependencyWalker(client, []string{"source1"}, "net8.0")
 
-	node, err := walker.Walk(context.Background(), "A", "[1.0.0]", "net8.0")
+	node, err := walker.Walk(context.Background(), "A", "[1.0.0]", "net8.0", true)
 
 	if err != nil {
 		t.Fatalf("Walk() failed: %v", err)
@@ -818,7 +818,7 @@ func TestDependencyWalker_StackTraversalOrder(t *testing.T) {
 
 	walker := NewDependencyWalker(client, []string{"source1"}, "net8.0")
 
-	node, err := walker.Walk(context.Background(), "A", "[1.0.0]", "net8.0")
+	node, err := walker.Walk(context.Background(), "A", "[1.0.0]", "net8.0", true)
 
 	if err != nil {
 		t.Fatalf("Walk() failed: %v", err)
@@ -881,7 +881,7 @@ func TestDependencyWalker_MinimumVersionStrategy_ExactVersion(t *testing.T) {
 	}
 
 	walker := NewDependencyWalker(client, []string{"source1"}, "net8.0")
-	node, err := walker.Walk(context.Background(), "A", "[1.0.0]", "net8.0")
+	node, err := walker.Walk(context.Background(), "A", "[1.0.0]", "net8.0", true)
 
 	if err != nil {
 		t.Fatalf("Walk() failed: %v", err)
@@ -916,7 +916,7 @@ func TestDependencyWalker_MinimumVersionStrategy_MinimumInclusive(t *testing.T) 
 	}
 
 	walker := NewDependencyWalker(client, []string{"source1"}, "net8.0")
-	node, err := walker.Walk(context.Background(), "A", "[1.0.0]", "net8.0")
+	node, err := walker.Walk(context.Background(), "A", "[1.0.0]", "net8.0", true)
 
 	if err != nil {
 		t.Fatalf("Walk() failed: %v", err)
@@ -952,7 +952,7 @@ func TestDependencyWalker_MinimumVersionStrategy_RangeExclusiveMax(t *testing.T)
 	}
 
 	walker := NewDependencyWalker(client, []string{"source1"}, "net8.0")
-	node, err := walker.Walk(context.Background(), "A", "[1.0.0]", "net8.0")
+	node, err := walker.Walk(context.Background(), "A", "[1.0.0]", "net8.0", true)
 
 	if err != nil {
 		t.Fatalf("Walk() failed: %v", err)
@@ -1000,7 +1000,7 @@ func TestDependencyWalker_MinimumVersionStrategy_TransitiveDeps(t *testing.T) {
 	}
 
 	walker := NewDependencyWalker(client, []string{"source1"}, "net8.0")
-	node, err := walker.Walk(context.Background(), "A", "[1.0.0]", "net8.0")
+	node, err := walker.Walk(context.Background(), "A", "[1.0.0]", "net8.0", true)
 
 	if err != nil {
 		t.Fatalf("Walk() failed: %v", err)

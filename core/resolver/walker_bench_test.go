@@ -35,7 +35,7 @@ func BenchmarkDependencyWalker_SimpleGraph(b *testing.B) {
 	ctx := context.Background()
 
 	for b.Loop() {
-		_, _ = walker.Walk(ctx, "A", "[1.0.0]", "net8.0")
+		_, _ = walker.Walk(ctx, "A", "[1.0.0]", "net8.0", true)
 	}
 }
 
@@ -76,7 +76,7 @@ func BenchmarkDependencyWalker_WideGraph(b *testing.B) {
 	ctx := context.Background()
 
 	for b.Loop() {
-		_, _ = walker.Walk(ctx, "A", "[1.0.0]", "net8.0")
+		_, _ = walker.Walk(ctx, "A", "[1.0.0]", "net8.0", true)
 	}
 }
 
@@ -141,7 +141,7 @@ func BenchmarkDependencyWalker_DeepGraph(b *testing.B) {
 	ctx := context.Background()
 
 	for b.Loop() {
-		_, _ = walker.Walk(ctx, "A", "[1.0.0]", "net8.0")
+		_, _ = walker.Walk(ctx, "A", "[1.0.0]", "net8.0", true)
 	}
 }
 
@@ -207,7 +207,7 @@ func BenchmarkDependencyWalker_ComplexGraph(b *testing.B) {
 	ctx := context.Background()
 
 	for b.Loop() {
-		_, _ = walker.Walk(ctx, "A", "[1.0.0]", "net8.0")
+		_, _ = walker.Walk(ctx, "A", "[1.0.0]", "net8.0", true)
 	}
 }
 
@@ -243,7 +243,7 @@ func BenchmarkDependencyWalker_CycleDetection(b *testing.B) {
 	ctx := context.Background()
 
 	for b.Loop() {
-		_, _ = walker.Walk(ctx, "A", "[1.0.0]", "net8.0")
+		_, _ = walker.Walk(ctx, "A", "[1.0.0]", "net8.0", true)
 	}
 }
 
@@ -277,10 +277,10 @@ func BenchmarkDependencyWalker_CacheEffectiveness(b *testing.B) {
 	ctx := context.Background()
 
 	// Warm up cache
-	_, _ = walker.Walk(ctx, "A", "[1.0.0]", "net8.0")
+	_, _ = walker.Walk(ctx, "A", "[1.0.0]", "net8.0", true)
 
 	for b.Loop() {
 		// All subsequent walks should hit cache
-		_, _ = walker.Walk(ctx, "A", "[1.0.0]", "net8.0")
+		_, _ = walker.Walk(ctx, "A", "[1.0.0]", "net8.0", true)
 	}
 }

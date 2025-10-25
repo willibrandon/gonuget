@@ -35,8 +35,28 @@ func (r *Resolver) Resolve(
 	packageID string,
 	versionRange string,
 ) (*ResolutionResult, error) {
+	return r.resolveWithRecursive(ctx, packageID, versionRange, true)
+}
+
+// ResolveNonRecursive resolves a package without transitive dependencies.
+// Matches NuGet.Client's WalkAsync with recursive: false.
+func (r *Resolver) ResolveNonRecursive(
+	ctx context.Context,
+	packageID string,
+	versionRange string,
+) (*ResolutionResult, error) {
+	return r.resolveWithRecursive(ctx, packageID, versionRange, false)
+}
+
+// resolveWithRecursive internal helper for resolution with configurable recursion.
+func (r *Resolver) resolveWithRecursive(
+	ctx context.Context,
+	packageID string,
+	versionRange string,
+	recursive bool,
+) (*ResolutionResult, error) {
 	// Step 1: Walk dependency graph
-	rootNode, err := r.walker.Walk(ctx, packageID, versionRange, r.targetFramework)
+	rootNode, err := r.walker.Walk(ctx, packageID, versionRange, r.targetFramework, recursive)
 	if err != nil {
 		return nil, fmt.Errorf("walk dependencies: %w", err)
 	}
@@ -147,4 +167,10 @@ func (r *Resolver) ResolveBatch(
 	batchSize int,
 ) ([]*ResolutionResult, error) {
 	return r.parallelResolver.BatchResolve(ctx, packages, batchSize)
+}
+
+// ReplaceParallelResolver replaces the parallel resolver with a custom one.
+// This is useful for controlling worker pool limits.
+func (r *Resolver) ReplaceParallelResolver(pr *ParallelResolver) {
+	r.parallelResolver = pr
 }

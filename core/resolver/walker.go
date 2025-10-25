@@ -36,11 +36,13 @@ func NewDependencyWalker(client PackageMetadataClient, sources []string, targetF
 
 // Walk builds the complete dependency graph starting from the given package.
 // Uses manual stack-based traversal matching NuGet.Client for performance.
+// When recursive is false, only the root package is resolved (no transitive dependencies).
 func (w *DependencyWalker) Walk(
 	ctx context.Context,
 	packageID string,
 	versionRange string,
 	targetFramework string,
+	recursive bool,
 ) (*GraphNode, error) {
 	// Fetch root package
 	rootInfo, err := w.fetchDependency(ctx, PackageDependency{
@@ -69,7 +71,7 @@ func (w *DependencyWalker) Walk(
 
 	// Use manual stack-based traversal (performance-critical)
 	// This avoids recursive goroutine overhead for large graphs
-	if err := w.walkStackBased(ctx, rootNode, targetFramework); err != nil {
+	if err := w.walkStackBased(ctx, rootNode, targetFramework, recursive); err != nil {
 		return nil, err
 	}
 
@@ -78,10 +80,12 @@ func (w *DependencyWalker) Walk(
 
 // walkStackBased performs manual stack-based graph traversal.
 // Matches RemoteDependencyWalker.CreateGraphNodeAsync behavior.
+// When recursive is false, dependencies are marked as Eclipsed and not processed.
 func (w *DependencyWalker) walkStackBased(
 	ctx context.Context,
 	rootNode *GraphNode,
 	targetFramework string,
+	recursive bool,
 ) error {
 	// Initialize stack with root state
 	stack := []*WalkerStackState{
@@ -113,8 +117,14 @@ func (w *DependencyWalker) walkStackBased(
 			deps := w.getDependenciesForFramework(node.Item, targetFramework)
 
 			for _, dep := range deps {
-				// Check if dependency should be processed
-				result, _ := w.calculateDependencyResult(state.OuterEdge, dep, node.Key)
+				// If not recursive, mark all dependencies as Eclipsed (NuGet.Client behavior)
+				var result DependencyResult
+				if !recursive {
+					result = DependencyResultEclipsed
+				} else {
+					// Check if dependency should be processed
+					result, _ = w.calculateDependencyResult(state.OuterEdge, dep, node.Key)
+				}
 
 				if result == DependencyResultCycle {
 					// Add cycle node

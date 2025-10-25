@@ -44,7 +44,7 @@ The test suite uses a **JSON-RPC bridge** pattern:
 
 ## Test Coverage
 
-**8 test classes** with **327 total tests** covering all major gonuget subsystems:
+**9 test classes** with **491 total tests** covering all major gonuget subsystems:
 
 | Test Class | Tests | Coverage |
 |------------|-------|----------|
@@ -56,6 +56,7 @@ The test suite uses a **JSON-RPC bridge** pattern:
 | `AssetSelectionInteropTests.cs` | ~45 | Asset selection (lib/, ref/, runtime/, native/) |
 | `ContentModelTests.cs` | ~15 | Pattern matching, property extraction |
 | `RuntimeIdentifierTests.cs` | 32 | RID expansion, compatibility graph |
+| `ResolverAdvancedTests.cs` | 9 | Cycle detection, transitive resolution, caching, parallelism |
 
 ### Test Categories
 
@@ -118,7 +119,16 @@ Validates RID graph and compatibility:
 - **Architecture**: x86, x64, ARM, ARM64
 - **OS versions**: win7 → win8 → win81 → win10, ubuntu.20.04 → ubuntu.22.04 → ubuntu.24.04
 
-#### 8. Bridge Smoke Tests (`BridgeSmokeTests.cs`)
+#### 8. Resolver Advanced Tests (`ResolverAdvancedTests.cs`)
+Validates dependency resolution and cycle detection:
+- Cycle detection with in-memory dependency graphs
+- Transitive dependency resolution
+- Cache deduplication and TTL validation
+- Parallel resolution with recursive/non-recursive modes
+- Worker pool concurrency limits
+- Integration testing combining all resolver areas
+
+#### 9. Bridge Smoke Tests (`BridgeSmokeTests.cs`)
 Validates basic bridge functionality:
 - Process spawning and communication
 - JSON serialization/deserialization
@@ -238,7 +248,7 @@ From `GonugetInterop.Tests.csproj`:
 ## Test Helpers
 
 ### GonugetBridge.cs
-Central bridge helper that exposes 15 methods corresponding to the 15 bridge actions:
+Central bridge helper that exposes 20 methods corresponding to the 20 bridge actions:
 
 ```csharp
 // Signature operations
@@ -266,7 +276,21 @@ ParseAssetPathResponse ParseAssetPath(string path)
 // RID operations
 ExpandRuntimeResponse ExpandRuntime(string rid)
 AreRuntimesCompatibleResponse AreRuntimesCompatible(string targetRid, string packageRid)
+
+// Resolver operations
+AnalyzeCyclesResponse AnalyzeCycles(string packageId, string versionRange, string targetFramework, string[] sources, InMemoryDependencyProvider? inMemoryProvider)
+ResolveTransitiveResponse ResolveTransitive(string packageId, string versionRange, string targetFramework, string[] sources)
+BenchmarkCacheResponse BenchmarkCache(string packageId, string versionRange, string targetFramework, string[] sources, int iterations)
+BenchmarkParallelResponse BenchmarkParallel(string[] packageIds, string[] versionRanges, string targetFramework, string[] sources, int parallelism)
+ResolveWithWorkerLimitResponse ResolveWithWorkerLimit(string packageId, string versionRange, string targetFramework, string[] sources, int maxWorkers)
 ```
+
+### InMemoryDependencyProvider.cs
+In-memory dependency provider for testing cycle detection and resolution:
+- Fluent API for building test dependency graphs
+- Implements NuGet.DependencyResolver.IRemoteDependencyProvider
+- Serializable across CLI bridge via GetAllPackages() method
+- Enables both NuGet.Client and gonuget to use identical test packages
 
 ### TestCertificates.cs
 Helper for generating test certificates:
@@ -392,8 +416,9 @@ These tests follow the principle of **reference implementation validation**:
 
 1. **Source of Truth**: NuGet.Client 6.12.1 is always correct
 2. **Behavioral Testing**: We test behavior, not implementation details
-3. **Comprehensive Coverage**: 327 tests cover all major code paths
+3. **Comprehensive Coverage**: 491 tests cover all major code paths
 4. **Cross-Language**: JSON bridge eliminates language-specific quirks
-5. **Continuous Validation**: CI ensures gonuget stays compatible with NuGet ecosystem
+5. **Shared Test Harness**: In-memory packages serialized across CLI bridge for exact comparison
+6. **Continuous Validation**: CI ensures gonuget stays compatible with NuGet ecosystem
 
 If a test fails, gonuget has a bug - not NuGet.Client.
