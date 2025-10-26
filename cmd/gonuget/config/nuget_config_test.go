@@ -247,8 +247,10 @@ func TestGetUserConfigPath(t *testing.T) {
 		t.Error("GetUserConfigPath() returned empty string")
 	}
 
-	if !strings.Contains(path, ".nuget") {
-		t.Errorf("GetUserConfigPath() = %q, should contain .nuget", path)
+	// On Windows: %APPDATA%\NuGet\NuGet.Config
+	// On Unix: ~/.nuget/NuGet/NuGet.Config
+	if !strings.Contains(path, "NuGet") {
+		t.Errorf("GetUserConfigPath() = %q, should contain NuGet", path)
 	}
 }
 

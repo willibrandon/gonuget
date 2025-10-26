@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -368,8 +369,14 @@ func TestConfigPaths_Default(t *testing.T) {
 
 	result := out.String()
 	// Should list at least user config
-	if !strings.Contains(result, ".nuget") {
-		t.Error("output should contain user config path (.nuget)")
+	// On Windows: %APPDATA%\NuGet (e.g., AppData\Roaming\NuGet)
+	// On Unix: ~/.nuget/NuGet
+	expectedMarker := ".nuget"
+	if runtime.GOOS == "windows" {
+		expectedMarker = "NuGet"
+	}
+	if !strings.Contains(result, expectedMarker) {
+		t.Errorf("output should contain user config path marker %q", expectedMarker)
 	}
 }
 
@@ -614,7 +621,9 @@ func TestDetermineConfigPath_Default(t *testing.T) {
 	if found == "" {
 		t.Error("determineConfigPath() should return user config path")
 	}
-	if !strings.Contains(found, ".nuget") {
-		t.Errorf("determineConfigPath() should contain .nuget, got: %s", found)
+	// On Windows: %APPDATA%\NuGet\NuGet.Config
+	// On Unix: ~/.nuget/NuGet/NuGet.Config
+	if !strings.Contains(found, "NuGet") {
+		t.Errorf("determineConfigPath() should contain NuGet, got: %s", found)
 	}
 }
