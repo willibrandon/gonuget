@@ -625,41 +625,54 @@ Create the definitive cross-platform NuGet CLI tool that sets the standard for p
 
 Each command SHALL meet the following detailed requirements. See [CLI-DESIGN.md](../design/CLI-DESIGN.md) for full command specifications.
 
-#### CR-1: add
+#### CR-1: add package
 
-**Synopsis**: `gonuget add <package> -Source <feed>`
+**Synopsis**: `gonuget add package <PACKAGE_ID> [options]`
 
 **Requirements**:
-- Adds .nupkg to offline feed (file system or network share)
-- Creates hierarchical structure: `<id>/<version>/`
-- Supports `-Expand` to extract package contents
-- Validates package before adding
-- Reports errors clearly
+- Adds a NuGet package reference to a project file (.csproj)
+- Auto-discovers project file in current directory if not specified
+- Supports `--version` to specify package version (default: latest stable)
+- Supports `--framework` to add framework-specific references
+- Supports `--no-restore` to skip automatic package restore after add
+- Supports `--source` to specify package sources for version resolution
+- Supports `--prerelease` to include prerelease versions when resolving latest
+- Parses and modifies .csproj XML with UTF-8 BOM preservation
+- **Central Package Management (CPM)** - Full support (REQUIRED):
+  - Detects `ManagePackageVersionsCentrally` property in project
+  - Loads and parses `Directory.Packages.props`
+  - When CPM enabled:
+    - Adds/updates `<PackageVersion Include="..." Version="..." />` in Directory.Packages.props
+    - Adds `<PackageReference Include="..." />` WITHOUT version attribute to .csproj
+  - When CPM not enabled:
+    - Adds/updates `<PackageReference Include="..." Version="..." />` to .csproj
+  - Supports `VersionOverride` attribute for CPM projects
+  - Compatible with multi-project CPM scenarios
+- Preserves XML formatting and structure
+- Automatically restores packages after add (unless `--no-restore`)
+- **100% parity with `dotnet add package`**
 
-**Priority**: P1
-**Dependencies**: packaging library
+**Priority**: P0 (REQUIRED for dotnet parity)
+**Dependencies**: project file manipulation, version resolution, protocol (for latest version lookup), CPM support
+
+**Reference Implementation**:
+- dotnet/sdk: `src/Cli/dotnet/Commands/Package/Add/PackageAddCommand.cs`
+- Includes SetCentralVersion() method for CPM support
+
+**Acceptance Criteria**:
+- [ ] Adds package reference to .csproj correctly
+- [ ] Resolves latest version when not specified
+- [ ] CPM detection functional
+- [ ] Directory.Packages.props manipulation correct
+- [ ] PackageVersion entries added correctly for CPM projects
+- [ ] PackageReference without version for CPM projects
+- [ ] PackageReference with version for non-CPM projects
+- [ ] CLI interop tests pass comparing with `dotnet add package`
+- [ ] CPM interop tests pass (100% parity)
 
 ---
 
-#### CR-2: client-certs
-
-**Synopsis**: `gonuget client-certs <action> [options]`
-
-**Requirements**:
-- Actions: list, add, remove, update
-- Manages client certificates for mutual TLS
-- Stores configuration in NuGet.config
-- Platform-specific implementation:
-  - Windows: Certificate Store API
-  - Linux/macOS: PEM files
-- Supports certificate selection by thumbprint, subject, issuer
-
-**Priority**: P2
-**Dependencies**: certificate libraries, platform-specific APIs
-
----
-
-#### CR-3: config
+#### CR-2: config
 
 **Synopsis**:
 - `gonuget config get <key> [options]`
@@ -718,59 +731,7 @@ Each command SHALL meet the following detailed requirements. See [CLI-DESIGN.md]
 
 ---
 
-#### CR-6: init
-
-**Synopsis**: `gonuget init <source> <destination>`
-
-**Requirements**:
-- Initializes offline feed from directory of .nupkg files
-- Copies packages to hierarchical structure
-- Supports `-Expand` to extract contents
-- Shows progress for each package
-- Validates packages before copying
-
-**Priority**: P1
-**Dependencies**: packaging library
-
----
-
-#### CR-7: install
-
-**Synopsis**: `gonuget install [<id>|<packages.config>] [options]`
-
-**Requirements**:
-- Installs packages from feed
-- Resolves dependencies
-- Extracts to output directory
-- Generates packages.config if missing
-- Supports `-Version` to specify exact version
-- Supports `-Framework` to filter dependencies
-- Supports `-Prerelease` to include prerelease
-- Shows progress for downloads
-
-**Priority**: P0
-**Dependencies**: resolver, packaging, protocol
-
----
-
-#### CR-8: list
-
-**Synopsis**: `gonuget list [query] [options]`
-
-**Requirements**:
-- Lists packages from feed (deprecated, delegates to `search`)
-- Shows deprecation warning
-- Supports `-Source` for multiple sources
-- Supports `-AllVersions` to show all versions
-- Supports `-Prerelease` to include prerelease
-- Formats output as table
-
-**Priority**: P1
-**Dependencies**: search command
-
----
-
-#### CR-9: locals
+#### CR-6: locals
 
 **Synopsis**: `gonuget locals <resource> [options]`
 
@@ -786,7 +747,7 @@ Each command SHALL meet the following detailed requirements. See [CLI-DESIGN.md]
 
 ---
 
-#### CR-10: pack
+#### CR-7: pack
 
 **Synopsis**: `gonuget pack [<nuspec>|<project>] [options]`
 
@@ -815,7 +776,7 @@ Each command SHALL meet the following detailed requirements. See [CLI-DESIGN.md]
 
 ---
 
-#### CR-11: push
+#### CR-8: push
 
 **Synopsis**: `gonuget push <package> [apikey] [options]`
 
@@ -834,7 +795,7 @@ Each command SHALL meet the following detailed requirements. See [CLI-DESIGN.md]
 
 ---
 
-#### CR-12: restore
+#### CR-9: restore
 
 **Synopsis**: `gonuget restore [<solution>|<project>|<packages.config>] [options]`
 
@@ -854,7 +815,7 @@ Each command SHALL meet the following detailed requirements. See [CLI-DESIGN.md]
 
 ---
 
-#### CR-13: search
+#### CR-10: search
 
 **Synopsis**: `gonuget search <query> [options]`
 
@@ -873,23 +834,7 @@ Each command SHALL meet the following detailed requirements. See [CLI-DESIGN.md]
 
 ---
 
-#### CR-14: setapikey
-
-**Synopsis**: `gonuget setapikey <apikey> [options]`
-
-**Requirements**:
-- Stores API key for source
-- Encrypts API key using OS mechanisms
-- Supports source-specific keys
-- Supports default key (if no source specified)
-- Stores in NuGet.config
-
-**Priority**: P0
-**Dependencies**: authentication, configuration
-
----
-
-#### CR-15: sign
+#### CR-11: sign
 
 **Synopsis**: `gonuget sign <package> [options]`
 
@@ -907,7 +852,7 @@ Each command SHALL meet the following detailed requirements. See [CLI-DESIGN.md]
 
 ---
 
-#### CR-16: Source Management Commands
+#### CR-12: Source Management Commands
 
 **Synopsis**:
 - `gonuget list source [options]`
@@ -971,23 +916,7 @@ Each command SHALL meet the following detailed requirements. See [CLI-DESIGN.md]
 
 ---
 
-#### CR-17: spec
-
-**Synopsis**: `gonuget spec [<id>] [options]`
-
-**Requirements**:
-- Generates .nuspec file
-- Supports `-AssemblyPath` to extract metadata
-- Uses tokens for substitution
-- Creates template with placeholders
-- Supports `--force` to overwrite
-
-**Priority**: P1
-**Dependencies**: packaging
-
----
-
-#### CR-18: trusted-signers
+#### CR-13: trusted-signers
 
 **Synopsis**: `gonuget trusted-signers <action> [options]`
 
@@ -1004,25 +933,7 @@ Each command SHALL meet the following detailed requirements. See [CLI-DESIGN.md]
 
 ---
 
-#### CR-19: update
-
-**Synopsis**: `gonuget update [<packages.config>|<solution>] [options]`
-
-**Requirements**:
-- Updates packages to latest versions
-- Supports `-Id` to update specific packages
-- Supports `-Version` to update to specific version
-- Supports `-Safe` to only update within major.minor
-- Resolves new dependencies
-- Updates packages.config
-- Handles file conflicts
-
-**Priority**: P1
-**Dependencies**: resolver, packaging
-
----
-
-#### CR-20: verify
+#### CR-14: verify
 
 **Synopsis**: `gonuget verify <package> [options]`
 

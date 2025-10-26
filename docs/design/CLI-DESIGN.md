@@ -148,88 +148,86 @@ cmd/gonuget/
 
 ## Command Specification
 
-### Command: add
+### Command: add package
 
-**Synopsis**: Adds a NuGet package to an offline feed
+**Synopsis**: Adds a NuGet package reference to a project file
 
 ```bash
-gonuget add <package-path> -Source <offline-feed-path> [-Expand]
+gonuget add package <PACKAGE_ID> [options]
+gonuget add <PROJECT> package <PACKAGE_ID> [options]
 ```
 
+**Arguments**:
+- `PACKAGE_ID` (string, required): Package ID to add
+- `PROJECT` (string, optional): Path to project file (.csproj)
+
 **Flags**:
-- `-Source, -s` (string, required): Path to offline feed folder
-- `-Expand, -e` (bool): Extract package contents instead of copying .nupkg
+- `--version` (string): Package version to add (default: latest stable)
+- `--framework` (string, repeatable): Target framework(s) for package reference
+- `--no-restore` (bool): Don't restore packages after adding
+- `--source` (string, repeatable): Package source(s) to use
+- `--package-directory` (string): Custom package directory
+- `--prerelease` (bool): Include prerelease versions when resolving latest
+- `--interactive` (bool): Allow interactive credential prompts
 
 **Behavior**:
-1. Validate package path exists and is valid .nupkg
-2. Validate source path is directory
-3. If `-Expand`: Extract to `<source>/<id>/<version>/`
-4. Else: Copy to `<source>/<id>.<version>.nupkg`
-5. Update offline feed index if present
+1. Locate project file (specified or auto-discover in current directory)
+2. Load and parse project file (.csproj)
+3. **Check for Central Package Management (CPM)**:
+   - If CPM enabled (`ManagePackageVersionsCentrally=true`):
+     - Load `Directory.Packages.props`
+     - Add/update `<PackageVersion>` in Directory.Packages.props
+     - Add `<PackageReference>` WITHOUT version to .csproj
+   - If CPM not enabled:
+     - Add/update `<PackageReference>` WITH version to .csproj
+4. Resolve version (if not specified): query sources for latest
+5. Save modified files with UTF-8 BOM
+6. Restore packages (unless `--no-restore`)
+
+**Central Package Management (CPM) Support**:
+gonuget fully supports CPM as implemented in `dotnet add package`:
+- Detects `ManagePackageVersionsCentrally` property in project
+- Loads and modifies `Directory.Packages.props`
+- Adds `<PackageVersion>` entries with version
+- Adds `<PackageReference>` entries WITHOUT version to project
+- Supports `VersionOverride` attribute
+- Compatible with multi-project CPM scenarios
 
 **Exit Codes**:
 - 0: Success
-- 1: Package not found or invalid
-- 2: Source directory not found or not writable
-- 3: Package already exists in feed
+- 1: Package not found
+- 2: Project file not found or invalid
+- 3: Version resolution failed
+- 4: File write failed
 
 **Example**:
 ```bash
-gonuget add MyPackage.1.0.0.nupkg -Source ./offline-packages
-gonuget add MyPackage.1.0.0.nupkg -Source ./offline-packages -Expand
+# Add latest stable version
+gonuget add package Newtonsoft.Json
+
+# Add specific version
+gonuget add package Newtonsoft.Json --version 13.0.3
+
+# Add to specific project
+gonuget add MyApp.csproj package Newtonsoft.Json
+
+# Add framework-specific reference
+gonuget add package System.Text.Json --framework net8.0
+
+# Add without restoring
+gonuget add package Serilog --no-restore
+
+# Works with CPM projects automatically
+# If Directory.Packages.props exists with ManagePackageVersionsCentrally=true:
+#   - Updates Directory.Packages.props with version
+#   - Updates .csproj with PackageReference WITHOUT version
 ```
 
----
+**dotnet nuget Parity**:
+This command matches `dotnet add package` behavior exactly, including full CPM support.
 
-### Command: client-certs
-
-**Synopsis**: Manages client SSL/TLS certificates for authenticated feeds
-
-```bash
-gonuget client-certs <action> [options]
-```
-
-**Actions**:
-- `list`: List configured client certificates
-- `add`: Add a new client certificate
-- `remove`: Remove a client certificate
-- `update`: Update existing certificate configuration
-
-**Flags (add/update)**:
-- `-PackageSource` (string, required): Package source URL/name
-- `-Path` (string): Path to certificate file (.pfx, .p12)
-- `-Password` (string): Certificate password
-- `-StoreLocation` (string): Certificate store location (CurrentUser, LocalMachine)
-- `-StoreName` (string): Certificate store name (My, Root, TrustedPeople, etc.)
-- `-FindBy` (string): Certificate search criteria (Thumbprint, SubjectName, Issuer)
-- `-FindValue` (string): Value to match for FindBy
-- `-StorePasswordInClearText` (bool): Store password unencrypted (not recommended)
-- `-Force, -f` (bool): Force operation without confirmation
-
-**Flags (remove)**:
-- `-PackageSource` (string, required): Package source URL/name
-
-**Platform-Specific Behavior**:
-- **Windows**: Uses Windows Certificate Store API
-- **Linux/macOS**: PEM files in `~/.nuget/certificates/`
-
-**Example**:
-```bash
-# Add certificate from file
-gonuget client-certs add -PackageSource https://private.feed.com/v3/index.json \
-  -Path ./client-cert.pfx -Password "secret"
-
-# Add certificate from system store (Windows)
-gonuget client-certs add -PackageSource https://private.feed.com/v3/index.json \
-  -StoreLocation CurrentUser -StoreName My -FindBy Thumbprint \
-  -FindValue "1234567890ABCDEF"
-
-# List certificates
-gonuget client-certs list
-
-# Remove certificate
-gonuget client-certs remove -PackageSource https://private.feed.com/v3/index.json
-```
+**Reference Implementation**:
+dotnet/sdk: `src/Cli/dotnet/Commands/Package/Add/PackageAddCommand.cs`
 
 ---
 
@@ -392,142 +390,23 @@ SOURCE MANAGEMENT:
   disable source   Disable a package source
 
 PACKAGE OPERATIONS:
+  add package      Add package reference to project (with CPM support)
   search           Search for packages
-  install          Install packages
   restore          Restore packages for a project
   pack             Create a .nupkg package
   push             Push a package to a feed
   delete           Delete a package from a feed
-  update           Update packages
-  add              Add package to offline feed
-  init             Initialize offline feed
-  list             List packages (deprecated, use search)
 
 SIGNING & SECURITY:
   sign             Sign a package
   verify           Verify package signatures
   trusted-signers  Manage trusted signers
-  client-certs     Manage client certificates
-  setapikey        Set API key for a source
 
 CACHE MANAGEMENT:
   locals           Manage local caches
 
-UTILITIES:
-  spec             Generate .nuspec file
-
 Run 'gonuget help <command>' for detailed help.
 ```
-
----
-
-### Command: init
-
-**Synopsis**: Initializes an offline package feed from a source directory
-
-```bash
-gonuget init <source-directory> <destination-directory> [options]
-```
-
-**Arguments**:
-- `source-directory` (string, required): Source directory containing .nupkg files
-- `destination-directory` (string, required): Destination offline feed directory
-
-**Flags**:
-- `-Expand, -e` (bool): Extract package contents
-
-**Behavior**:
-1. Scan source directory recursively for .nupkg files
-2. Validate each package
-3. Copy or extract to destination with hierarchical structure
-4. Generate feed index files for V2/V3 compatibility
-5. Display progress for each package
-
-**Output**:
-```
-Initializing offline feed...
-Processing: MyPackage.1.0.0.nupkg ✓
-Processing: OtherPackage.2.0.0.nupkg ✓
-Successfully added 2 packages to offline feed.
-```
-
----
-
-### Command: install
-
-**Synopsis**: Installs NuGet packages from a feed or packages.config
-
-```bash
-gonuget install [<package-id>|<packages.config>] [options]
-```
-
-**Arguments**:
-- `package-id` (string, optional): Package ID to install
-- `packages.config` (string, optional): Path to packages.config file
-
-**Flags**:
-- `-Version, -v` (string): Specific version to install
-- `-Source, -s` (string, repeatable): Package source(s)
-- `-OutputDirectory, -o` (string): Installation directory (default: ./packages)
-- `-Framework, -f` (string): Target framework (e.g., net8.0, netstandard2.0)
-- `-Prerelease` (bool): Allow prerelease versions
-- `-ExcludeVersion, -x` (bool): Don't include version in folder name
-- `-DependencyVersion` (string): Dependency version selection (Lowest, Highest, HighestMinor, HighestPatch)
-- `-NoCache` (bool): Bypass local cache
-- `-DirectDownload` (bool): Download directly without using cache
-- `-DisableParallelProcessing` (bool): Single-threaded installation
-- `-PackageSaveMode` (string): Save mode (nuspec, nupkg, files, all)
-- `-RequireConsent` (bool): Require explicit package restore consent
-- `-SolutionDirectory` (string): Solution root for packages folder resolution
-
-**Behavior**:
-1. Parse input (package ID or packages.config)
-2. Resolve package sources from config or flags
-3. Resolve dependencies with target framework compatibility
-4. Download packages to cache
-5. Extract to output directory
-6. Generate packages.config if not present
-7. Run install.ps1 scripts if present (optional, security considerations)
-
-**Progress Output**:
-```
-Installing MyPackage 1.0.0...
-  Resolving dependencies... ✓
-  Downloading MyPackage.1.0.0.nupkg [████████████████] 100% (1.2 MB/s)
-  Extracting to ./packages/MyPackage.1.0.0... ✓
-  Installing dependency: Newtonsoft.Json 13.0.3... ✓
-Successfully installed 2 packages.
-```
-
-**Exit Codes**:
-- 0: Success
-- 1: Package not found
-- 2: Dependency resolution failed
-- 3: Download failed
-- 4: Extraction failed
-- 5: Version conflict
-
----
-
-### Command: list
-
-**Synopsis**: Lists packages from a source (deprecated in favor of `search`)
-
-```bash
-gonuget list [search-term] [options]
-```
-
-**Flags**:
-- `-Source, -s` (string, repeatable): Package source(s)
-- `-AllVersions` (bool): List all versions (not just latest)
-- `-Prerelease` (bool): Include prerelease packages
-- `-IncludeDelisted` (bool): Include delisted packages
-- `-Verbose, -v` (bool): Show detailed information
-
-**Deprecation Notice**:
-Display warning: "The 'list' command is deprecated. Use 'search' instead."
-
-**Behavior**: Delegate to `search` command with appropriate flags.
 
 ---
 
@@ -828,42 +707,6 @@ gonuget search <query> [options]
 
 ---
 
-### Command: setapikey
-
-**Synopsis**: Saves an API key for a package source
-
-```bash
-gonuget setapikey <api-key> [options]
-```
-
-**Arguments**:
-- `api-key` (string, required): API key to store
-
-**Flags**:
-- `-Source, -s` (string): Package source URL (if not specified, sets default)
-
-**Behavior**:
-1. Encrypt API key using OS-specific secure storage
-2. Store in NuGet.config or OS keychain
-3. Associate with source URL or set as default
-
-**Security**:
-- **Windows**: Use Data Protection API (DPAPI)
-- **macOS**: Use Keychain
-- **Linux**: Use Secret Service API (libsecret) or encrypted file
-
-**Storage**:
-```xml
-<!-- NuGet.config -->
-<configuration>
-  <apikeys>
-    <add key="https://api.nuget.org/v3/index.json" value="[Encrypted]" />
-  </apikeys>
-</configuration>
-```
-
----
-
 ### Command: sign
 
 **Synopsis**: Signs a NuGet package with a code signing certificate
@@ -1101,52 +944,6 @@ This command matches `dotnet nuget disable source` behavior exactly.
 
 ---
 
-### Command: spec
-
-**Synopsis**: Generates a .nuspec manifest file
-
-```bash
-gonuget spec [package-id] [options]
-```
-
-**Arguments**:
-- `package-id` (string, optional): Package ID for the .nuspec
-
-**Flags**:
-- `-AssemblyPath, -a` (string): Extract metadata from assembly
-- `-Force, -f` (bool): Overwrite existing .nuspec
-
-**Behavior**:
-1. If `-AssemblyPath`: Read assembly metadata (version, authors, description)
-2. Generate .nuspec template with placeholders
-3. Write to `<package-id>.nuspec` or `Package.nuspec`
-
-**Generated .nuspec**:
-```xml
-<?xml version="1.0" encoding="utf-8"?>
-<package xmlns="http://schemas.microsoft.com/packaging/2010/07/nuspec.xsd">
-  <metadata>
-    <id>$id$</id>
-    <version>$version$</version>
-    <authors>$author$</authors>
-    <owners>$author$</owners>
-    <requireLicenseAcceptance>false</requireLicenseAcceptance>
-    <license type="expression">MIT</license>
-    <projectUrl>https://github.com/$author$/$id$</projectUrl>
-    <description>$description$</description>
-    <releaseNotes>Initial release</releaseNotes>
-    <copyright>Copyright © $year$</copyright>
-    <tags>$tags$</tags>
-  </metadata>
-  <files>
-    <file src="bin\Release\**\*.dll" target="lib" />
-    <file src="bin\Release\**\*.pdb" target="lib" />
-  </files>
-</package>
-```
-
----
-
 ### Command: trusted-signers
 
 **Synopsis**: Manages trusted package signers
@@ -1195,48 +992,6 @@ gonuget trusted-signers list
 # Sync from package
 gonuget trusted-signers sync MyPackage.1.0.0.nupkg
 ```
-
----
-
-### Command: update
-
-**Synopsis**: Updates packages in a project or solution
-
-```bash
-gonuget update [<packages.config>|<solution>] [options]
-```
-
-**Arguments**:
-- `packages.config` or solution file (optional)
-
-**Flags**:
-- `-Id` (string, repeatable): Specific package ID(s) to update
-- `-Version, -v` (string): Specific version to update to
-- `-Source, -s` (string, repeatable): Package source(s)
-- `-RepositoryPath` (string): Packages directory
-- `-Safe` (bool): Only update to highest patch/minor within current major.minor
-- `-Prerelease` (bool): Include prerelease versions
-- `-DependencyVersion` (string): Dependency version constraint
-- `-FileConflictAction` (string): File conflict resolution (Overwrite, Ignore, Prompt)
-- `-MSBuildPath` (string): Path to MSBuild
-- `-Verbose` (bool): Show detailed output
-- `-Self` (bool): Update gonuget itself (self-update)
-
-**Behavior**:
-1. Parse project/solution to find current packages
-2. Query sources for newer versions
-3. Apply `-Safe` constraint if specified
-4. Resolve new dependency graph
-5. Download updated packages
-6. Update packages.config and project files
-7. Handle file conflicts according to `-FileConflictAction`
-
-**Self-Update** (`-Self`):
-1. Check GitHub releases for latest gonuget version
-2. Download new binary
-3. Verify signature
-4. Replace current binary (atomic swap)
-5. Restart with `version` command to verify
 
 ---
 
@@ -1765,21 +1520,28 @@ Linux:    /home/user/.nuget/packages
 
 ---
 
-### Phase 2: Core Operations (Weeks 3-5)
+### Phase 2: Package Management (Weeks 3-5)
 
-**Goals**: Package search, download, basic install
+**Goals**: Package search, add package, restore with CPM support
 
 **Deliverables**:
-- Commands: `search`, `install`
+- Commands: `search`, `install`, `add package`, `restore`
 - Package metadata fetching
 - Package download with progress
+- Project file manipulation (.csproj parsing and modification)
+- **Central Package Management (CPM)** - Full support:
+  - Directory.Packages.props detection and manipulation
+  - PackageVersion management
+  - VersionOverride support
+  - Multi-project CPM scenarios
 - Simple extraction (no dependency resolution)
 - Cache integration
-- **Total Commands**: 11/21 (52%)
+- **Total Commands**: 13/21 (62%)
 
 **Tests**:
 - Integration tests with test feed
-- CLI interop tests for search and install
+- CLI interop tests for search, install, add package, restore
+- CPM interop tests validating parity with `dotnet add package`
 
 ---
 
