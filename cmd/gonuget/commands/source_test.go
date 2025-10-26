@@ -1096,3 +1096,95 @@ func createEmptyConfig(path string) error {
 </configuration>`
 	return os.WriteFile(path, []byte(content), 0644)
 }
+
+// NEW TESTS TO IMPROVE COVERAGE
+
+func TestListCommandConstructor(t *testing.T) {
+	console := output.NewConsole(os.Stdout, os.Stderr, output.VerbosityQuiet)
+	cmd := NewListCommand(console)
+
+	// Test command was created
+	if cmd == nil {
+		t.Fatal("Expected command to be created")
+	}
+
+	// Test Use field
+	if cmd.Use != "list source" {
+		t.Errorf("Expected Use 'list source', got '%s'", cmd.Use)
+	}
+
+	// Test default format flag
+	formatFlag := cmd.Flags().Lookup("format")
+	if formatFlag == nil {
+		t.Fatal("Expected --format flag")
+	}
+	if formatFlag.DefValue != "Detailed" {
+		t.Errorf("Expected default format 'Detailed', got '%s'", formatFlag.DefValue)
+	}
+
+	// Test that RunE returns error for wrong args (not Args validator)
+	cmd.SetArgs([]string{"source"})
+	err := cmd.Execute()
+	if err != nil {
+		t.Errorf("Expected no error with correct arg 'source', got: %v", err)
+	}
+
+	// Test with wrong arg
+	cmd2 := NewListCommand(console)
+	cmd2.SetArgs([]string{"wrongarg"})
+	err = cmd2.Execute()
+	if err == nil {
+		t.Error("Expected error for wrong argument")
+	}
+	if !strings.Contains(err.Error(), "unknown command") {
+		t.Errorf("Expected 'unknown command' error, got: %v", err)
+	}
+}
+
+func TestRemoveCommandConstructor(t *testing.T) {
+	console := output.NewConsole(os.Stdout, os.Stderr, output.VerbosityQuiet)
+	cmd := NewRemoveCommand(console)
+
+	if cmd == nil {
+		t.Fatal("Expected command to be created")
+	}
+
+	// Test with wrong first arg
+	cmd.SetArgs([]string{"wrongarg", "TestSource"})
+	err := cmd.Execute()
+	if err == nil {
+		t.Error("Expected error for wrong first argument")
+	}
+}
+
+func TestEnableCommandConstructor(t *testing.T) {
+	console := output.NewConsole(os.Stdout, os.Stderr, output.VerbosityQuiet)
+	cmd := NewEnableCommand(console)
+
+	if cmd == nil {
+		t.Fatal("Expected command to be created")
+	}
+
+	// Test with wrong first arg
+	cmd.SetArgs([]string{"wrongarg", "TestSource"})
+	err := cmd.Execute()
+	if err == nil {
+		t.Error("Expected error for wrong first argument")
+	}
+}
+
+func TestDisableCommandConstructor(t *testing.T) {
+	console := output.NewConsole(os.Stdout, os.Stderr, output.VerbosityQuiet)
+	cmd := NewDisableCommand(console)
+
+	if cmd == nil {
+		t.Fatal("Expected command to be created")
+	}
+
+	// Test with wrong first arg
+	cmd.SetArgs([]string{"wrongarg", "TestSource"})
+	err := cmd.Execute()
+	if err == nil {
+		t.Error("Expected error for wrong first argument")
+	}
+}
