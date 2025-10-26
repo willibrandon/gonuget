@@ -7,7 +7,6 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/spf13/cobra"
 	"github.com/willibrandon/gonuget/cmd/gonuget/cli"
 	"github.com/willibrandon/gonuget/cmd/gonuget/commands"
 )
@@ -34,22 +33,16 @@ func main() {
 	cli.AddCommand(commands.NewVersionCommand(cli.Console))
 	cli.AddCommand(commands.NewConfigCommand(cli.Console))
 
-	// Register source management commands
+	// Register parent "add" command with "source" and "package" subcommands
+	// This matches the dotnet structure where "dotnet add" has subcommands
+	cli.AddCommand(commands.NewAddCommand(cli.Console))
+
+	// Register other source management commands
 	cli.AddCommand(commands.NewListCommand(cli.Console))
 	cli.AddCommand(commands.NewRemoveCommand(cli.Console))
 	cli.AddCommand(commands.NewEnableCommand(cli.Console))
 	cli.AddCommand(commands.NewDisableCommand(cli.Console))
 	cli.AddCommand(commands.NewUpdateCommand(cli.Console))
-
-	// Register add command with source and package subcommands
-	addCmd := &cobra.Command{
-		Use:   "add",
-		Short: "Add a package reference or source",
-		Long:  "Add a package or project reference to a .NET project file, or add a package source",
-	}
-	addCmd.AddCommand(commands.NewAddPackageCmd())
-	addCmd.AddCommand(commands.NewAddCommand(cli.Console)) // This becomes "add source"
-	cli.AddCommand(addCmd)
 
 	// Handle signals for graceful shutdown
 	sigChan := make(chan os.Signal, 1)

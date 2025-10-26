@@ -24,8 +24,8 @@ type AddPackageOptions struct {
 	Interactive      bool
 }
 
-// NewAddPackageCmd creates the 'add package' command.
-func NewAddPackageCmd() *cobra.Command {
+// NewAddPackageCommand creates the 'add package' subcommand.
+func NewAddPackageCommand() *cobra.Command {
 	opts := &AddPackageOptions{}
 
 	cmd := &cobra.Command{

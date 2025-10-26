@@ -794,13 +794,27 @@ func TestNewCommands(t *testing.T) {
 		if cmd == nil {
 			t.Fatal("Expected command to be created")
 		}
-		if cmd.Use != "add source [PackageSourcePath]" {
-			t.Errorf("Expected Use to be 'add source [PackageSourcePath]', got '%s'", cmd.Use)
+		if cmd.Use != "add" {
+			t.Errorf("Expected Use to be 'add', got '%s'", cmd.Use)
 		}
-		// Verify required flags
-		nameFlag := cmd.Flags().Lookup("name")
-		if nameFlag == nil {
-			t.Error("Expected --name flag to exist")
+		// Verify it has subcommands (source and package)
+		if len(cmd.Commands()) < 2 {
+			t.Error("Expected add command to have at least 2 subcommands (source and package)")
+		}
+		// Verify the source subcommand exists
+		var foundSource bool
+		for _, subCmd := range cmd.Commands() {
+			if subCmd.Name() == "source" {
+				foundSource = true
+				// Verify source subcommand has required flags
+				nameFlag := subCmd.Flags().Lookup("name")
+				if nameFlag == nil {
+					t.Error("Expected --name flag to exist on source subcommand")
+				}
+			}
+		}
+		if !foundSource {
+			t.Error("Expected to find 'source' subcommand")
 		}
 	})
 

@@ -45,7 +45,23 @@ func init() {
 }
 
 // customHelpFunc provides custom help output matching dotnet nuget --help format
+// Only applies custom formatting to the root command; subcommands use Cobra's default help
 func customHelpFunc(cmd *cobra.Command, args []string) {
+	// Only use custom help for root command; let subcommands use Cobra's default
+	if cmd != cmd.Root() {
+		// Use Cobra's default template-based help for subcommands
+		usage := cmd.Long
+		if usage == "" {
+			usage = cmd.Short
+		}
+		if usage != "" {
+			Console.Println(usage)
+			Console.Println("")
+		}
+		Console.Print(cmd.UsageString())
+		return
+	}
+
 	version := cmd.Root().Version
 	if version == "" {
 		version = "dev"
