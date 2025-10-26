@@ -13,10 +13,22 @@ import (
 type NuGetConfig struct {
 	XMLName                  xml.Name                  `xml:"configuration"`
 	PackageSources           *PackageSources           `xml:"packageSources"`
+	DisabledPackageSources   *DisabledPackageSources   `xml:"disabledPackageSources,omitempty"`
 	APIKeys                  *APIKeys                  `xml:"apikeys"`
 	Config                   *ConfigSection            `xml:"config"`
 	TrustedSigners           *TrustedSigners           `xml:"trustedSigners"`
 	PackageSourceCredentials *PackageSourceCredentials `xml:"packageSourceCredentials"`
+}
+
+// DisabledPackageSources contains disabled package source definitions
+type DisabledPackageSources struct {
+	Add []DisabledPackageSource `xml:"add"`
+}
+
+// DisabledPackageSource represents a disabled package source
+type DisabledPackageSource struct {
+	Key   string `xml:"key,attr"`
+	Value string `xml:"value,attr"`
 }
 
 // PackageSources contains package source definitions
@@ -310,4 +322,62 @@ func getMachineWideConfigPath() string {
 	}
 	// Unix-like systems
 	return "/etc/nuget/NuGet.config"
+}
+
+// IsSourceDisabled checks if a source is disabled
+func (c *NuGetConfig) IsSourceDisabled(key string) bool {
+	if c.DisabledPackageSources == nil {
+		return false
+	}
+
+	for _, disabled := range c.DisabledPackageSources.Add {
+		if disabled.Key == key && disabled.Value == "true" {
+			return true
+		}
+	}
+
+	return false
+}
+
+// DisableSource disables a package source
+func (c *NuGetConfig) DisableSource(key string) {
+	if c.DisabledPackageSources == nil {
+		c.DisabledPackageSources = &DisabledPackageSources{}
+	}
+
+	// Check if already disabled
+	for i := range c.DisabledPackageSources.Add {
+		if c.DisabledPackageSources.Add[i].Key == key {
+			c.DisabledPackageSources.Add[i].Value = "true"
+			return
+		}
+	}
+
+	// Add to disabled list
+	c.DisabledPackageSources.Add = append(c.DisabledPackageSources.Add, DisabledPackageSource{
+		Key:   key,
+		Value: "true",
+	})
+}
+
+// EnableSource enables a package source
+func (c *NuGetConfig) EnableSource(key string) {
+	if c.DisabledPackageSources == nil {
+		return
+	}
+
+	// Remove from disabled list
+	var filtered []DisabledPackageSource
+	for _, disabled := range c.DisabledPackageSources.Add {
+		if disabled.Key != key {
+			filtered = append(filtered, disabled)
+		}
+	}
+
+	c.DisabledPackageSources.Add = filtered
+
+	// Clean up empty section
+	if len(c.DisabledPackageSources.Add) == 0 {
+		c.DisabledPackageSources = nil
+	}
 }

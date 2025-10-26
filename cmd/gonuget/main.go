@@ -2,6 +2,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
@@ -32,6 +33,14 @@ func main() {
 	cli.AddCommand(commands.NewVersionCommand(cli.Console))
 	cli.AddCommand(commands.NewConfigCommand(cli.Console))
 
+	// Register source management commands
+	cli.AddCommand(commands.NewListCommand(cli.Console))
+	cli.AddCommand(commands.NewAddCommand(cli.Console))
+	cli.AddCommand(commands.NewRemoveCommand(cli.Console))
+	cli.AddCommand(commands.NewEnableCommand(cli.Console))
+	cli.AddCommand(commands.NewDisableCommand(cli.Console))
+	cli.AddCommand(commands.NewUpdateCommand(cli.Console))
+
 	// Handle signals for graceful shutdown
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
@@ -42,6 +51,9 @@ func main() {
 
 	// Execute CLI
 	if err := cli.Execute(); err != nil {
+		// Print error to stderr since SilenceErrors is true in rootCmd
+		// Use os.Stderr directly to ensure error goes to stderr for interop testing
+		_, _ = fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 }

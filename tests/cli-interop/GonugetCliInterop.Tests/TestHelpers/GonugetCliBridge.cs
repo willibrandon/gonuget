@@ -172,6 +172,204 @@ public class GonugetCliBridge
     }
 
     /// <summary>
+    /// Executes the 'list source' command on both dotnet nuget and gonuget.
+    /// </summary>
+    /// <param name="workingDir">The working directory for command execution.</param>
+    /// <param name="configFile">Optional path to a specific NuGet.config file.</param>
+    /// <param name="format">The format of the list command output: Detailed (default) or Short.</param>
+    /// <returns>Response containing exit codes and output from both commands.</returns>
+    public ExecuteSourceListResponse ExecuteSourceList(
+        string workingDir,
+        string? configFile = null,
+        string? format = null)
+    {
+        var request = new
+        {
+            action = "execute_source_list",
+            data = new
+            {
+                workingDir,
+                configFile,
+                format
+            }
+        };
+
+        return Execute<ExecuteSourceListResponse>(request);
+    }
+
+    /// <summary>
+    /// Executes the 'add source' command on both dotnet nuget and gonuget.
+    /// </summary>
+    /// <param name="workingDir">The working directory for command execution.</param>
+    /// <param name="name">Name of the source.</param>
+    /// <param name="source">Path to the package source.</param>
+    /// <param name="configFile">Optional path to a specific NuGet.config file.</param>
+    /// <param name="username">Optional username for authenticated source.</param>
+    /// <param name="password">Optional password for authenticated source.</param>
+    /// <param name="storePasswordInClearText">Whether to store password in clear text.</param>
+    /// <param name="validAuthenticationTypes">Comma-separated list of valid authentication types.</param>
+    /// <param name="protocolVersion">The NuGet server protocol version (2 or 3).</param>
+    /// <param name="allowInsecureConnections">Whether to allow HTTP connections.</param>
+    /// <returns>Response containing exit codes and output from both commands.</returns>
+    public ExecuteSourceAddResponse ExecuteSourceAdd(
+        string workingDir,
+        string name,
+        string source,
+        string? configFile = null,
+        string? username = null,
+        string? password = null,
+        bool storePasswordInClearText = false,
+        string? validAuthenticationTypes = null,
+        string? protocolVersion = null,
+        bool allowInsecureConnections = false)
+    {
+        var request = new
+        {
+            action = "execute_source_add",
+            data = new
+            {
+                workingDir,
+                configFile,
+                name,
+                source,
+                username,
+                password,
+                storePasswordInClearText,
+                validAuthenticationTypes,
+                protocolVersion,
+                allowInsecureConnections
+            }
+        };
+
+        return Execute<ExecuteSourceAddResponse>(request);
+    }
+
+    /// <summary>
+    /// Executes the 'remove source' command on both dotnet nuget and gonuget.
+    /// </summary>
+    /// <param name="workingDir">The working directory for command execution.</param>
+    /// <param name="name">Name of the source to remove.</param>
+    /// <param name="configFile">Optional path to a specific NuGet.config file.</param>
+    /// <returns>Response containing exit codes and output from both commands.</returns>
+    public ExecuteSourceRemoveResponse ExecuteSourceRemove(
+        string workingDir,
+        string name,
+        string? configFile = null)
+    {
+        var request = new
+        {
+            action = "execute_source_remove",
+            data = new
+            {
+                workingDir,
+                configFile,
+                name
+            }
+        };
+
+        return Execute<ExecuteSourceRemoveResponse>(request);
+    }
+
+    /// <summary>
+    /// Executes the 'enable source' command on both dotnet nuget and gonuget.
+    /// </summary>
+    /// <param name="workingDir">The working directory for command execution.</param>
+    /// <param name="name">Name of the source to enable.</param>
+    /// <param name="configFile">Optional path to a specific NuGet.config file.</param>
+    /// <returns>Response containing exit codes and output from both commands.</returns>
+    public ExecuteSourceEnableResponse ExecuteSourceEnable(
+        string workingDir,
+        string name,
+        string? configFile = null)
+    {
+        var request = new
+        {
+            action = "execute_source_enable",
+            data = new
+            {
+                workingDir,
+                configFile,
+                name
+            }
+        };
+
+        return Execute<ExecuteSourceEnableResponse>(request);
+    }
+
+    /// <summary>
+    /// Executes the 'disable source' command on both dotnet nuget and gonuget.
+    /// </summary>
+    /// <param name="workingDir">The working directory for command execution.</param>
+    /// <param name="name">Name of the source to disable.</param>
+    /// <param name="configFile">Optional path to a specific NuGet.config file.</param>
+    /// <returns>Response containing exit codes and output from both commands.</returns>
+    public ExecuteSourceDisableResponse ExecuteSourceDisable(
+        string workingDir,
+        string name,
+        string? configFile = null)
+    {
+        var request = new
+        {
+            action = "execute_source_disable",
+            data = new
+            {
+                workingDir,
+                configFile,
+                name
+            }
+        };
+
+        return Execute<ExecuteSourceDisableResponse>(request);
+    }
+
+    /// <summary>
+    /// Executes the 'update source' command on both dotnet nuget and gonuget.
+    /// </summary>
+    /// <param name="workingDir">The working directory for command execution.</param>
+    /// <param name="name">Name of the source to update.</param>
+    /// <param name="source">Optional new path to the package source.</param>
+    /// <param name="configFile">Optional path to a specific NuGet.config file.</param>
+    /// <param name="username">Optional username for authenticated source.</param>
+    /// <param name="password">Optional password for authenticated source.</param>
+    /// <param name="storePasswordInClearText">Whether to store password in clear text.</param>
+    /// <param name="validAuthenticationTypes">Comma-separated list of valid authentication types.</param>
+    /// <param name="protocolVersion">The NuGet server protocol version (2 or 3).</param>
+    /// <param name="allowInsecureConnections">Whether to allow HTTP connections.</param>
+    /// <returns>Response containing exit codes and output from both commands.</returns>
+    public ExecuteSourceUpdateResponse ExecuteSourceUpdate(
+        string workingDir,
+        string name,
+        string? source = null,
+        string? configFile = null,
+        string? username = null,
+        string? password = null,
+        bool storePasswordInClearText = false,
+        string? validAuthenticationTypes = null,
+        string? protocolVersion = null,
+        bool allowInsecureConnections = false)
+    {
+        var request = new
+        {
+            action = "execute_source_update",
+            data = new
+            {
+                workingDir,
+                configFile,
+                name,
+                source,
+                username,
+                password,
+                storePasswordInClearText,
+                validAuthenticationTypes,
+                protocolVersion,
+                allowInsecureConnections
+            }
+        };
+
+        return Execute<ExecuteSourceUpdateResponse>(request);
+    }
+
+    /// <summary>
     /// Executes a JSON-RPC request by piping it to the gonuget-cli-interop-test process.
     /// </summary>
     /// <typeparam name="T">The expected response data type.</typeparam>

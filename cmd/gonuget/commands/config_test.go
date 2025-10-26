@@ -510,7 +510,7 @@ func TestListAllConfig_Empty(t *testing.T) {
 	console := output.NewConsole(&out, &out, output.VerbosityNormal)
 
 	cfg := config.NewDefaultConfig()
-	cfg.Config = nil // Force nil config section
+	cfg.Config = nil         // Force nil config section
 	cfg.PackageSources = nil // Remove default nuget.org source
 
 	if err := listAllConfig(console, cfg); err != nil {

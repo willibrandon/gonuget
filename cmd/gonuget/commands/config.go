@@ -261,17 +261,17 @@ func runConfigPaths(console *output.Console, opts *configPathsOptions) error {
 // See: https://learn.microsoft.com/en-us/nuget/reference/nuget-config-file#config-section
 func isValidConfigKey(key string) bool {
 	validKeys := map[string]bool{
-		"defaultPushSource":            true,
-		"dependencyVersion":            true,
-		"globalPackagesFolder":         true,
-		"http_proxy":                   true,
-		"http_proxy.user":              true,
-		"http_proxy.password":          true,
-		"no_proxy":                     true,
-		"maxHttpRequestsPerSource":     true,
-		"repositoryPath":               true,
-		"signatureValidationMode":      true,
-		"updatePackageLastAccessTime":  true,
+		"defaultPushSource":           true,
+		"dependencyVersion":           true,
+		"globalPackagesFolder":        true,
+		"http_proxy":                  true,
+		"http_proxy.user":             true,
+		"http_proxy.password":         true,
+		"no_proxy":                    true,
+		"maxHttpRequestsPerSource":    true,
+		"repositoryPath":              true,
+		"signatureValidationMode":     true,
+		"updatePackageLastAccessTime": true,
 	}
 	return validKeys[key]
 }

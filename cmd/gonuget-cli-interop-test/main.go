@@ -66,6 +66,20 @@ func main() {
 	case "execute_version":
 		handler = &ExecuteVersionHandler{}
 
+	// Source command actions
+	case "execute_source_list":
+		handler = &ExecuteSourceListHandler{}
+	case "execute_source_add":
+		handler = &ExecuteSourceAddHandler{}
+	case "execute_source_remove":
+		handler = &ExecuteSourceRemoveHandler{}
+	case "execute_source_enable":
+		handler = &ExecuteSourceEnableHandler{}
+	case "execute_source_disable":
+		handler = &ExecuteSourceDisableHandler{}
+	case "execute_source_update":
+		handler = &ExecuteSourceUpdateHandler{}
+
 	default:
 		sendError("ACT_001", "Unknown action", fmt.Sprintf("action=%s", req.Action))
 		os.Exit(1)

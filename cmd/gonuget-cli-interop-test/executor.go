@@ -53,12 +53,14 @@ func ExecuteCommand(executable string, args []string, workingDir string, timeout
 			}
 		}
 
-		return &CommandResult{
+		result := &CommandResult{
 			ExitCode: exitCode,
 			StdOut:   stdout.String(),
 			StdErr:   stderr.String(),
 			Success:  exitCode == 0,
-		}, nil
+		}
+
+		return result, nil
 
 	case <-time.After(time.Duration(timeout) * time.Second):
 		_ = cmd.Process.Kill()
