@@ -51,14 +51,18 @@
 - Chunk 10: Integration Tests with Real Packages
 
 **Chunks (M2.2 - Advanced Features)**:
-- Chunk 11: Framework-Specific References (Conditional ItemGroups)
-- Chunk 12: Transitive Dependency Resolution
-- Chunk 13: Multi-TFM Project Support
-- Chunk 14: Solution File Support
-- Chunk 15: CLI Interop Tests for Advanced Features
+- Chunk 11: Central Package Management (CPM) - Detection and Error Handling
+- Chunk 12: Central Package Management - Directory.Packages.props Manipulation
+- Chunk 13: Central Package Management - PackageVersion Management
+- Chunk 14: Framework-Specific References (Conditional ItemGroups)
+- Chunk 15: Transitive Dependency Resolution
+- Chunk 16: Multi-TFM Project Support
+- Chunk 17: Solution File Support
+- Chunk 18: CLI Interop Tests for CPM
+- Chunk 19: CLI Interop Tests for Advanced Features
 
 **Status**: Documentation Complete (Implementation Not Started)
-**Commands**: +2 (add package, restore) - Modern dotnet approach, NOT legacy nuget.exe
+**Commands**: +2 (add package, restore) - Modern dotnet approach with FULL CPM support, NOT legacy nuget.exe
 
 ---
 

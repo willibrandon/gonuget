@@ -68,7 +68,7 @@ gonuget add package Newtonsoft.Json --source https://api.nuget.org/v3/index.json
 - Version resolution (latest stable or specified)
 - Automatic restore after add
 - Single target framework projects only
-- No CPM support
+- CPM detection with error (full CPM support in M2.2 Chunks 11-13)
 
 **Chunks:**
 1. Project file detection and loading
@@ -79,15 +79,16 @@ gonuget add package Newtonsoft.Json --source https://api.nuget.org/v3/index.json
 ### Phase 2: Advanced Features (M2.2)
 
 **Scope:**
-- Framework-specific references (conditional ItemGroups)
-- Multi-TFM project support
+- **Central Package Management (CPM)** - Full support (Chunks 11-13)
+  - Directory.Packages.props detection and manipulation
+  - PackageVersion management
+  - VersionOverride support
+- Framework-specific references (conditional ItemGroups) (Chunk 14)
+- Transitive dependency resolution integration (Chunk 15)
+- Multi-TFM project support (Chunk 16)
+- Solution file support (Chunk 17)
 - Package compatibility verification
-- `--no-restore` flag support
-
-**Deferred to Future:**
-- Central Package Management (CPM)
-- Directory.Packages.props manipulation
-- VersionOverride support
+- `--no-restore` flag support (already in M2.1)
 
 ## Workflow
 
@@ -293,9 +294,9 @@ func runAddPackage(ctx context.Context, console *output.Console, packageID strin
         return fmt.Errorf("failed to load project: %w", err)
     }
 
-    // 3. Check for CPM (not supported in M2)
+    // 3. Check for CPM (M2.1: error, M2.2: full support - see Chunks 11-13)
     if proj.IsCentralPackageManagementEnabled() {
-        return fmt.Errorf("Central Package Management is not yet supported. Use 'dotnet add package' for CPM projects.")
+        return fmt.Errorf("Central Package Management detected. CPM support is in M2.2 (Chunks 11-13). Use 'dotnet add package' for now.")
     }
 
     // 4. Resolve version
@@ -703,11 +704,10 @@ error: No stable versions found for package 'Newtonsoft.Json.Bson'.
 Use --prerelease to include prerelease versions.
 ```
 
-5. **CPM not supported (M2.1):**
+5. **CPM detected in M2.1 (full support in M2.2 Chunks 11-13):**
 ```
 error: Central Package Management detected (Directory.Packages.props exists).
-CPM is not yet supported in gonuget. Use 'dotnet add package' for CPM projects.
-This will be supported in a future release.
+CPM support is implemented in M2.2 (Chunks 11-13). Use 'dotnet add package' for now.
 ```
 
 6. **Invalid project file:**
@@ -767,34 +767,345 @@ Reuse existing caching infrastructure:
 - HTTP response cache
 - Downloaded package cache
 
-## Future Enhancements (Post-M2)
+## M2.2 - Advanced Features
 
-### Central Package Management
+### Chunk 11: Central Package Management (CPM) - Detection and Error Handling
 
-- Detect `Directory.Packages.props`
-- Add `<PackageVersion>` to props file
-- Add `<PackageReference>` without version to .csproj
-- Support `VersionOverride` attribute
+**Objective**: Detect CPM-enabled projects and handle them appropriately.
 
-### Framework-Specific References
+**Reference**: `../sdk/src/Cli/dotnet/Commands/Package/Add/PackageAddCommand.cs:SetCentralVersion()`
 
-- Parse `<TargetFrameworks>` (plural)
-- Create conditional ItemGroups with `Condition` attribute
-- Verify package compatibility per TFM
+**Implementation**:
+```go
+// cmd/gonuget/project/project.go
 
-### Dependency Conflict Detection
+// IsCentralPackageManagementEnabled checks if CPM is enabled
+func (p *Project) IsCentralPackageManagementEnabled() bool {
+    // Check ManagePackageVersionsCentrally property
+    for _, pg := range p.Root.Properties {
+        if pg.ManagePackageVersionsCentrally == "true" {
+            return true
+        }
+    }
+    return false
+}
 
-- Run restore preview
-- Check for version conflicts
-- Warn user before committing changes
+// GetDirectoryPackagesPropsPath returns path to Directory.Packages.props
+func (p *Project) GetDirectoryPackagesPropsPath() string {
+    dir := filepath.Dir(p.Path)
+
+    // Check DirectoryPackagesPropsPath property
+    for _, pg := range p.Root.Properties {
+        if pg.DirectoryPackagesPropsPath != "" {
+            return pg.DirectoryPackagesPropsPath
+        }
+    }
+
+    // Default location
+    return filepath.Join(dir, "Directory.Packages.props")
+}
+```
+
+**PropertyGroup Extension**:
+```go
+type PropertyGroup struct {
+    XMLName                           xml.Name `xml:"PropertyGroup"`
+    TargetFramework                   string   `xml:"TargetFramework,omitempty"`
+    TargetFrameworks                  string   `xml:"TargetFrameworks,omitempty"`
+    ManagePackageVersionsCentrally    string   `xml:"ManagePackageVersionsCentrally,omitempty"`
+    DirectoryPackagesPropsPath        string   `xml:"DirectoryPackagesPropsPath,omitempty"`
+    OutputType                        string   `xml:"OutputType,omitempty"`
+    RootNamespace                     string   `xml:"RootNamespace,omitempty"`
+}
+```
+
+**Time Estimate**: 2 hours
+
+---
+
+### Chunk 12: Central Package Management - Directory.Packages.props Manipulation
+
+**Objective**: Load, parse, and modify Directory.Packages.props files.
+
+**Reference**: `../sdk/src/Cli/dotnet/Commands/Package/Add/PackageAddCommand.cs`
+
+**Implementation**:
+```go
+// cmd/gonuget/project/directory_packages.go
+
+// DirectoryPackagesProps represents a Directory.Packages.props file
+type DirectoryPackagesProps struct {
+    Path     string
+    Root     *DirectoryPackagesRootElement
+    modified bool
+}
+
+// DirectoryPackagesRootElement is the root <Project> element
+type DirectoryPackagesRootElement struct {
+    XMLName    xml.Name              `xml:"Project"`
+    Properties []*PropertyGroup      `xml:"PropertyGroup"`
+    ItemGroups []*PackageVersionGroup `xml:"ItemGroup"`
+}
+
+// PackageVersionGroup represents an ItemGroup containing PackageVersion elements
+type PackageVersionGroup struct {
+    XMLName         xml.Name          `xml:"ItemGroup"`
+    PackageVersions []*PackageVersion `xml:"PackageVersion"`
+}
+
+// PackageVersion represents a <PackageVersion> element in Directory.Packages.props
+type PackageVersion struct {
+    XMLName xml.Name `xml:"PackageVersion"`
+    Include string   `xml:"Include,attr"`
+    Version string   `xml:"Version,attr"`
+}
+
+// LoadDirectoryPackagesProps loads a Directory.Packages.props file
+func LoadDirectoryPackagesProps(path string) (*DirectoryPackagesProps, error) {
+    data, err := os.ReadFile(path)
+    if err != nil {
+        return nil, fmt.Errorf("failed to read Directory.Packages.props: %w", err)
+    }
+
+    var root DirectoryPackagesRootElement
+    if err := xml.Unmarshal(data, &root); err != nil {
+        return nil, fmt.Errorf("failed to parse Directory.Packages.props: %w", err)
+    }
+
+    return &DirectoryPackagesProps{
+        Path: path,
+        Root: &root,
+    }, nil
+}
+
+// AddOrUpdatePackageVersion adds or updates a package version
+func (dp *DirectoryPackagesProps) AddOrUpdatePackageVersion(packageID, version string) (updated bool, err error) {
+    // Find existing PackageVersion
+    for _, ig := range dp.Root.ItemGroups {
+        for _, pv := range ig.PackageVersions {
+            if strings.EqualFold(pv.Include, packageID) {
+                pv.Version = version
+                dp.modified = true
+                return true, nil
+            }
+        }
+    }
+
+    // Not found, add new PackageVersion
+    itemGroup := dp.findOrCreateItemGroup()
+    itemGroup.PackageVersions = append(itemGroup.PackageVersions, &PackageVersion{
+        Include: packageID,
+        Version: version,
+    })
+
+    dp.modified = true
+    return false, nil
+}
+
+// Save saves the Directory.Packages.props file
+func (dp *DirectoryPackagesProps) Save() error {
+    if !dp.modified {
+        return nil
+    }
+
+    // Marshal XML with indentation
+    output, err := xml.MarshalIndent(dp.Root, "", "  ")
+    if err != nil {
+        return fmt.Errorf("failed to marshal Directory.Packages.props: %w", err)
+    }
+
+    // Open file for writing
+    file, err := os.Create(dp.Path)
+    if err != nil {
+        return fmt.Errorf("failed to create file: %w", err)
+    }
+    defer file.Close()
+
+    // Write UTF-8 BOM
+    if _, err := file.Write([]byte{0xEF, 0xBB, 0xBF}); err != nil {
+        return err
+    }
+
+    // Write XML declaration
+    if _, err := file.WriteString("<?xml version=\"1.0\" encoding=\"utf-8\"?>\n"); err != nil {
+        return err
+    }
+
+    // Write XML
+    if _, err := file.Write(output); err != nil {
+        return err
+    }
+
+    return nil
+}
+```
+
+**Time Estimate**: 3 hours
+
+---
+
+### Chunk 13: Central Package Management - PackageVersion Management
+
+**Objective**: Integrate CPM into add package command.
+
+**Reference**: `../sdk/src/Cli/dotnet/Commands/Package/Add/PackageAddCommand.cs:Execute()`
+
+**Implementation**:
+```go
+// cmd/gonuget/commands/add_package.go (modify runAddPackage)
+
+func runAddPackage(ctx context.Context, console *output.Console, packageID string, opts *addPackageOptions) error {
+    // ... (existing project loading code)
+
+    // Check for CPM
+    if proj.IsCentralPackageManagementEnabled() {
+        console.Printf("info : Central Package Management detected\n")
+        return addPackageWithCPM(ctx, console, proj, packageID, opts)
+    }
+
+    // ... (existing non-CPM code)
+}
+
+func addPackageWithCPM(ctx context.Context, console *output.Console, proj *project.Project, packageID string, opts *addPackageOptions) error {
+    // 1. Load Directory.Packages.props
+    propsPath := proj.GetDirectoryPackagesPropsPath()
+    if _, err := os.Stat(propsPath); os.IsNotExist(err) {
+        return fmt.Errorf("Directory.Packages.props not found at %s. CPM requires this file.", propsPath)
+    }
+
+    props, err := project.LoadDirectoryPackagesProps(propsPath)
+    if err != nil {
+        return fmt.Errorf("failed to load Directory.Packages.props: %w", err)
+    }
+
+    // 2. Resolve version
+    packageVersion := opts.version
+    if packageVersion == "" {
+        console.Printf("info : Resolving latest version for '%s'\n", packageID)
+        client := createClientFromOptions(opts)
+        latestVersion, err := resolveLatestVersion(ctx, client, packageID, opts.prerelease)
+        if err != nil {
+            return fmt.Errorf("failed to resolve version: %w", err)
+        }
+        packageVersion = latestVersion.String()
+        console.Printf("info : Resolved version: %s\n", packageVersion)
+    }
+
+    // 3. Add/update PackageVersion in Directory.Packages.props
+    updated, err := props.AddOrUpdatePackageVersion(packageID, packageVersion)
+    if err != nil {
+        return fmt.Errorf("failed to add package version: %w", err)
+    }
+
+    if err := props.Save(); err != nil {
+        return fmt.Errorf("failed to save Directory.Packages.props: %w", err)
+    }
+
+    // 4. Add PackageReference WITHOUT version to .csproj
+    _, err = proj.AddOrUpdatePackageReference(packageID, "", opts.framework)
+    if err != nil {
+        return fmt.Errorf("failed to add package reference: %w", err)
+    }
+
+    if err := proj.Save(); err != nil {
+        return fmt.Errorf("failed to save project: %w", err)
+    }
+
+    if updated {
+        console.Printf("info : Updated package '%s' to version '%s' in Directory.Packages.props\n", packageID, packageVersion)
+    } else {
+        console.Printf("info : Added package '%s' version '%s' to Directory.Packages.props\n", packageID, packageVersion)
+    }
+
+    // 5. Restore (unless --no-restore)
+    if !opts.noRestore {
+        console.Println("info : Restoring packages...")
+        if err := runRestore(ctx, console, proj.Path); err != nil {
+            console.Printf("warn : Restore failed: %v\n", err)
+        } else {
+            console.Println("info : Package added successfully")
+        }
+    }
+
+    return nil
+}
+```
+
+**Time Estimate**: 4 hours
+
+---
+
+### Chunk 14: Framework-Specific References
+
+**Objective**: Support conditional ItemGroups based on target framework.
+
+**Implementation**: Parse `<TargetFrameworks>` (plural), create conditional ItemGroups with `Condition` attribute, verify package compatibility per TFM.
+
+**Time Estimate**: 3 hours
+
+---
+
+### Chunk 15: Transitive Dependency Resolution
+
+**Objective**: Integrate existing `core/resolver` for transitive deps during add package.
+
+**Time Estimate**: 2 hours
+
+---
+
+### Chunk 16: Multi-TFM Project Support
+
+**Objective**: Handle projects with multiple target frameworks.
+
+**Time Estimate**: 2 hours
+
+---
+
+### Chunk 17: Solution File Support
+
+**Objective**: Support adding packages to solution-level projects.
+
+**Time Estimate**: 4 hours
+
+---
+
+### Chunk 18: CLI Interop Tests for CPM
+
+**Objective**: Test CPM functionality against dotnet nuget behavior.
+
+**Time Estimate**: 3 hours
+
+---
+
+### Chunk 19: CLI Interop Tests for Advanced Features
+
+**Objective**: Test all M2.2 features for parity.
+
+**Time Estimate**: 3 hours
 
 ## Success Criteria
 
+**M2.1 (Basic Add):**
 - [ ] Add package with version specified
 - [ ] Add package with latest version resolution
 - [ ] Update existing package reference
 - [ ] Preserve project file formatting
+- [ ] CPM detection with error message
 - [ ] CLI interop tests pass (100% XML parity with dotnet)
 - [ ] Error handling for all scenarios
 - [ ] Help documentation complete
 - [ ] Integration tests with real NuGet.org packages
+
+**M2.2 (Advanced Features - 100% dotnet parity):**
+- [ ] Central Package Management (CPM) full support
+  - [ ] Detect ManagePackageVersionsCentrally property
+  - [ ] Load and parse Directory.Packages.props
+  - [ ] Add/update PackageVersion entries
+  - [ ] Add PackageReference without version to .csproj
+  - [ ] VersionOverride support
+- [ ] Framework-specific references (conditional ItemGroups)
+- [ ] Transitive dependency resolution
+- [ ] Multi-TFM project support
+- [ ] Solution file support
+- [ ] CPM CLI interop tests pass (100% parity with dotnet)
+- [ ] All advanced features interop tests pass
