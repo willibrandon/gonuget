@@ -16,37 +16,49 @@
 - [CLI-M1-FOUNDATION.md](./CLI-M1-FOUNDATION.md) (Chunks 1-5, 1,706 lines)
 - [CLI-M1-FOUNDATION-CONTINUED.md](./CLI-M1-FOUNDATION-CONTINUED.md) (Chunks 6-10, 1,800 lines)
 
-- ✅ Chunk 1: Project Structure and Entry Point
-- ✅ Chunk 2: Console Abstraction
-- ✅ Chunk 3: Configuration Management (NuGet.config XML)
-- ✅ Chunk 4: Version Command (`gonuget --version` matches `dotnet nuget --version`)
-- ✅ Chunk 5: Config Command (`gonuget config` - get/set/list matches `dotnet nuget config`)
-- ✅ Chunk 6: Source Commands (`list source`, `add source`, `remove source`, `enable source`, `disable source`, `update source`)
-- ✅ Chunk 7: Help Command
-- ✅ Chunk 8: Progress Bars and Spinners
-- ✅ Chunk 9: CLI Interop Tests for Phase 1
-- ✅ Chunk 10: Performance Benchmarks
+- ✅ Chunk 1: Project Structure and Entry Point (COMPLETE)
+- ✅ Chunk 2: Console Abstraction (COMPLETE)
+- ✅ Chunk 3: Configuration Management (NuGet.config XML) (COMPLETE)
+- ✅ Chunk 4: Version Command (`gonuget --version` matches `dotnet nuget --version`) (COMPLETE)
+- ✅ Chunk 5: Config Command (`gonuget config` - get/set/list matches `dotnet nuget config`) (COMPLETE)
+- ✅ Chunk 6: Source Commands (`list source`, `add source`, `remove source`, `enable source`, `disable source`, `update source`) (COMPLETE)
+- ✅ Chunk 7: Help Command (COMPLETE)
+- ❌ Chunk 8: Progress Bars and Spinners (WILL NOT DO - deferred to Phase 7)
+- ✅ Chunk 9: CLI Interop Tests for Phase 1 (COMPLETE)
+- ⏸️ Chunk 10: Performance Benchmarks (DEFERRED to Phase 7)
 
-**Status**: Documentation Complete - Ready for Implementation
+**Status**: ✅ PHASE COMPLETE - All Core Functionality Implemented
 **Commands**: 9/21 (43% - dotnet nuget parity)
 
 ---
 
-### Phase 2: Core Operations (Weeks 3-5)
-**Document**: [CLI-M2-CORE-OPERATIONS.md](./CLI-M2-CORE-OPERATIONS.md)
-- Chunk 1: Search Command Infrastructure
-- Chunk 2: Search Command Implementation (V3 Protocol)
-- Chunk 3: Search Command (V2 Protocol Support)
-- Chunk 4: List Command (delegates to search)
-- Chunk 5: Install Command - Basic Structure
-- Chunk 6: Install Command - Download and Extract
-- Chunk 7: Install Command - Framework Compatibility
-- Chunk 8: Install Command - packages.config Support
-- Chunk 9: Install Command - Progress Reporting
-- Chunk 10: CLI Interop Tests for Phase 2
+### Phase 2: Package Management (Weeks 3-5)
+**Documents**:
+- [PROJECT-FILE-MANIPULATION.md](./PROJECT-FILE-MANIPULATION.md) - Research on dotnet project file manipulation
+- [CLI-M2-ADD-PACKAGE.md](./CLI-M2-ADD-PACKAGE.md) - `gonuget add package` implementation
+- [CLI-M2-RESTORE.md](./CLI-M2-RESTORE.md) - `gonuget restore` implementation
 
-**Status**: Not Started
-**Commands**: +2 (11/21 - 52%)
+**Chunks (M2.1 - Basic Add & Restore)**:
+- Chunk 1: Project File Abstraction (Load, Parse, Save)
+- Chunk 2: PackageReference Extraction and Manipulation
+- Chunk 3: Add Package Command - Version Resolution
+- Chunk 4: Add Package Command - Project File Modification
+- Chunk 5: Restore Command - Direct Dependencies Only
+- Chunk 6: project.assets.json Generation
+- Chunk 7: Global Package Cache Integration
+- Chunk 8: CLI Interop Tests for Add Package
+- Chunk 9: CLI Interop Tests for Restore
+- Chunk 10: Integration Tests with Real Packages
+
+**Chunks (M2.2 - Advanced Features)**:
+- Chunk 11: Framework-Specific References (Conditional ItemGroups)
+- Chunk 12: Transitive Dependency Resolution
+- Chunk 13: Multi-TFM Project Support
+- Chunk 14: Solution File Support
+- Chunk 15: CLI Interop Tests for Advanced Features
+
+**Status**: Documentation Complete (Implementation Not Started)
+**Commands**: +2 (add package, restore) - Modern dotnet approach, NOT legacy nuget.exe
 
 ---
 
@@ -199,8 +211,8 @@
 
 | Phase | Duration | Commands | Status | Document Lines | Progress |
 |-------|----------|----------|--------|----------------|----------|
-| 1. Foundation | Weeks 1-2 | 9/21 (43%) | Documentation Complete | 3,506 | 100% |
-| 2. Core Operations | Weeks 3-5 | +2 (11/21 - 52%) | Not Started | - | 0% |
+| 1. Foundation | Weeks 1-2 | 9/21 (43%) | ✅ COMPLETE | 3,506 | 100% |
+| 2. Package Management | Weeks 3-5 | +2 (11/21 - 52%) | ✅ Documentation Complete | ~3,200 | 0% |
 | 3. Dependency Resolution | Weeks 6-7 | +1 (12/21 - 57%) | Not Started | - | 0% |
 | 4. Package Creation | Weeks 8-9 | +2 (14/21 - 67%) | Not Started | - | 0% |
 | 5. Signing & Security | Weeks 10-11 | +3 (17/21 - 81%) | Not Started | - | 0% |
@@ -222,9 +234,9 @@
 | 7 | enable source | `dotnet nuget enable source` | 1 | Documentation Complete | Planned | - |
 | 8 | disable source | `dotnet nuget disable source` | 1 | Documentation Complete | Planned | - |
 | 9 | update source | `dotnet nuget update source` | 1 | Documentation Complete | Planned | - |
-| 10 | list | Package search/list | 2 | Not Started | - | - |
-| 11 | install | Package installation | 2 | Not Started | - | - |
-| 12 | restore | `dotnet restore` (similar) | 3 | Not Started | - | - |
+| 10 | add package | `dotnet add package` | 2 | Not Started | - | - |
+| 11 | restore | `dotnet restore` | 2 | Not Started | - | - |
+| 12 | search | `dotnet package search` | 3 | Not Started | - | - |
 | 13 | pack | `dotnet pack` (similar) | 4 | Not Started | - | - |
 | 14 | push | `dotnet nuget push` | 4 | Not Started | - | - |
 | 15 | sign | `dotnet nuget sign` | 5 | Not Started | - | - |
@@ -390,20 +402,24 @@ All gonuget library milestones (M1-M8) must be complete:
 
 1. ✅ **CLI-M1-FOUNDATION.md** (Chunks 1-5) - Documentation Complete
 2. ✅ **CLI-M1-FOUNDATION-CONTINUED.md** (Chunks 6-10) - Documentation Complete
-3. **Implement Phase 1** (Chunks 1-10) following the updated documentation
-4. **Update CLI-M2-CORE-OPERATIONS.md** with CLI interop tests and dotnet nuget parity
-5. **Update CLI-M3-DEPENDENCY-RESOLUTION.md** with CLI interop tests
-6. **Update CLI-M4-PACKAGE-CREATION.md** (Critical: MSBuild) with CLI interop tests
-7. **Update CLI-M5-SIGNING-SECURITY.md** with CLI interop tests
-8. **Update CLI-M6-ADVANCED-FEATURES.md** with CLI interop tests
-9. **Update CLI-M7-POLISH-OPTIMIZATION.md** (Critical: Localization)
-10. **Update CLI-M8-PLATFORM-SPECIFIC.md**
+3. ✅ **PROJECT-FILE-MANIPULATION.md** - Research Complete
+4. ✅ **CLI-M2-ADD-PACKAGE.md** - Documentation Complete
+5. ✅ **CLI-M2-RESTORE.md** - Documentation Complete
+6. **Implement Phase 1** (Chunks 1-10) following the updated documentation
+7. **Implement Phase 2** (Chunks 1-15) - Add package and restore commands
+8. **Update CLI-M3-DEPENDENCY-RESOLUTION.md** - Move search/list here, add advanced restore features
+9. **Update CLI-M4-PACKAGE-CREATION.md** (Critical: MSBuild) with CLI interop tests
+10. **Update CLI-M5-SIGNING-SECURITY.md** with CLI interop tests
+11. **Update CLI-M6-ADVANCED-FEATURES.md** with CLI interop tests
+12. **Update CLI-M7-POLISH-OPTIMIZATION.md** (Critical: Localization)
+13. **Update CLI-M8-PLATFORM-SPECIFIC.md**
 
 ---
 
-**Last Updated**: 2025-01-25
-**Status**: Phase 1 Documentation Complete (43% of commands documented)
-**Implementation Status**: Ready to implement Phase 1 (9/21 commands)
-**Target**: 100% parity with `dotnet nuget` (cross-platform)
+**Last Updated**: 2025-10-26
+**Status**: Phase 1 & 2 Documentation Complete (52% of commands documented)
+**Implementation Status**: Ready to implement Phase 1-2 (11/21 commands)
+**Critical Change**: Aligned with dotnet (PackageReference) approach, NOT nuget.exe (packages.config)
+**Target**: 100% parity with `dotnet` and `dotnet nuget` (cross-platform)
 **Reference**: dotnet/sdk and NuGet.Client/NuGet.CommandLine.XPlat
 **Timeline**: 16 weeks to feature-complete v1.0
