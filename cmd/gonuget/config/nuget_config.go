@@ -222,3 +222,92 @@ func (c *NuGetConfig) SetConfigValue(key, value string) {
 	// Add new
 	c.Config.Add = append(c.Config.Add, ConfigItem{Key: key, Value: value})
 }
+
+// DeleteConfigValue removes a configuration value by key
+func (c *NuGetConfig) DeleteConfigValue(key string) {
+	if c.Config == nil {
+		return
+	}
+
+	var filtered []ConfigItem
+	for _, item := range c.Config.Add {
+		if item.Key != key {
+			filtered = append(filtered, item)
+		}
+	}
+	c.Config.Add = filtered
+}
+
+// FindConfigFileFrom finds config file starting from specified directory
+func FindConfigFileFrom(startDir string) string {
+	dir := startDir
+	for {
+		configPath := filepath.Join(dir, "NuGet.config")
+		if _, err := os.Stat(configPath); err == nil {
+			return configPath
+		}
+
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			// Reached root
+			break
+		}
+		dir = parent
+	}
+
+	// Fall back to user config
+	return GetUserConfigPath()
+}
+
+// GetConfigHierarchy returns all config file paths in the hierarchy
+func GetConfigHierarchy(workingDirectory string) []string {
+	var paths []string
+
+	// Start directory
+	startDir := workingDirectory
+	if startDir == "" {
+		var err error
+		startDir, err = os.Getwd()
+		if err != nil {
+			startDir = "."
+		}
+	}
+
+	// Walk up directory tree
+	dir := startDir
+	for {
+		configPath := filepath.Join(dir, "NuGet.config")
+		if _, err := os.Stat(configPath); err == nil {
+			paths = append(paths, configPath)
+		}
+
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
+	}
+
+	// Add user config
+	userConfig := GetUserConfigPath()
+	paths = append(paths, userConfig)
+
+	// Add machine-wide config (platform-specific)
+	machineConfig := getMachineWideConfigPath()
+	if machineConfig != "" {
+		paths = append(paths, machineConfig)
+	}
+
+	return paths
+}
+
+// getMachineWideConfigPath returns the machine-wide config path
+func getMachineWideConfigPath() string {
+	// Platform-specific logic
+	if programData := os.Getenv("ProgramData"); programData != "" {
+		// Windows
+		return filepath.Join(programData, "NuGet", "Config", "NuGet.config")
+	}
+	// Unix-like systems
+	return "/etc/nuget/NuGet.config"
+}

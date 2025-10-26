@@ -20,7 +20,7 @@ func DefaultConfigLocations() []string {
 
 	// User config
 	if home, err := os.UserHomeDir(); err == nil {
-		locations = append(locations, filepath.Join(home, ".nuget", "NuGet.config"))
+		locations = append(locations, filepath.Join(home, ".nuget", "NuGet", "NuGet.Config"))
 	}
 
 	// System config (platform-specific)
@@ -53,7 +53,7 @@ func GetUserConfigPath() string {
 	if err != nil {
 		return ""
 	}
-	return filepath.Join(home, ".nuget", "NuGet.config")
+	return filepath.Join(home, ".nuget", "NuGet", "NuGet.Config")
 }
 
 // DefaultPackageSources returns the default package sources

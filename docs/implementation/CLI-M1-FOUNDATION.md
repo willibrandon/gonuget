@@ -1635,7 +1635,9 @@ Commands: 1/20 complete (5%)"
 
 ## Chunk 5: Config Command
 
-**Objective**: Implement `config` command matching `dotnet nuget config` behavior for reading and writing configuration values.
+**Objective**: Implement `config` command matching `dotnet nuget config` behavior exactly with four subcommands: get, set, unset, and paths.
+
+**Reference**: `dotnet nuget config` implementation in `/Users/brandon/src/NuGet.Client/src/NuGet.Core/NuGet.CommandLine.XPlat/Commands/ConfigCommands/`
 
 ### Step 5.1: Create commands/config.go
 
@@ -1646,98 +1648,280 @@ package commands
 import (
 	"fmt"
 	"path/filepath"
+	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/willibrandon/gonuget/cmd/gonuget/config"
 	"github.com/willibrandon/gonuget/cmd/gonuget/output"
 )
 
-type configOptions struct {
-	configFile string
-	asPath     bool
-	set        []string
-}
-
-// NewConfigCommand creates the config command
+// NewConfigCommand creates the config command with get/set/unset/paths subcommands
 func NewConfigCommand(console *output.Console) *cobra.Command {
-	opts := &configOptions{}
-
 	cmd := &cobra.Command{
-		Use:   "config [key] [value]",
-		Short: "Get or set NuGet configuration values",
-		Long: `Get or set NuGet configuration values.
+		Use:   "config",
+		Short: "Manage NuGet configuration",
+		Long: `Gets, sets, unsets, or displays paths for NuGet configuration values.
+
+This command has four subcommands:
+  - get:   Get a configuration value (or all with "all")
+  - set:   Set a configuration value
+  - unset: Remove a configuration value
+  - paths: Display configuration file paths
 
 Examples:
-  gonuget config                                     # List all config values
-  gonuget config repositoryPath                      # Get specific value
-  gonuget config repositoryPath ~/packages           # Set value
-  gonuget config --set key1=value1 --set key2=value2 # Set multiple values`,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return runConfig(console, args, opts)
-		},
+  gonuget config get repositoryPath
+  gonuget config get all
+  gonuget config set repositoryPath ~/packages
+  gonuget config unset repositoryPath
+  gonuget config paths`,
+		SilenceUsage: true,
 	}
 
-	cmd.Flags().StringVar(&opts.configFile, "configfile", "", "Config file to use")
-	cmd.Flags().BoolVar(&opts.asPath, "as-path", false, "Return value as filesystem path")
-	cmd.Flags().StringArrayVar(&opts.set, "set", []string{}, "Set key=value pair(s)")
+	// Add subcommands
+	cmd.AddCommand(newConfigGetCommand(console))
+	cmd.AddCommand(newConfigSetCommand(console))
+	cmd.AddCommand(newConfigUnsetCommand(console))
+	cmd.AddCommand(newConfigPathsCommand(console))
 
 	return cmd
 }
 
-func runConfig(console *output.Console, args []string, opts *configOptions) error {
+// Config Get Subcommand
+
+type configGetOptions struct {
+	workingDirectory string
+	showPath         bool
+}
+
+func newConfigGetCommand(console *output.Console) *cobra.Command {
+	opts := &configGetOptions{}
+
+	cmd := &cobra.Command{
+		Use:   "get <all-or-config-key>",
+		Short: "Get a configuration value",
+		Long: `Get a NuGet configuration value by key, or get all values with "all".
+
+Examples:
+  gonuget config get repositoryPath
+  gonuget config get all
+  gonuget config get globalPackagesFolder --show-path`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runConfigGet(console, args[0], opts)
+		},
+	}
+
+	cmd.Flags().StringVar(&opts.workingDirectory, "working-directory", "", "Working directory for config hierarchy resolution")
+	cmd.Flags().BoolVar(&opts.showPath, "show-path", false, "Return value as filesystem path")
+
+	return cmd
+}
+
+func runConfigGet(console *output.Console, allOrConfigKey string, opts *configGetOptions) error {
+	// Determine config file based on working directory
+	configPath := determineConfigPath(opts.workingDirectory)
+
+	// Load config
+	cfg, err := config.LoadNuGetConfig(configPath)
+	if err != nil {
+		return fmt.Errorf("failed to load config: %w", err)
+	}
+
+	// Handle "all" keyword
+	if strings.EqualFold(allOrConfigKey, "all") {
+		return listAllConfig(console, cfg)
+	}
+
+	// Get specific value
+	value := cfg.GetConfigValue(allOrConfigKey)
+	if value == "" {
+		return fmt.Errorf("key '%s' not found", allOrConfigKey)
+	}
+
+	// Handle --show-path
+	if opts.showPath {
+		absPath, err := filepath.Abs(value)
+		if err != nil {
+			return fmt.Errorf("failed to resolve path: %w", err)
+		}
+		console.Println(absPath)
+	} else {
+		console.Println(value)
+	}
+
+	return nil
+}
+
+// Config Set Subcommand
+
+type configSetOptions struct {
+	configFile string
+}
+
+func newConfigSetCommand(console *output.Console) *cobra.Command {
+	opts := &configSetOptions{}
+
+	cmd := &cobra.Command{
+		Use:   "set <config-key> <config-value>",
+		Short: "Set a configuration value",
+		Long: `Set a NuGet configuration value.
+
+Examples:
+  gonuget config set repositoryPath ~/packages
+  gonuget config set globalPackagesFolder ~/.nuget/packages
+  gonuget config set http_proxy http://proxy:8080 --configfile ./NuGet.config`,
+		Args: cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runConfigSet(console, args[0], args[1], opts)
+		},
+	}
+
+	cmd.Flags().StringVar(&opts.configFile, "configfile", "", "Config file to modify")
+
+	return cmd
+}
+
+func runConfigSet(console *output.Console, configKey string, configValue string, opts *configSetOptions) error {
 	// Determine config file
 	configPath := opts.configFile
 	if configPath == "" {
 		configPath = config.FindConfigFile()
 		if configPath == "" {
-			// Use user config
 			configPath = config.GetUserConfigPath()
 		}
 	}
 
-	// Load config
+	// Load or create config
 	cfg, err := loadOrCreateConfig(configPath)
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
 
-	// Handle --Set flags
-	if len(opts.set) > 0 {
-		for _, pair := range opts.set {
-			key, value, err := parseKeyValue(pair)
-			if err != nil {
-				return err
-			}
-			cfg.SetConfigValue(key, value)
-		}
+	// Set value
+	cfg.SetConfigValue(configKey, configValue)
 
-		if err := config.SaveNuGetConfig(configPath, cfg); err != nil {
-			return fmt.Errorf("failed to save config: %w", err)
-		}
-
-		console.Success("Configuration updated")
-		return nil
+	// Save config
+	if err := config.SaveNuGetConfig(configPath, cfg); err != nil {
+		return fmt.Errorf("failed to save config: %w", err)
 	}
 
-	// Handle get/set via args
-	switch len(args) {
-	case 0:
-		// List all config values
-		return listAllConfig(console, cfg)
-	case 1:
-		// Get value
-		return getConfigValue(console, cfg, args[0], opts.asPath)
-	case 2:
-		// Set value
-		cfg.SetConfigValue(args[0], args[1])
-		if err := config.SaveNuGetConfig(configPath, cfg); err != nil {
-			return fmt.Errorf("failed to save config: %w", err)
-		}
-		console.Success("Set config value: %s = %s", args[0], args[1])
-		return nil
-	default:
-		return fmt.Errorf("too many arguments")
+	console.Println(fmt.Sprintf("Successfully updated config file at '%s'.", configPath))
+	return nil
+}
+
+// Config Unset Subcommand
+
+type configUnsetOptions struct {
+	configFile string
+}
+
+func newConfigUnsetCommand(console *output.Console) *cobra.Command {
+	opts := &configUnsetOptions{}
+
+	cmd := &cobra.Command{
+		Use:   "unset <config-key>",
+		Short: "Remove a configuration value",
+		Long: `Remove a NuGet configuration value.
+
+Examples:
+  gonuget config unset repositoryPath
+  gonuget config unset http_proxy --configfile ./NuGet.config`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runConfigUnset(console, args[0], opts)
+		},
 	}
+
+	cmd.Flags().StringVar(&opts.configFile, "configfile", "", "Config file to modify")
+
+	return cmd
+}
+
+func runConfigUnset(console *output.Console, configKey string, opts *configUnsetOptions) error {
+	// Determine config file
+	configPath := opts.configFile
+	if configPath == "" {
+		configPath = config.FindConfigFile()
+		if configPath == "" {
+			configPath = config.GetUserConfigPath()
+		}
+	}
+
+	// Load config
+	cfg, err := config.LoadNuGetConfig(configPath)
+	if err != nil {
+		return fmt.Errorf("failed to load config: %w", err)
+	}
+
+	// Remove value
+	cfg.DeleteConfigValue(configKey)
+
+	// Save config
+	if err := config.SaveNuGetConfig(configPath, cfg); err != nil {
+		return fmt.Errorf("failed to save config: %w", err)
+	}
+
+	console.Println(fmt.Sprintf("Successfully updated config file at '%s'.", configPath))
+	return nil
+}
+
+// Config Paths Subcommand
+
+type configPathsOptions struct {
+	workingDirectory string
+}
+
+func newConfigPathsCommand(console *output.Console) *cobra.Command {
+	opts := &configPathsOptions{}
+
+	cmd := &cobra.Command{
+		Use:   "paths",
+		Short: "Display configuration file paths",
+		Long: `Display the paths to NuGet configuration files in the hierarchy.
+
+Examples:
+  gonuget config paths
+  gonuget config paths --working-directory /path/to/project`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runConfigPaths(console, opts)
+		},
+	}
+
+	cmd.Flags().StringVar(&opts.workingDirectory, "working-directory", "", "Working directory for config hierarchy resolution")
+
+	return cmd
+}
+
+func runConfigPaths(console *output.Console, opts *configPathsOptions) error {
+	// Get config hierarchy
+	paths := config.GetConfigHierarchy(opts.workingDirectory)
+
+	console.Println("NuGet configuration file paths:")
+	for _, path := range paths {
+		exists := "✓"
+		if _, err := filepath.Abs(path); err != nil {
+			exists = "✗"
+		}
+		console.Printf("  %s %s\n", exists, path)
+	}
+
+	return nil
+}
+
+// Helper functions
+
+func determineConfigPath(workingDirectory string) string {
+	if workingDirectory != "" {
+		// Start from working directory
+		return config.FindConfigFileFrom(workingDirectory)
+	}
+	// Use current directory
+	configPath := config.FindConfigFile()
+	if configPath == "" {
+		configPath = config.GetUserConfigPath()
+	}
+	return configPath
 }
 
 func loadOrCreateConfig(path string) (*config.NuGetConfig, error) {
@@ -1751,49 +1935,15 @@ func loadOrCreateConfig(path string) (*config.NuGetConfig, error) {
 
 func listAllConfig(console *output.Console, cfg *config.NuGetConfig) error {
 	if cfg.Config == nil || len(cfg.Config.Add) == 0 {
-		console.Info("No configuration values set")
+		console.Println("No configuration values found.")
 		return nil
 	}
 
-	console.Println("Configuration values:")
 	for _, item := range cfg.Config.Add {
-		console.Printf("  %s = %s\n", item.Key, item.Value)
+		console.Printf("%s=%s\n", item.Key, item.Value)
 	}
 
 	return nil
-}
-
-func getConfigValue(console *output.Console, cfg *config.NuGetConfig, key string, asPath bool) error {
-	value := cfg.GetConfigValue(key)
-	if value == "" {
-		return fmt.Errorf("configuration value not found: %s", key)
-	}
-
-	if asPath {
-		// Expand path
-		if filepath.IsAbs(value) {
-			console.Println(value)
-		} else {
-			absPath, err := filepath.Abs(value)
-			if err != nil {
-				return fmt.Errorf("failed to resolve path: %w", err)
-			}
-			console.Println(absPath)
-		}
-	} else {
-		console.Println(value)
-	}
-
-	return nil
-}
-
-func parseKeyValue(pair string) (string, string, error) {
-	for i, r := range pair {
-		if r == '=' {
-			return pair[:i], pair[i+1:], nil
-		}
-	}
-	return "", "", fmt.Errorf("invalid key=value pair: %s", pair)
 }
 ```
 
@@ -1810,7 +1960,94 @@ func init() {
 }
 ```
 
-### Step 5.3: Create test
+### Step 5.3: Add config package helpers
+
+The config command requires additional helper functions in the config package:
+
+```go
+// cmd/gonuget/config/config.go - add these methods
+
+// DeleteConfigValue removes a configuration value
+func (c *NuGetConfig) DeleteConfigValue(key string) {
+	if c.Config == nil {
+		return
+	}
+
+	var filtered []ConfigItem
+	for _, item := range c.Config.Add {
+		if item.Key != key {
+			filtered = append(filtered, item)
+		}
+	}
+	c.Config.Add = filtered
+}
+
+// FindConfigFileFrom finds config file starting from specified directory
+func FindConfigFileFrom(startDir string) string {
+	dir := startDir
+	for {
+		configPath := filepath.Join(dir, "NuGet.config")
+		if _, err := os.Stat(configPath); err == nil {
+			return configPath
+		}
+
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			// Reached root
+			break
+		}
+		dir = parent
+	}
+
+	// Fall back to user config
+	return GetUserConfigPath()
+}
+
+// GetConfigHierarchy returns all config file paths in the hierarchy
+func GetConfigHierarchy(workingDirectory string) []string {
+	var paths []string
+
+	// Start directory
+	startDir := workingDirectory
+	if startDir == "" {
+		startDir, _ = os.Getwd()
+	}
+
+	// Walk up directory tree
+	dir := startDir
+	for {
+		configPath := filepath.Join(dir, "NuGet.config")
+		if _, err := os.Stat(configPath); err == nil {
+			paths = append(paths, configPath)
+		}
+
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
+	}
+
+	// Add user config
+	userConfig := GetUserConfigPath()
+	paths = append(paths, userConfig)
+
+	// Add machine-wide config (platform-specific)
+	if runtime.GOOS == "windows" {
+		programData := os.Getenv("ProgramData")
+		if programData != "" {
+			machineConfig := filepath.Join(programData, "NuGet", "Config", "NuGet.config")
+			paths = append(paths, machineConfig)
+		}
+	} else {
+		paths = append(paths, "/etc/nuget/NuGet.config")
+	}
+
+	return paths
+}
+```
+
+### Step 5.4: Create tests
 
 ```go
 // cmd/gonuget/commands/config_test.go
@@ -1818,7 +2055,6 @@ package commands
 
 import (
 	"bytes"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -1827,8 +2063,9 @@ import (
 	"github.com/willibrandon/gonuget/cmd/gonuget/output"
 )
 
-func TestConfigCommand_Get(t *testing.T) {
-	// Create temp config file
+// Config Get Tests
+
+func TestConfigGet(t *testing.T) {
 	tmpDir := t.TempDir()
 	configPath := filepath.Join(tmpDir, "NuGet.config")
 
@@ -1841,27 +2078,107 @@ func TestConfigCommand_Get(t *testing.T) {
 	var out bytes.Buffer
 	console := output.NewConsole(&out, &out, output.VerbosityNormal)
 
-	opts := &configOptions{configFile: configPath}
-	if err := runConfig(console, []string{"testKey"}, opts); err != nil {
-		t.Fatalf("runConfig() error = %v", err)
+	// Set working directory to temp dir so config is found
+	opts := &configGetOptions{workingDirectory: tmpDir}
+	if err := runConfigGet(console, "testKey", opts); err != nil {
+		t.Fatalf("runConfigGet() error = %v", err)
 	}
 
-	output := strings.TrimSpace(out.String())
-	if output != "testValue" {
-		t.Errorf("output = %q, want %q", output, "testValue")
+	result := strings.TrimSpace(out.String())
+	if result != "testValue" {
+		t.Errorf("output = %q, want %q", result, "testValue")
 	}
 }
 
-func TestConfigCommand_Set(t *testing.T) {
+func TestConfigGet_All(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "NuGet.config")
+
+	cfg := config.NewDefaultConfig()
+	cfg.SetConfigValue("key1", "value1")
+	cfg.SetConfigValue("key2", "value2")
+	if err := config.SaveNuGetConfig(configPath, cfg); err != nil {
+		t.Fatalf("failed to save config: %v", err)
+	}
+
+	var out bytes.Buffer
+	console := output.NewConsole(&out, &out, output.VerbosityNormal)
+
+	opts := &configGetOptions{workingDirectory: tmpDir}
+	if err := runConfigGet(console, "all", opts); err != nil {
+		t.Fatalf("runConfigGet() error = %v", err)
+	}
+
+	result := out.String()
+	if !strings.Contains(result, "key1=value1") {
+		t.Errorf("output should contain 'key1=value1'")
+	}
+	if !strings.Contains(result, "key2=value2") {
+		t.Errorf("output should contain 'key2=value2'")
+	}
+}
+
+func TestConfigGet_NotFound(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "NuGet.config")
+
+	cfg := config.NewDefaultConfig()
+	if err := config.SaveNuGetConfig(configPath, cfg); err != nil {
+		t.Fatalf("failed to save config: %v", err)
+	}
+
+	var out bytes.Buffer
+	console := output.NewConsole(&out, &out, output.VerbosityNormal)
+
+	opts := &configGetOptions{workingDirectory: tmpDir}
+	err := runConfigGet(console, "nonexistent", opts)
+	if err == nil {
+		t.Error("runConfigGet() should return error for nonexistent key")
+	}
+	if !strings.Contains(err.Error(), "not found") {
+		t.Errorf("error should mention 'not found', got: %v", err)
+	}
+}
+
+func TestConfigGet_ShowPath(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "NuGet.config")
+
+	cfg := config.NewDefaultConfig()
+	cfg.SetConfigValue("relativePath", "./packages")
+	if err := config.SaveNuGetConfig(configPath, cfg); err != nil {
+		t.Fatalf("failed to save config: %v", err)
+	}
+
+	var out bytes.Buffer
+	console := output.NewConsole(&out, &out, output.VerbosityNormal)
+
+	opts := &configGetOptions{
+		workingDirectory: tmpDir,
+		showPath:         true,
+	}
+	if err := runConfigGet(console, "relativePath", opts); err != nil {
+		t.Fatalf("runConfigGet() error = %v", err)
+	}
+
+	result := strings.TrimSpace(out.String())
+	if !filepath.IsAbs(result) {
+		t.Errorf("--show-path should return absolute path, got: %s", result)
+	}
+}
+
+// Config Set Tests
+
+func TestConfigSet(t *testing.T) {
 	tmpDir := t.TempDir()
 	configPath := filepath.Join(tmpDir, "NuGet.config")
 
 	var out bytes.Buffer
 	console := output.NewConsole(&out, &out, output.VerbosityNormal)
 
-	opts := &configOptions{configFile: configPath}
-	if err := runConfig(console, []string{"newKey", "newValue"}, opts); err != nil {
-		t.Fatalf("runConfig() error = %v", err)
+	opts := &configSetOptions{configFile: configPath}
+	if err := runConfigSet(console, "newKey", "newValue", opts); err != nil {
+		t.Fatalf("runConfigSet() error = %v", err)
 	}
 
 	// Verify config was saved
@@ -1876,61 +2193,105 @@ func TestConfigCommand_Set(t *testing.T) {
 	}
 }
 
-func TestConfigCommand_SetMultiple(t *testing.T) {
+// Config Unset Tests
+
+func TestConfigUnset(t *testing.T) {
 	tmpDir := t.TempDir()
 	configPath := filepath.Join(tmpDir, "NuGet.config")
+
+	// Create config with value
+	cfg := config.NewDefaultConfig()
+	cfg.SetConfigValue("testKey", "testValue")
+	if err := config.SaveNuGetConfig(configPath, cfg); err != nil {
+		t.Fatalf("failed to save config: %v", err)
+	}
 
 	var out bytes.Buffer
 	console := output.NewConsole(&out, &out, output.VerbosityNormal)
 
-	opts := &configOptions{
-		configFile: configPath,
-		set:        []string{"key1=value1", "key2=value2"},
-	}
-	if err := runConfig(console, []string{}, opts); err != nil {
-		t.Fatalf("runConfig() error = %v", err)
+	opts := &configUnsetOptions{configFile: configPath}
+	if err := runConfigUnset(console, "testKey", opts); err != nil {
+		t.Fatalf("runConfigUnset() error = %v", err)
 	}
 
+	// Verify value was removed
 	cfg, err := config.LoadNuGetConfig(configPath)
 	if err != nil {
 		t.Fatalf("failed to load config: %v", err)
 	}
 
-	if got := cfg.GetConfigValue("key1"); got != "value1" {
-		t.Errorf("key1 = %q, want %q", got, "value1")
-	}
-	if got := cfg.GetConfigValue("key2"); got != "value2" {
-		t.Errorf("key2 = %q, want %q", got, "value2")
+	value := cfg.GetConfigValue("testKey")
+	if value != "" {
+		t.Errorf("config value should be empty after unset, got: %q", value)
 	}
 }
 
-func TestParseKeyValue(t *testing.T) {
-	tests := []struct {
-		input     string
-		wantKey   string
-		wantValue string
-		wantErr   bool
-	}{
-		{"key=value", "key", "value", false},
-		{"key=", "key", "", false},
-		{"=value", "", "value", false},
-		{"invalid", "", "", true},
+// Config Paths Tests
+
+func TestConfigPaths(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	var out bytes.Buffer
+	console := output.NewConsole(&out, &out, output.VerbosityNormal)
+
+	opts := &configPathsOptions{workingDirectory: tmpDir}
+	if err := runConfigPaths(console, opts); err != nil {
+		t.Fatalf("runConfigPaths() error = %v", err)
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.input, func(t *testing.T) {
-			key, value, err := parseKeyValue(tt.input)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("parseKeyValue() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-			if key != tt.wantKey {
-				t.Errorf("key = %q, want %q", key, tt.wantKey)
-			}
-			if value != tt.wantValue {
-				t.Errorf("value = %q, want %q", value, tt.wantValue)
-			}
-		})
+	result := out.String()
+	if !strings.Contains(result, "NuGet configuration file paths:") {
+		t.Error("output should contain header")
+	}
+}
+
+// Command Structure Tests
+
+func TestNewConfigCommand(t *testing.T) {
+	var out bytes.Buffer
+	console := output.NewConsole(&out, &out, output.VerbosityNormal)
+
+	cmd := NewConfigCommand(console)
+	if cmd == nil {
+		t.Fatal("NewConfigCommand() returned nil")
+	}
+
+	if cmd.Use != "config" {
+		t.Errorf("cmd.Use = %q, want %q", cmd.Use, "config")
+	}
+
+	// Check subcommands exist
+	subcommands := cmd.Commands()
+	if len(subcommands) != 4 {
+		t.Errorf("expected 4 subcommands, got %d", len(subcommands))
+	}
+
+	// Verify subcommand names
+	var foundGet, foundSet, foundUnset, foundPaths bool
+	for _, subcmd := range subcommands {
+		switch subcmd.Use {
+		case "get <all-or-config-key>":
+			foundGet = true
+		case "set <config-key> <config-value>":
+			foundSet = true
+		case "unset <config-key>":
+			foundUnset = true
+		case "paths":
+			foundPaths = true
+		}
+	}
+
+	if !foundGet {
+		t.Error("missing 'get' subcommand")
+	}
+	if !foundSet {
+		t.Error("missing 'set' subcommand")
+	}
+	if !foundUnset {
+		t.Error("missing 'unset' subcommand")
+	}
+	if !foundPaths {
+		t.Error("missing 'paths' subcommand")
 	}
 }
 ```
@@ -1942,16 +2303,37 @@ func TestParseKeyValue(t *testing.T) {
 go test ./cmd/gonuget/commands -v -run TestConfig
 
 # Build and test
-go build -o gonuget ./cmd/gonuget
+go build -o /tmp/gonuget ./cmd/gonuget
 
-# Test config operations
-./gonuget config --set testKey=testValue
-./gonuget config testKey
-./gonuget config
+# Test config get
+/tmp/gonuget config get repositoryPath
+dotnet nuget config get repositoryPath
+# Outputs should match
 
-# Compare with dotnet nuget config
-dotnet nuget config globalPackagesFolder
-./gonuget config globalPackagesFolder
+# Test config get all
+/tmp/gonuget config get all
+dotnet nuget config get all
+# Outputs should match (format: key=value per line)
+
+# Test config set
+/tmp/gonuget config set testKey testValue --configfile /tmp/test.config
+dotnet nuget config set testKey testValue --configfile /tmp/test.config
+# Both should succeed with similar message
+
+# Test config unset
+/tmp/gonuget config unset testKey --configfile /tmp/test.config
+dotnet nuget config unset testKey --configfile /tmp/test.config
+# Both should succeed
+
+# Test config paths
+/tmp/gonuget config paths
+dotnet nuget config paths
+# Both should list config file paths in hierarchy
+
+# Test --show-path flag
+/tmp/gonuget config get globalPackagesFolder --show-path
+dotnet nuget config get globalPackagesFolder --show-path
+# Both should return absolute paths
 ```
 
 ### CLI Interop Testing
@@ -1964,10 +2346,13 @@ type ExecuteConfigHandler struct{}
 
 func (h *ExecuteConfigHandler) Handle(data json.RawMessage) (interface{}, error) {
     var req struct {
-        Operation string   `json:"operation"` // "list", "get", "set"
-        Key       string   `json:"key,omitempty"`
-        Value     string   `json:"value,omitempty"`
-        ConfigFile string  `json:"configFile,omitempty"`
+        Subcommand      string   `json:"subcommand"` // "get", "set", "unset", "paths"
+        AllOrConfigKey  string   `json:"allOrConfigKey,omitempty"` // for "get"
+        ConfigKey       string   `json:"configKey,omitempty"` // for "set"/"unset"
+        ConfigValue     string   `json:"configValue,omitempty"` // for "set"
+        ConfigFile      string   `json:"configFile,omitempty"`
+        WorkingDirectory string   `json:"workingDirectory,omitempty"`
+        ShowPath        bool     `json:"showPath,omitempty"`
     }
     if err := json.Unmarshal(data, &req); err != nil {
         return nil, err
@@ -1975,24 +2360,64 @@ func (h *ExecuteConfigHandler) Handle(data json.RawMessage) (interface{}, error)
 
     var dotnetArgs, gonugetArgs []string
 
-    switch req.Operation {
-    case "list":
-        dotnetArgs = []string{"config"}
-        gonugetArgs = []string{"config"}
-    case "get":
-        dotnetArgs = []string{"config", req.Key}
-        gonugetArgs = []string{"config", req.Key}
-    case "set":
-        dotnetArgs = []string{"config", req.Key, req.Value}
-        gonugetArgs = []string{"config", req.Key, req.Value}
-    default:
-        return nil, fmt.Errorf("unknown operation: %s", req.Operation)
-    }
+    // Build base command: dotnet nuget config <subcommand>
+    dotnetArgs = []string{"config", req.Subcommand}
+    gonugetArgs = []string{"config", req.Subcommand}
 
-    // Add --configfile if specified
-    if req.ConfigFile != "" {
-        dotnetArgs = append(dotnetArgs, "--configfile", req.ConfigFile)
-        gonugetArgs = append(gonugetArgs, "--configfile", req.ConfigFile)
+    // Add subcommand-specific args
+    switch req.Subcommand {
+    case "get":
+        // dotnet nuget config get <all-or-config-key> [--show-path] [--working-directory]
+        if req.AllOrConfigKey == "" {
+            return nil, fmt.Errorf("allOrConfigKey required for get")
+        }
+        dotnetArgs = append(dotnetArgs, req.AllOrConfigKey)
+        gonugetArgs = append(gonugetArgs, req.AllOrConfigKey)
+
+        if req.ShowPath {
+            dotnetArgs = append(dotnetArgs, "--show-path")
+            gonugetArgs = append(gonugetArgs, "--show-path")
+        }
+        if req.WorkingDirectory != "" {
+            dotnetArgs = append(dotnetArgs, "--working-directory", req.WorkingDirectory)
+            gonugetArgs = append(gonugetArgs, "--working-directory", req.WorkingDirectory)
+        }
+
+    case "set":
+        // dotnet nuget config set <config-key> <config-value> [--configfile]
+        if req.ConfigKey == "" || req.ConfigValue == "" {
+            return nil, fmt.Errorf("configKey and configValue required for set")
+        }
+        dotnetArgs = append(dotnetArgs, req.ConfigKey, req.ConfigValue)
+        gonugetArgs = append(gonugetArgs, req.ConfigKey, req.ConfigValue)
+
+        if req.ConfigFile != "" {
+            dotnetArgs = append(dotnetArgs, "--configfile", req.ConfigFile)
+            gonugetArgs = append(gonugetArgs, "--configfile", req.ConfigFile)
+        }
+
+    case "unset":
+        // dotnet nuget config unset <config-key> [--configfile]
+        if req.ConfigKey == "" {
+            return nil, fmt.Errorf("configKey required for unset")
+        }
+        dotnetArgs = append(dotnetArgs, req.ConfigKey)
+        gonugetArgs = append(gonugetArgs, req.ConfigKey)
+
+        if req.ConfigFile != "" {
+            dotnetArgs = append(dotnetArgs, "--configfile", req.ConfigFile)
+            gonugetArgs = append(gonugetArgs, "--configfile", req.ConfigFile)
+        }
+
+    case "paths":
+        // dotnet nuget config paths [--working-directory]
+        if req.WorkingDirectory != "" {
+            dotnetArgs = append(dotnetArgs, "--working-directory", req.WorkingDirectory)
+            gonugetArgs = append(gonugetArgs, "--working-directory", req.WorkingDirectory)
+        }
+
+    default:
+        return nil, fmt.Errorf("unknown subcommand: %s", req.Subcommand)
     }
 
     // Execute dotnet nuget
@@ -2045,65 +2470,120 @@ public class ConfigTests : IDisposable
     }
 
     [Fact]
-    public void Config_List_ShouldMatchDotnetNuget()
+    public void Config_Get_ShouldMatchDotnetNuget()
     {
-        var result = GonugetCliBridge.ExecuteConfig("list", configFile: _tempConfigFile);
-
-        Assert.Equal(result.DotnetExitCode, result.GonugetExitCode);
-        // Output format may differ slightly, but both should succeed
-    }
-
-    [Fact]
-    public void Config_SetAndGet_ShouldMatchDotnetNuget()
-    {
-        // Set with dotnet nuget
+        // First set a value
         var setResult = GonugetCliBridge.ExecuteConfig(
-            "set",
-            key: "globalPackagesFolder",
-            value: "~/test-packages",
+            subcommand: "set",
+            configKey: "testKey",
+            configValue: "testValue",
             configFile: _tempConfigFile);
 
         Assert.Equal(0, setResult.DotnetExitCode);
-
-        // Get with gonuget - should read dotnet's config
-        var getResult = GonugetCliBridge.ExecuteConfig(
-            "get",
-            key: "globalPackagesFolder",
-            configFile: _tempConfigFile);
-
-        Assert.Equal(0, getResult.GonugetExitCode);
-        Assert.Contains("test-packages", getResult.GonugetStdout);
-    }
-
-    [Fact]
-    public void Config_GonugetSet_DotnetGet_ShouldBeCompatible()
-    {
-        // Set with gonuget
-        var setResult = GonugetCliBridge.ExecuteConfig(
-            "set",
-            key: "repositoryPath",
-            value: "~/my-repo",
-            configFile: _tempConfigFile);
-
         Assert.Equal(0, setResult.GonugetExitCode);
 
-        // Get with dotnet nuget - should read gonuget's config
+        // Then get it
         var getResult = GonugetCliBridge.ExecuteConfig(
-            "get",
-            key: "repositoryPath",
-            configFile: _tempConfigFile);
+            subcommand: "get",
+            allOrConfigKey: "testKey",
+            workingDirectory: _tempConfigDir);
 
         Assert.Equal(0, getResult.DotnetExitCode);
-        Assert.Contains("my-repo", getResult.DotnetStdout);
+        Assert.Equal(0, getResult.GonugetExitCode);
+        Assert.Equal(getResult.DotnetStdout.Trim(), getResult.GonugetStdout.Trim());
     }
 
     [Fact]
-    public void Config_GetNonExistentKey_ShouldFail()
+    public void Config_GetAll_ShouldMatchDotnetNuget()
+    {
+        // Set multiple values
+        GonugetCliBridge.ExecuteConfig("set", configKey: "key1", configValue: "value1", configFile: _tempConfigFile);
+        GonugetCliBridge.ExecuteConfig("set", configKey: "key2", configValue: "value2", configFile: _tempConfigFile);
+
+        // Get all
+        var result = GonugetCliBridge.ExecuteConfig(
+            subcommand: "get",
+            allOrConfigKey: "all",
+            workingDirectory: _tempConfigDir);
+
+        Assert.Equal(0, result.DotnetExitCode);
+        Assert.Equal(0, result.GonugetExitCode);
+
+        // Both should output key1=value1 and key2=value2
+        Assert.Contains("key1=value1", result.DotnetStdout);
+        Assert.Contains("key1=value1", result.GonugetStdout);
+        Assert.Contains("key2=value2", result.DotnetStdout);
+        Assert.Contains("key2=value2", result.GonugetStdout);
+    }
+
+    [Fact]
+    public void Config_Set_ShouldMatchDotnetNuget()
     {
         var result = GonugetCliBridge.ExecuteConfig(
-            "get",
-            key: "nonExistentKey",
+            subcommand: "set",
+            configKey: "globalPackagesFolder",
+            configValue: "~/test-packages",
             configFile: _tempConfigFile);
+
+        Assert.Equal(0, result.DotnetExitCode);
+        Assert.Equal(0, result.GonugetExitCode);
+
+        // Both should output success message mentioning the config file
+        Assert.Contains(_tempConfigFile, result.DotnetStdout);
+        Assert.Contains(_tempConfigFile, result.GonugetStdout);
+    }
+
+    [Fact]
+    public void Config_Unset_ShouldMatchDotnetNuget()
+    {
+        // First set a value
+        GonugetCliBridge.ExecuteConfig(
+            subcommand: "set",
+            configKey: "testKey",
+            configValue: "testValue",
+            configFile: _tempConfigFile);
+
+        // Then unset it
+        var result = GonugetCliBridge.ExecuteConfig(
+            subcommand: "unset",
+            configKey: "testKey",
+            configFile: _tempConfigFile);
+
+        Assert.Equal(0, result.DotnetExitCode);
+        Assert.Equal(0, result.GonugetExitCode);
+
+        // Verify it's actually removed
+        var getResult = GonugetCliBridge.ExecuteConfig(
+            subcommand: "get",
+            allOrConfigKey: "testKey",
+            workingDirectory: _tempConfigDir);
+
+        // Both should fail since key doesn't exist
+        Assert.NotEqual(0, getResult.DotnetExitCode);
+        Assert.NotEqual(0, getResult.GonugetExitCode);
+    }
+
+    [Fact]
+    public void Config_Paths_ShouldMatchDotnetNuget()
+    {
+        var result = GonugetCliBridge.ExecuteConfig(
+            subcommand: "paths",
+            workingDirectory: _tempConfigDir);
+
+        Assert.Equal(0, result.DotnetExitCode);
+        Assert.Equal(0, result.GonugetExitCode);
+
+        // Both should output config file paths
+        // The exact paths may differ, but both should list hierarchy
+    }
+
+    [Fact]
+    public void Config_GetNotFound_ShouldFail()
+    {
+        var result = GonugetCliBridge.ExecuteConfig(
+            subcommand: "get",
+            allOrConfigKey: "nonExistentKey",
+            workingDirectory: _tempConfigDir);
 
         // Both should fail with similar exit codes
         Assert.NotEqual(0, result.DotnetExitCode);
@@ -2117,22 +2597,50 @@ public class ConfigTests : IDisposable
     public void Config_CommonKeys_ShouldMatchBehavior(string key, string value)
     {
         var setResult = GonugetCliBridge.ExecuteConfig(
-            "set",
-            key: key,
-            value: value,
+            subcommand: "set",
+            configKey: key,
+            configValue: value,
             configFile: _tempConfigFile);
 
         Assert.Equal(0, setResult.DotnetExitCode);
         Assert.Equal(0, setResult.GonugetExitCode);
 
         var getResult = GonugetCliBridge.ExecuteConfig(
-            "get",
-            key: key,
-            configFile: _tempConfigFile);
+            subcommand: "get",
+            allOrConfigKey: key,
+            workingDirectory: _tempConfigDir);
 
         Assert.Equal(0, getResult.DotnetExitCode);
         Assert.Equal(0, getResult.GonugetExitCode);
         Assert.Contains(value, getResult.GonugetStdout);
+    }
+
+    [Fact]
+    public void Config_ShowPath_ShouldMatchDotnetNuget()
+    {
+        // Set a relative path
+        GonugetCliBridge.ExecuteConfig(
+            subcommand: "set",
+            configKey: "repositoryPath",
+            configValue: "./packages",
+            configFile: _tempConfigFile);
+
+        // Get with --show-path
+        var result = GonugetCliBridge.ExecuteConfig(
+            subcommand: "get",
+            allOrConfigKey: "repositoryPath",
+            workingDirectory: _tempConfigDir,
+            showPath: true);
+
+        Assert.Equal(0, result.DotnetExitCode);
+        Assert.Equal(0, result.GonugetExitCode);
+
+        // Both should return absolute paths
+        var dotnetPath = result.DotnetStdout.Trim();
+        var gonugetPath = result.GonugetStdout.Trim();
+
+        Assert.True(Path.IsPathRooted(dotnetPath), "dotnet should return absolute path");
+        Assert.True(Path.IsPathRooted(gonugetPath), "gonuget should return absolute path");
     }
 }
 ```
@@ -2151,35 +2659,45 @@ dotnet test --filter "FullyQualifiedName~ConfigTests"
 - Config file XML structure matches exactly
 - Both tools can read/write each other's config files
 - Exit codes match for success/failure scenarios
-- Path expansion behaves identically on Windows/Linux/macOS
+- Path expansion with `--show-path` behaves identically on Windows/Linux/macOS
+- Config hierarchy resolution matches dotnet nuget
+- All four subcommands (get, set, unset, paths) produce identical output
 
 ### Commit
 
 ```bash
 git add cmd/gonuget/
-git commit -m "feat(cli): add config command
+git commit -m "feat(cli): add config command matching dotnet nuget
 
-- Implement config get/set operations
-- Support single and multiple key-value pairs
-- Load from config hierarchy
-- Create config if doesn't exist
-- Support -AsPath flag for path expansion
+Implements four subcommands with exact dotnet nuget parity:
+- config get <all-or-config-key> with --show-path and --working-directory
+- config set <config-key> <config-value> with --configfile
+- config unset <config-key> with --configfile
+- config paths with --working-directory
 
-Tests: Config get, set, multiple values
-Commands: 2/20 complete (10%)"
+Positional arguments (not flags) for get/set/unset match dotnet nuget.
+Flag names match exactly: --show-path (not --as-path), --working-directory.
+Support for 'all' keyword in get to list all config values.
+Config hierarchy resolution from working directory.
+
+Includes comprehensive CLI interop tests validating exact behavior parity.
+
+Commands: 2/21 complete (10%)"
 ```
 
 ---
 
 ## Summary and Next Steps
 
-You've completed Chunk 1-5 of CLI Milestone 1 (Foundation). You now have:
+You've completed Chunks 1-5 of CLI Milestone 1 (Foundation). You now have:
 
 ✅ Project structure with Cobra
 ✅ Console output abstraction with colors and verbosity matching `dotnet nuget`
 ✅ NuGet.config XML parsing and management (100% compatible with .NET tools)
 ✅ Version command (`gonuget --version` vs `dotnet nuget --version`)
-✅ Config command (get/set/list with kebab-case flags)
+✅ Config command with four subcommands (get/set/unset/paths) matching `dotnet nuget config` exactly
+✅ Positional arguments for config operations (not flags)
+✅ Config hierarchy resolution and --working-directory support
 ✅ CLI interop test handlers and C# tests for all chunks
 
 **Next document**: CLI-M1-FOUNDATION-CONTINUED.md will cover:

@@ -69,7 +69,10 @@ project.fragment.lock.json
 artifacts/
 TestResults/
 
-# Interop test binary
-gonuget-interop-test
+# CLI and test binaries (leading / means root of repo only)
+/gonuget
+/gonuget-interop-test
+/gonuget-cli-interop-test
+cmd/gonuget/gonuget
 tests/nuget-client-interop/gonuget-interop-test
-cmd/nuget-interop-test/nuget-interop-test
+cmd/nuget-interop-test/*-interop-test

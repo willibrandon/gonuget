@@ -3,7 +3,7 @@ package cli
 
 // Version information (set by main)
 var (
-	Version = "dev"
+	Version = "0.0.0-dev"
 	Commit  = "unknown"
 	Date    = "unknown"
 	BuiltBy = "unknown"

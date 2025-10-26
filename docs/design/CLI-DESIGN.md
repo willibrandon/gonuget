@@ -235,30 +235,33 @@ gonuget client-certs remove -PackageSource https://private.feed.com/v3/index.jso
 
 ### Command: config
 
-**Synopsis**: Gets, sets, or lists NuGet configuration values
+**Synopsis**: Gets, sets, unsets, or displays paths for NuGet configuration values
 
 **Subcommands**:
-- `get`: Get a configuration value
-- `set`: Set one or more configuration values
-- `list`: List all configuration values
+- `get`: Get a configuration value (or all values with "all")
+- `set`: Set a configuration value
+- `unset`: Remove a configuration value
+- `paths`: Display config file paths
 
 ```bash
-gonuget config get <key> [options]
-gonuget config set [options]
-gonuget config list [options]
+gonuget config get <all-or-config-key> [options]
+gonuget config set <config-key> <config-value> [options]
+gonuget config unset <config-key> [options]
+gonuget config paths [options]
 ```
 
 **Flags (get)**:
-- `--as-path` (bool): Return value as filesystem path
-- `--configfile` (string): Specific config file to read
+- `--show-path` (bool): Return value as filesystem path (resolves relative paths)
+- `--working-directory` (string): Working directory for config hierarchy resolution
 
 **Flags (set)**:
-- `--set` (string, repeatable): Set key=value pair(s) (required)
 - `--configfile` (string): Specific config file to modify
 
-**Flags (list)**:
-- `--configfile` (string): Specific config file to read
-- `--format` (string): Output format (detailed, simple, json) (default: detailed)
+**Flags (unset)**:
+- `--configfile` (string): Specific config file to modify
+
+**Flags (paths)**:
+- `--working-directory` (string): Working directory for config hierarchy resolution
 
 **Configuration Keys**:
 - `repositoryPath`: Global packages folder
@@ -274,21 +277,32 @@ gonuget config list [options]
 # Get configuration value
 gonuget config get repositoryPath
 
+# Get all configuration values
+gonuget config get all
+
 # Set configuration value
-gonuget config set --set repositoryPath=~/packages
+gonuget config set repositoryPath ~/packages
 
-# Set multiple values
-gonuget config set --set repositoryPath=~/packages --set http_proxy=http://proxy:8080
+# Unset configuration value
+gonuget config unset repositoryPath
 
-# List all configuration values
-gonuget config list
+# Show configuration file paths
+gonuget config paths
 
-# Get as path (expands environment variables)
-gonuget config get repositoryPath --as-path
+# Get as path (expands relative paths to absolute)
+gonuget config get repositoryPath --show-path
+
+# Set in specific config file
+gonuget config set repositoryPath ~/packages --configfile ./NuGet.config
 ```
 
 **dotnet nuget Parity**:
-This command matches `dotnet nuget config` behavior exactly.
+This command matches `dotnet nuget config` behavior exactly, including:
+- Positional arguments for get/set/unset (not flags)
+- `--show-path` flag (not `--as-path`)
+- `--working-directory` for config hierarchy resolution
+- `paths` subcommand for displaying config file locations
+- `all` keyword in get to display all config values
 
 ---
 

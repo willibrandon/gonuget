@@ -73,7 +73,7 @@ jobs:
         cd observability
         docker compose -f docker-compose.test.yml down
 
-    - name: Build interop CLI
+    - name: Build library interop CLI
       shell: bash
       run: |
         cd cmd/nuget-interop-test
@@ -83,4 +83,10 @@ jobs:
       shell: bash
       run: |
         cd tests/nuget-client-interop
+        make test
+
+    - name: Run CLI interop tests
+      shell: bash
+      run: |
+        cd tests/cli-interop
         make test
