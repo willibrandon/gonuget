@@ -55,35 +55,91 @@ gonuget restore --force
 gonuget restore --verbosity quiet
 ```
 
-## Implementation Phases
+## M2.1 Chunks
 
-### Phase 1: Basic Restore (M2.1)
+This guide covers chunks 5-7 and 9 from the CLI implementation roadmap.
+
+---
+
+## Chunk 5: Restore Command - Direct Dependencies Only
+
+**Objective:** Implement basic `restore` command that downloads direct PackageReference dependencies.
+
+**Prerequisites:** Chunks 1-4 complete
+
+**Files to Create:**
+- `cmd/gonuget/commands/restore.go`
+- `cmd/gonuget/commands/restore_test.go`
+
+**Files to Modify:**
+- `cmd/gonuget/cli/app.go` - Register command
 
 **Scope:**
 - Read PackageReference elements from .csproj
-- Download packages to global package cache
+- Download packages to global package cache (~/.nuget/packages)
 - Generate basic project.assets.json
 - Single project only (no solution support)
 - Direct dependencies only (no transitive)
 - Single target framework
 
-**Chunks:**
-1. Project file reading and PackageReference extraction
-2. Package download to global cache
-3. project.assets.json generation
+**Implementation:** See "Chunk 5 Implementation Details" section below.
 
-### Phase 2: Advanced Restore (M2.2)
+---
 
-**Scope:**
-- Transitive dependency resolution
-- Multi-TFM support
-- Solution file support
-- Lock file support (packages.lock.json)
+## Chunk 6: project.assets.json Generation
+
+**Objective:** Generate project.assets.json file after restore.
+
+**Prerequisites:** Chunk 5 complete
+
+**Implementation:** This is part of Chunk 5 - the restore command generates project.assets.json.
+
+**Verification:** After restore, verify project.assets.json exists in obj/ directory.
+
+---
+
+## Chunk 7: Global Package Cache Integration
+
+**Objective:** Integrate with global package cache (~/.nuget/packages).
+
+**Prerequisites:** Chunks 5-6 complete
+
+**Implementation:** This is part of Chunk 5 - packages are downloaded to global cache.
+
+**Verification:** After restore, verify packages exist in ~/.nuget/packages/{packageid}/{version}/
+
+---
+
+## Chunk 9: CLI Interop Tests for Restore
+
+**Objective:** Create CLI interop tests comparing gonuget restore vs dotnet restore.
+
+**Prerequisites:** Chunks 5-7 complete
+
+**Files to Create:**
+- `tests/cli-interop/GonugetCliInterop.Tests/RestoreTests.cs`
+
+**Implementation:** See Chunk 9 of CLI-M2-ADD-PACKAGE.md for interop test examples.
+
+---
+
+## M2.2 - Advanced Restore Features
+
+**Chunks 15-17** implement advanced features:
+- Chunk 15: Transitive dependency resolution
+- Chunk 16: Multi-TFM support
+- Chunk 17: Solution file support
 
 **Deferred to Future:**
 - Floating version resolution (1.* , [1.0,2.0))
 - Central Package Management restore
 - RID-specific assets
+
+---
+
+# Chunk 5 Implementation Details
+
+This section provides the detailed implementation for Chunk 5: Restore Command.
 
 ## Workflow
 

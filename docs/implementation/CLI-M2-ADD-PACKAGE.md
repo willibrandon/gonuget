@@ -59,36 +59,162 @@ gonuget add package Newtonsoft.Json --prerelease
 gonuget add package Newtonsoft.Json --source https://api.nuget.org/v3/index.json
 ```
 
-## Implementation Phases
+## M2.1 - Basic Add & Restore Implementation
 
-### Phase 1: Basic Add (M2.1)
+This guide covers chunks 1-10 from the CLI implementation roadmap.
 
-**Scope:**
-- Add unconditional `<PackageReference>` to .csproj
-- Version resolution (latest stable or specified)
-- Automatic restore after add
-- Single target framework projects only
-- CPM detection with error (full CPM support in M2.2 Chunks 11-13)
+---
 
-**Chunks:**
-1. Project file detection and loading
-2. XML manipulation for PackageReference
-3. Version resolution from package sources
-4. Project file saving with formatting preservation
+## Chunk 1: Project File Abstraction (Load, Parse, Save)
 
-### Phase 2: Advanced Features (M2.2)
+**Status:** ✅ COMPLETE
 
-**Scope:**
-- **Central Package Management (CPM)** - Full support (Chunks 11-13)
-  - Directory.Packages.props detection and manipulation
-  - PackageVersion management
-  - VersionOverride support
-- Framework-specific references (conditional ItemGroups) (Chunk 14)
-- Transitive dependency resolution integration (Chunk 15)
-- Multi-TFM project support (Chunk 16)
-- Solution file support (Chunk 17)
-- Package compatibility verification
-- `--no-restore` flag support (already in M2.1)
+**Objective:** Create infrastructure for reading and writing .NET project files.
+
+**Files Created:**
+- `cmd/gonuget/project/project.go`
+- `cmd/gonuget/project/xml.go`
+- `cmd/gonuget/project/project_test.go`
+- `cmd/gonuget/project/xml_test.go`
+
+**See commit:** `568a078 feat(cli): add project file abstraction`
+
+---
+
+## Chunk 2: PackageReference Extraction and Manipulation
+
+**Objective:** Implement methods to extract and manipulate PackageReference elements from project files.
+
+**Prerequisites:** Chunk 1 complete
+
+**Files to Modify:**
+- `cmd/gonuget/project/project.go` - Add extraction methods
+- `cmd/gonuget/project/project_test.go` - Add tests
+
+**Implementation:**
+
+Already completed in Chunk 1. Methods implemented:
+- `GetPackageReferences()` - Extract all PackageReference elements
+- `AddOrUpdatePackageReference()` - Add or update a PackageReference
+- `RemovePackageReference()` - Remove a PackageReference
+
+**Verification:** This chunk is complete as part of Chunk 1.
+
+---
+
+## Chunk 3: Add Package Command - Version Resolution
+
+**Objective:** Implement the `add package` command with version resolution from package sources.
+
+**Prerequisites:** Chunks 1-2 complete
+
+**Files to Create:**
+- `cmd/gonuget/commands/add_package.go`
+- `cmd/gonuget/commands/add_package_test.go`
+
+**Files to Modify:**
+- `cmd/gonuget/cli/app.go` - Register command
+
+**Implementation:** See "Chunk 3 Implementation Details" section below.
+
+---
+
+## Chunk 4: Add Package Command - Project File Modification
+
+**Objective:** Integrate add package command with project file modification and saving.
+
+**Prerequisites:** Chunk 3 complete
+
+**Implementation:** This is part of Chunk 3 implementation - not a separate chunk.
+
+**Verification:** Command successfully modifies .csproj and saves with proper formatting.
+
+---
+
+## Chunk 5: Restore Command - Direct Dependencies Only
+
+**Objective:** Implement basic `restore` command that downloads direct PackageReference dependencies.
+
+**Prerequisites:** Chunks 1-4 complete
+
+**Files to Create:**
+- `cmd/gonuget/commands/restore.go`
+- `cmd/gonuget/commands/restore_test.go`
+
+**Implementation:** See CLI-M2-RESTORE.md for details.
+
+---
+
+## Chunk 6: project.assets.json Generation
+
+**Objective:** Generate project.assets.json file after restore.
+
+**Prerequisites:** Chunk 5 complete
+
+**Implementation:** Part of restore command (Chunk 5).
+
+---
+
+## Chunk 7: Global Package Cache Integration
+
+**Objective:** Integrate with global package cache (~/.nuget/packages).
+
+**Prerequisites:** Chunks 5-6 complete
+
+**Implementation:** Part of restore command (Chunk 5).
+
+---
+
+## Chunk 8: CLI Interop Tests for Add Package
+
+**Objective:** Create CLI interop tests comparing gonuget add package vs dotnet add package.
+
+**Prerequisites:** Chunks 3-4 complete
+
+**Files to Create:**
+- `tests/cli-interop/GonugetCliInterop.Tests/AddPackageTests.cs`
+
+---
+
+## Chunk 9: CLI Interop Tests for Restore
+
+**Objective:** Create CLI interop tests comparing gonuget restore vs dotnet restore.
+
+**Prerequisites:** Chunks 5-7 complete
+
+**Files to Create:**
+- `tests/cli-interop/GonugetCliInterop.Tests/RestoreTests.cs`
+
+---
+
+## Chunk 10: Integration Tests with Real Packages
+
+**Objective:** End-to-end integration tests with real NuGet packages from nuget.org.
+
+**Prerequisites:** Chunks 3-9 complete
+
+**Files to Create:**
+- `cmd/gonuget/integration_addpackage_test.go`
+- `cmd/gonuget/integration_restore_test.go`
+
+---
+
+## M2.2 - Advanced Features
+
+**Chunks 11-19** implement advanced features:
+
+- **Chunk 11-13:** Central Package Management (CPM)
+- **Chunk 14:** Framework-Specific References
+- **Chunk 15:** Transitive Dependency Resolution
+- **Chunk 16:** Multi-TFM Project Support
+- **Chunk 17:** Solution File Support
+- **Chunk 18-19:** CLI Interop Tests for Advanced Features
+
+---
+
+# Chunk 3 Implementation Details
+
+This section provides the detailed implementation for Chunk 3: Add Package Command.
 
 ## Workflow
 
