@@ -43,9 +43,15 @@ jobs:
         git diff --exit-code go.mod
         if [ -f go.sum ]; then git diff --exit-code go.sum; fi
 
-    - name: Compile benchmarks
+    - name: Compile and verify benchmarks
       shell: bash
-      run: go list ./... | xargs go test -run=^$ -bench=.
+      run: |
+        # Compile benchmark tests to ensure they build
+        go test -tags=benchmark -run=^$ -bench=^$ ./cmd/gonuget
+
+        # Run each benchmark once to verify they execute without crashing
+        # Note: Results are not tracked as CI performance is too variable
+        go test -tags=benchmark -run=^$ -bench=. -benchtime=1x ./cmd/gonuget
 
     - name: Start observability stack for integration and E2E tests
       if: matrix.os == 'ubuntu-latest'

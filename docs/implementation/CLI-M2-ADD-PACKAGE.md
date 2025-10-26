@@ -1109,3 +1109,141 @@ func addPackageWithCPM(ctx context.Context, console *output.Console, proj *proje
 - [ ] Solution file support
 - [ ] CPM CLI interop tests pass (100% parity with dotnet)
 - [ ] All advanced features interop tests pass
+
+---
+
+## Phase 2 Performance Benchmarks
+
+After completing all Phase 2 commands (`restore` and `add package`), add comprehensive benchmarks comparing gonuget vs dotnet performance.
+
+### Benchmark Implementation
+
+**Location**: `cmd/gonuget/benchmark_test.go`
+
+Add benchmarks for:
+
+1. **Package Download Operations**
+   - Single package download (small: <1MB)
+   - Single package download (medium: 10-50MB)
+   - Single package download (large: >100MB)
+   - Parallel package downloads (10 packages)
+   - Parallel package downloads (50 packages)
+
+2. **Restore Operations**
+   - Restore single-package project (no dependencies)
+   - Restore project with 10 packages
+   - Restore project with 50 packages
+   - Restore project with complex dependencies (ASP.NET Core)
+   - Restore with all packages cached
+   - Restore with no cache (cold start)
+
+3. **Add Package Operations**
+   - Add package with version specified
+   - Add package with latest version resolution
+   - Add package to CPM-enabled project
+   - Add package with framework-specific references
+
+4. **Metadata Operations**
+   - Fetch metadata for 100 packages (sequential)
+   - Fetch metadata for 100 packages (parallel)
+   - List versions for 50 packages
+
+### Benchmark Template
+
+```go
+// Benchmark restore command performance
+// Matches: dotnet restore
+func BenchmarkRestore(b *testing.B) {
+    binPath := buildBinary(b)
+    projectPath := setupTestProject(b, 10) // 10 package references
+
+    b.ResetTimer()
+    b.ReportAllocs()
+
+    for i := 0; i < b.N; i++ {
+        cmd := exec.Command(binPath, "restore", projectPath, "--no-cache")
+        cmd.Stdout = &bytes.Buffer{}
+        if err := cmd.Run(); err != nil {
+            b.Fatalf("restore failed: %v", err)
+        }
+    }
+}
+
+// Benchmark dotnet restore for comparison
+func BenchmarkDotnetRestore(b *testing.B) {
+    if _, err := exec.LookPath("dotnet"); err != nil {
+        b.Skip("dotnet not available")
+    }
+
+    projectPath := setupTestProject(b, 10)
+
+    b.ResetTimer()
+    b.ReportAllocs()
+
+    for i := 0; i < b.N; i++ {
+        cmd := exec.Command("dotnet", "restore", projectPath, "--no-cache")
+        cmd.Stdout = &bytes.Buffer{}
+        if err := cmd.Run(); err != nil {
+            b.Fatalf("dotnet restore failed: %v", err)
+        }
+    }
+}
+```
+
+### Performance Targets
+
+| Operation | Target | Rationale |
+|-----------|--------|-----------|
+| Restore (10 packages, cached) | <2s | Faster than dotnet restore startup overhead |
+| Restore (10 packages, no cache) | Network dependent | Parallel downloads should match or beat dotnet |
+| Add package (version specified) | <5s | Fast project modification + metadata lookup |
+| Add package (latest resolution) | <5s | Efficient version resolution |
+| Parallel downloads (10 packages) | **Faster than dotnet** | Go goroutines vs .NET Tasks |
+| Metadata fetch (100 packages, parallel) | **Faster than dotnet** | Concurrent HTTP/2 requests |
+
+### Expected Performance Advantages
+
+Based on Phase 1 results (32-40x faster for CLI commands), we expect:
+
+1. **Startup Advantage Carries Over**: Every command benefits from zero runtime overhead
+2. **Parallel Operations Shine**: Go goroutines should excel at parallel downloads
+3. **Memory Efficiency**: Lower memory footprint during large restore operations
+4. **HTTP/2 Efficiency**: Native HTTP/2 client with connection pooling
+
+### Benchmark Documentation
+
+Update `cmd/gonuget/benchmarks/README.md` with Phase 2 results:
+
+```markdown
+### Phase 2 Results - Package Management Commands
+
+**Performance Comparison: gonuget vs dotnet**
+
+| Operation | gonuget | dotnet | Speedup | Notes |
+|-----------|---------|--------|---------|-------|
+| restore (10 pkg, cached) | TBD | TBD | TBD | Cached packages only |
+| restore (10 pkg, no cache) | TBD | TBD | TBD | Network dependent |
+| add package (version) | TBD | TBD | TBD | Includes metadata lookup |
+| add package (latest) | TBD | TBD | TBD | Version resolution |
+| Parallel download (10 pkg) | TBD | TBD | TBD | Concurrency test |
+
+**Key Findings**: (To be filled after implementation)
+```
+
+### Success Criteria for Phase 2 Benchmarks
+
+- [ ] All Phase 2 operations benchmarked
+- [ ] Direct comparisons with dotnet commands
+- [ ] Performance targets met or exceeded
+- [ ] Benchmark documentation updated with results
+- [ ] Memory usage profiled for large restore operations
+- [ ] HTTP/2 efficiency validated (connection reuse metrics)
+- [ ] Parallel download performance measured (10, 50, 100 packages)
+
+### Integration with CI/CD
+
+Add benchmark runs to CI pipeline:
+- Run benchmarks on each PR
+- Compare against baseline (main branch)
+- Fail build if performance regresses >10%
+- Track performance trends over time
