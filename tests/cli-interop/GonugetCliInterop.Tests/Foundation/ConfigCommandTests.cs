@@ -208,9 +208,12 @@ public class ConfigCommandTests
         Assert.Contains(env.TestDirectory, result.DotnetStdOut);
         Assert.Contains(env.TestDirectory, result.GonugetStdOut);
 
-        // Both should show user config
-        Assert.Contains(".nuget", result.DotnetStdOut.ToLower());
-        Assert.Contains(".nuget", result.GonugetStdOut.ToLower());
+        // Both should show user config path
+        // On Windows: %APPDATA%\NuGet (e.g., C:\Users\<user>\AppData\Roaming\NuGet)
+        // On Unix: ~/.nuget/NuGet
+        var expectedUserConfigMarker = OperatingSystem.IsWindows() ? "appdata" : ".nuget";
+        Assert.Contains(expectedUserConfigMarker, result.DotnetStdOut.ToLower());
+        Assert.Contains(expectedUserConfigMarker, result.GonugetStdOut.ToLower());
     }
 
     [Fact]

@@ -19,8 +19,9 @@ func DefaultConfigLocations() []string {
 	}
 
 	// User config
-	if home, err := os.UserHomeDir(); err == nil {
-		locations = append(locations, filepath.Join(home, ".nuget", "NuGet", "NuGet.Config"))
+	userConfig := GetUserConfigPath()
+	if userConfig != "" {
+		locations = append(locations, userConfig)
 	}
 
 	// System config (platform-specific)
@@ -49,6 +50,16 @@ func FindConfigFile() string {
 
 // GetUserConfigPath returns the user-level NuGet.config path
 func GetUserConfigPath() string {
+	if runtime.GOOS == "windows" {
+		// Windows: %APPDATA%\NuGet\NuGet.Config
+		appData := os.Getenv("APPDATA")
+		if appData == "" {
+			return ""
+		}
+		return filepath.Join(appData, "NuGet", "NuGet.Config")
+	}
+
+	// Unix-like: ~/.nuget/NuGet/NuGet.Config
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return ""

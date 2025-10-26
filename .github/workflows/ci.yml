@@ -88,10 +88,16 @@ jobs:
     - name: Build CLI interop binaries
       shell: bash
       run: |
+        # Set executable extension based on OS
+        if [[ "$RUNNER_OS" == "Windows" ]]; then
+          EXE_EXT=".exe"
+        else
+          EXE_EXT=""
+        fi
         cd cmd/gonuget
-        go build -o ../../gonuget
+        go build -o "../../gonuget${EXE_EXT}"
         cd ../gonuget-cli-interop-test
-        go build -o ../../gonuget-cli-interop-test
+        go build -o "../../gonuget-cli-interop-test${EXE_EXT}"
 
     - name: Run CLI interop tests
       shell: bash

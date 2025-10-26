@@ -238,21 +238,44 @@ public class GonugetCliBridge
     /// <exception cref="FileNotFoundException">Thrown when the executable cannot be found.</exception>
     private static string FindExecutable()
     {
+        const string executableName = "gonuget-cli-interop-test";
+
         // Check test output directory first
         var testDir = AppContext.BaseDirectory;
-        var exePath = Path.Combine(testDir, "gonuget-cli-interop-test");
-        if (File.Exists(exePath))
+        var exePath = FindExecutableInDirectory(testDir, executableName);
+        if (exePath != null)
             return exePath;
 
         // Check relative to repository root (for local development)
         // From bin/Debug/net9.0/ we need 6 levels up to reach repo root
         var repoRoot = Path.GetFullPath(Path.Combine(testDir, "../../../../../../"));
-        exePath = Path.Combine(repoRoot, "gonuget-cli-interop-test");
-        if (File.Exists(exePath))
+        exePath = FindExecutableInDirectory(repoRoot, executableName);
+        if (exePath != null)
             return exePath;
 
         throw new FileNotFoundException(
             "gonuget-cli-interop-test executable not found. " +
             "Run 'make build-cli-interop' or 'go build -o gonuget-cli-interop-test ./cmd/gonuget-cli-interop-test' before running tests.");
+    }
+
+    /// <summary>
+    /// Searches for an executable in a directory, checking both with and without .exe extension.
+    /// </summary>
+    /// <param name="directory">The directory to search in.</param>
+    /// <param name="executableName">The base name of the executable (without extension).</param>
+    /// <returns>The full path if found, otherwise null.</returns>
+    private static string? FindExecutableInDirectory(string directory, string executableName)
+    {
+        // Check without extension (Linux/macOS)
+        var exePath = Path.Combine(directory, executableName);
+        if (File.Exists(exePath))
+            return exePath;
+
+        // Check with .exe extension (Windows)
+        exePath = Path.Combine(directory, executableName + ".exe");
+        if (File.Exists(exePath))
+            return exePath;
+
+        return null;
     }
 }
