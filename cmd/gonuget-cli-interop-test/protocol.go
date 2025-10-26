@@ -106,14 +106,14 @@ type ExecuteVersionRequest struct {
 
 // ExecuteVersionResponse contains version command results
 type ExecuteVersionResponse struct {
-	DotnetExitCode         int    `json:"dotnetExitCode"`
-	GonugetExitCode        int    `json:"gonugetExitCode"`
-	DotnetStdOut           string `json:"dotnetStdOut"`
-	GonugetStdOut          string `json:"gonugetStdOut"`
-	DotnetStdErr           string `json:"dotnetStdErr"`
-	GonugetStdErr          string `json:"gonugetStdErr"`
-	ExitCodesMatch         bool   `json:"exitCodesMatch"`
-	OutputFormatSimilar    bool   `json:"outputFormatSimilar"` // Format may differ but both show version
+	DotnetExitCode      int    `json:"dotnetExitCode"`
+	GonugetExitCode     int    `json:"gonugetExitCode"`
+	DotnetStdOut        string `json:"dotnetStdOut"`
+	GonugetStdOut       string `json:"gonugetStdOut"`
+	DotnetStdErr        string `json:"dotnetStdErr"`
+	GonugetStdErr       string `json:"gonugetStdErr"`
+	ExitCodesMatch      bool   `json:"exitCodesMatch"`
+	OutputFormatSimilar bool   `json:"outputFormatSimilar"` // Format may differ but both show version
 }
 
 // ExecuteSourceListRequest for list source command
@@ -236,4 +236,24 @@ type ExecuteSourceUpdateResponse struct {
 	DotnetStdErr    string `json:"dotnetStdErr"`
 	GonugetStdErr   string `json:"gonugetStdErr"`
 	OutputMatches   bool   `json:"outputMatches"`
+}
+
+// ExecuteHelpRequest for help command
+type ExecuteHelpRequest struct {
+	Command    string `json:"command,omitempty"` // Command to get help for (empty for general help)
+	WorkingDir string `json:"workingDir"`
+}
+
+// ExecuteHelpResponse contains help command results
+type ExecuteHelpResponse struct {
+	DotnetExitCode      int    `json:"dotnetExitCode"`
+	GonugetExitCode     int    `json:"gonugetExitCode"`
+	DotnetStdOut        string `json:"dotnetStdOut"`
+	GonugetStdOut       string `json:"gonugetStdOut"`
+	DotnetStdErr        string `json:"dotnetStdErr"`
+	GonugetStdErr       string `json:"gonugetStdErr"`
+	ExitCodesMatch      bool   `json:"exitCodesMatch"`
+	BothShowCommands    bool   `json:"bothShowCommands"`    // Both outputs list commands
+	BothShowUsage       bool   `json:"bothShowUsage"`       // Both outputs show usage information
+	OutputFormatSimilar bool   `json:"outputFormatSimilar"` // Format is similar (both structured help)
 }

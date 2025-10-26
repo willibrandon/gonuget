@@ -172,6 +172,27 @@ public class GonugetCliBridge
     }
 
     /// <summary>
+    /// Executes the 'help' command on both dotnet nuget and gonuget.
+    /// </summary>
+    /// <param name="workingDir">The working directory for command execution.</param>
+    /// <param name="command">Optional command to get help for (empty for general help).</param>
+    /// <returns>Response containing exit codes and output from both commands.</returns>
+    public ExecuteHelpResponse ExecuteHelp(string workingDir, string? command = null)
+    {
+        var request = new
+        {
+            action = "execute_help",
+            data = new
+            {
+                workingDir,
+                command
+            }
+        };
+
+        return Execute<ExecuteHelpResponse>(request);
+    }
+
+    /// <summary>
     /// Executes the 'list source' command on both dotnet nuget and gonuget.
     /// </summary>
     /// <param name="workingDir">The working directory for command execution.</param>

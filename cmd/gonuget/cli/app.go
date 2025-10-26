@@ -36,6 +36,65 @@ func init() {
 	rootCmd.PersistentFlags().StringP("configfile", "", "", "NuGet configuration file to use")
 	rootCmd.PersistentFlags().StringP("verbosity", "", "normal", "Display verbosity (quiet, normal, detailed)")
 	rootCmd.PersistentFlags().BoolP("non-interactive", "", false, "Do not prompt for user input or confirmations")
+
+	// Disable Cobra's built-in help command (dotnet nuget doesn't have a help command)
+	rootCmd.SetHelpCommand(&cobra.Command{Hidden: true})
+
+	// Set custom help function to match dotnet nuget --help format
+	rootCmd.SetHelpFunc(customHelpFunc)
+}
+
+// customHelpFunc provides custom help output matching dotnet nuget --help format
+func customHelpFunc(cmd *cobra.Command, args []string) {
+	version := cmd.Root().Version
+	if version == "" {
+		version = "dev"
+	}
+
+	Console.Println("NuGet Command Line " + version)
+	Console.Println("")
+	Console.Println("Usage: gonuget [options] [command]")
+	Console.Println("")
+	Console.Println("Options:")
+	Console.Println("  -h|--help  Show help information")
+	Console.Println("  --version  Show version information")
+	Console.Println("")
+	Console.Println("Commands:")
+
+	// Commands to hide from help output (match dotnet nuget behavior)
+	hideCommands := map[string]bool{
+		"completion": true, // Cobra auto-generated
+		"version":    true, // Only a flag in dotnet nuget, not a command
+	}
+
+	// Print commands in alphabetical order (like dotnet nuget)
+	for _, subCmd := range cmd.Root().Commands() {
+		if subCmd.Hidden || hideCommands[subCmd.Name()] {
+			continue
+		}
+		name := subCmd.Name()
+		short := subCmd.Short
+		if short == "" {
+			short = subCmd.Long
+		}
+		Console.Println("  " + padRight(name, 8) + " " + short)
+	}
+
+	Console.Println("")
+	Console.Println("Use \"gonuget [command] --help\" for more information about a command.")
+}
+
+// padRight pads a string to the right with spaces
+func padRight(s string, length int) string {
+	for len(s) < length {
+		s += " "
+	}
+	return s
+}
+
+// GetRootCommand returns the root command for use by help command
+func GetRootCommand() *cobra.Command {
+	return rootCmd
 }
 
 // SetupVersion configures version information after variables are set

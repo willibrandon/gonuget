@@ -1289,9 +1289,9 @@ Coverage: >85% for source commands"
 
 ---
 
-## Chunk 7: Help Command
+## Chunk 7: Help System (--help Flag)
 
-**Objective**: Implement a comprehensive help command that matches `dotnet nuget --help` output format, including command-specific help and general usage information.
+**Objective**: Implement help functionality via the `--help` flag to match `dotnet nuget --help` output format exactly. Note that `dotnet nuget` does NOT have a `help` command - it only supports `--help` flag.
 
 **Prerequisites**:
 - Chunks 1-6 complete
@@ -1300,290 +1300,228 @@ Coverage: >85% for source commands"
 - Commands follow `<verb> <noun>` structure
 
 **Files to create/modify**:
-- `cmd/gonuget/commands/help.go` (new)
-- `cmd/gonuget/commands/help_test.go` (new)
-- `cmd/gonuget/cli/root.go` (add help command)
+- `cmd/gonuget/cli/app.go` (modify - add custom help function)
+- `cmd/gonuget/commands/help.go` (new - for interop testing infrastructure only)
+- `cmd/gonuget/commands/help_test.go` (new - test --help flag behavior)
+- `cmd/gonuget-cli-interop-test/handlers_help.go` (new - for interop testing)
 
-**Note**: Unlike `nuget.exe` which groups commands differently, `dotnet nuget` has a flatter structure with verb-based commands.
+**Critical Discovery**: Testing reveals that `dotnet nuget help` returns an error. Dotnet nuget ONLY supports:
+- `dotnet nuget --help` (general help)
+- `dotnet nuget <command> --help` (command-specific help)
+
+Therefore, gonuget should NOT have a `help` command registered.
 
 ---
 
-### Step 7.1: Implement Help Command Structure
+### Step 7.1: Implement Custom Help Function in app.go
 
-**File**: `cmd/gonuget/commands/help.go`
+The key insight is that dotnet nuget doesn't have a `help` command - it uses `--help` flag. We customize Cobra's help function to match dotnet nuget's output format.
+
+**File**: `cmd/gonuget/cli/app.go` (add in init function)
+
+```go
+func init() {
+	// Initialize console
+	Console = output.DefaultConsole()
+
+	// Add common flags that will be used by subcommands
+	rootCmd.PersistentFlags().StringP("configfile", "", "", "NuGet configuration file to use")
+	rootCmd.PersistentFlags().StringP("verbosity", "", "normal", "Display verbosity (quiet, normal, detailed)")
+	rootCmd.PersistentFlags().BoolP("non-interactive", "", false, "Do not prompt for user input or confirmations")
+
+	// Disable Cobra's built-in help command (dotnet nuget doesn't have a help command)
+	rootCmd.SetHelpCommand(&cobra.Command{Hidden: true})
+
+	// Set custom help function to match dotnet nuget --help format
+	rootCmd.SetHelpFunc(customHelpFunc)
+}
+
+// customHelpFunc provides custom help output matching dotnet nuget --help format
+func customHelpFunc(cmd *cobra.Command, args []string) {
+	version := cmd.Root().Version
+	if version == "" {
+		version = "dev"
+	}
+
+	Console.Println("NuGet Command Line " + version)
+	Console.Println("")
+	Console.Println("Usage: gonuget [options] [command]")
+	Console.Println("")
+	Console.Println("Options:")
+	Console.Println("  -h|--help  Show help information")
+	Console.Println("  --version  Show version information")
+	Console.Println("")
+	Console.Println("Commands:")
+
+	// Commands to hide from help output (match dotnet nuget behavior)
+	hideCommands := map[string]bool{
+		"completion": true, // Cobra auto-generated
+		"version":    true, // Only a flag in dotnet nuget, not a command
+	}
+
+	// Print commands in alphabetical order (like dotnet nuget)
+	for _, subCmd := range cmd.Root().Commands() {
+		if subCmd.Hidden || hideCommands[subCmd.Name()] {
+			continue
+		}
+		name := subCmd.Name()
+		short := subCmd.Short
+		if short == "" {
+			short = subCmd.Long
+		}
+		Console.Println("  " + padRight(name, 8) + " " + short)
+	}
+
+	Console.Println("")
+	Console.Println("Use \"gonuget [command] --help\" for more information about a command.")
+}
+
+// padRight pads a string to the right with spaces
+func padRight(s string, length int) string {
+	for len(s) < length {
+		s += " "
+	}
+	return s
+}
+```
+
+**File**: `cmd/gonuget/cli/app.go` (also add helper function for root access)
+
+```go
+// GetRootCommand returns the root command for use by help command
+func GetRootCommand() *cobra.Command {
+	return rootCmd
+}
+```
+
+---
+
+### Step 7.2: Update Command Descriptions
+
+Update config command description to match dotnet nuget exactly.
+
+**File**: `cmd/gonuget/commands/config.go` (modify Short description)
+
+```go
+cmd := &cobra.Command{
+	Use:   "config",
+	Short: "NuGet configuration CLI", // Changed from "Manage NuGet configuration"
+	Long:  `Manage NuGet.config settings...`,
+}
+```
+
+---
+
+### Step 7.3: Create Test Infrastructure
+
+Create help.go for interop testing (not registered as command):
+
+**File**: `cmd/gonuget/commands/help.go` (new - testing infrastructure only)
 
 ```go
 package commands
 
 import (
 	"fmt"
-	"sort"
-	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/willibrandon/gonuget/cmd/gonuget/cli"
 	"github.com/willibrandon/gonuget/cmd/gonuget/output"
 )
 
-type helpOptions struct {
-	all      bool
-	markdown bool
-}
-
-// NewHelpCommand creates the help command
+// NewHelpCommand creates a help command for testing purposes
+// Note: This command is NOT registered in main.go
+// It exists only for interop test infrastructure
 func NewHelpCommand(console *output.Console, rootCmd *cobra.Command) *cobra.Command {
-	opts := &helpOptions{}
-
 	cmd := &cobra.Command{
-		Use:   "help [command]",
-		Short: "Display help information",
-		Long: `Display help information for gonuget or a specific command.
-
-Examples:
-  gonuget help              Show general help
-  gonuget help install      Show help for install command
-  gonuget help --all        Show all commands including hidden
-  gonuget help --markdown   Generate markdown documentation`,
-		Args: cobra.MaximumNArgs(1),
+		Use:    "help [command]",
+		Short:  "Show help information",
+		Hidden: true, // Hidden since we use --help flag instead
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 0 {
-				return runHelp(console, rootCmd, opts)
+				return showGeneralHelp(console, rootCmd)
 			}
-			return runCommandHelp(console, rootCmd, args[0])
+			return showCommandHelp(console, rootCmd, args[0])
 		},
 	}
-
-	cmd.Flags().BoolVar(&opts.all, "all", false, "Show all commands including hidden")
-	cmd.Flags().BoolVar(&opts.markdown, "markdown", false, "Generate markdown documentation")
 
 	return cmd
 }
 
-func runHelp(console *output.Console, rootCmd *cobra.Command, opts *helpOptions) error {
-	if opts.markdown {
-		return generateMarkdownDocs(console, rootCmd)
+func showGeneralHelp(console *output.Console, rootCmd *cobra.Command) error {
+	version := rootCmd.Version
+	if version == "" {
+		version = "dev"
 	}
 
-	// Match dotnet nuget help output format
-	console.Println("usage: gonuget <command> [args] [options]")
+	console.Println(fmt.Sprintf("NuGet Command Line %s", version))
 	console.Println("")
-	console.Println("Type 'gonuget help <command>' for help on a specific command.")
+	console.Println("Usage: gonuget [options] [command]")
 	console.Println("")
-	console.Println("Available commands:")
+	console.Println("Options:")
+	console.Println("  -h|--help  Show help information")
+	console.Println("  --version  Show version information")
 	console.Println("")
+	console.Println("Commands:")
 
-	// Group commands by category (reflecting dotnet nuget structure)
-	foundation := []string{"help", "version", "config"}
-	sourceOps := []string{"list", "add", "remove", "enable", "disable", "update"}
-	packageOps := []string{"search", "install", "restore", "pack", "push", "delete"}
-	signing := []string{"sign", "verify", "trust"}
-	advanced := []string{"locals", "init"}
+	commands := rootCmd.Commands()
 
-	printCommandGroup(console, rootCmd, "Foundation", foundation, opts.all)
-	printCommandGroup(console, rootCmd, "Source Management", sourceOps, opts.all)
-	printCommandGroup(console, rootCmd, "Package Operations", packageOps, opts.all)
-	printCommandGroup(console, rootCmd, "Signing & Security", signing, opts.all)
-	printCommandGroup(console, rootCmd, "Advanced", advanced, opts.all)
+	hideCommands := map[string]bool{
+		"completion": true,
+		"help":       true,
+		"version":    true,
+	}
+
+	for _, cmd := range commands {
+		if cmd.Hidden || hideCommands[cmd.Name()] {
+			continue
+		}
+		name := cmd.Name()
+		short := cmd.Short
+		if short == "" {
+			short = cmd.Long
+		}
+		console.Println(fmt.Sprintf("  %-8s %s", name, short))
+	}
 
 	console.Println("")
-	console.Println("For more information, visit: https://github.com/willibrandon/gonuget")
-	console.Println("")
+	console.Println("Use \"gonuget [command] --help\" for more information about a command.")
 
 	return nil
 }
 
-func printCommandGroup(console *output.Console, rootCmd *cobra.Command, groupName string, cmdNames []string, showAll bool) {
-	console.Info("%s:", groupName)
-
-	// Find commands and calculate max width for alignment
-	maxWidth := 0
-	validCmds := make([]*cobra.Command, 0)
-
-	for _, name := range cmdNames {
-		cmd := findCommand(rootCmd, name)
-		if cmd != nil && (showAll || !cmd.Hidden) {
-			validCmds = append(validCmds, cmd)
-			if len(cmd.Name()) > maxWidth {
-				maxWidth = len(cmd.Name())
-			}
-		}
-	}
-
-	// Print commands with aligned descriptions
-	for _, cmd := range validCmds {
-		padding := strings.Repeat(" ", maxWidth-len(cmd.Name())+2)
-		console.Println("  %s%s%s", cmd.Name(), padding, cmd.Short)
-	}
-
-	console.Println("")
-}
-
-func findCommand(rootCmd *cobra.Command, name string) *cobra.Command {
+func showCommandHelp(console *output.Console, rootCmd *cobra.Command, cmdName string) error {
 	for _, cmd := range rootCmd.Commands() {
-		if cmd.Name() == name {
-			return cmd
+		if cmd.Name() == cmdName {
+			return cmd.Help()
 		}
 	}
-	return nil
+	return fmt.Errorf("unknown command: %s", cmdName)
 }
 
-func runCommandHelp(console *output.Console, rootCmd *cobra.Command, cmdName string) error {
-	cmd := findCommand(rootCmd, cmdName)
-	if cmd == nil {
-		return fmt.Errorf("unknown command: %s", cmdName)
-	}
+// Additional helper functions for testing
+func CustomizeRootHelp(rootCmd *cobra.Command) {
+	// Set custom templates if needed for testing
+}
 
-	// Print usage
-	console.Println("usage: gonuget %s", cmd.UseLine())
-	console.Println("")
-
-	// Print description
-	if cmd.Long != "" {
-		console.Println(cmd.Long)
-	} else if cmd.Short != "" {
-		console.Println(cmd.Short)
-	}
-	console.Println("")
-
-	// Print subcommands if any
-	if cmd.HasSubCommands() {
-		console.Println("Available subcommands:")
-		console.Println("")
-
-		maxWidth := 0
-		for _, sub := range cmd.Commands() {
-			if !sub.Hidden && len(sub.Name()) > maxWidth {
-				maxWidth = len(sub.Name())
-			}
+func FormatCommandList(commands []*cobra.Command) string {
+	// Format command list for testing
+	var output string
+	for _, cmd := range commands {
+		if !cmd.Hidden {
+			output += fmt.Sprintf("  %-8s %s\n", cmd.Name(), cmd.Short)
 		}
-
-		for _, sub := range cmd.Commands() {
-			if !sub.Hidden {
-				padding := strings.Repeat(" ", maxWidth-len(sub.Name())+2)
-				console.Println("  %s%s%s", sub.Name(), padding, sub.Short)
-			}
-		}
-		console.Println("")
 	}
+	return output
+}
 
-	// Print flags
-	if cmd.HasAvailableFlags() {
-		console.Println("Options:")
-		console.Println("")
-		console.Println(cmd.Flags().FlagUsages())
-	}
-
-	// Print examples
-	if cmd.Example != "" {
-		console.Println("")
-		console.Println("Examples:")
-		console.Println(cmd.Example)
-	}
-
-	return nil
+func CustomizeCommandHelp(cmd *cobra.Command) {
+	// Set custom help function for command
 }
 ```
 
 ---
 
-### Step 7.2: Generate Markdown Documentation
-
-**File**: `cmd/gonuget/commands/help.go` (continued)
-
-```go
-func generateMarkdownDocs(console *output.Console, rootCmd *cobra.Command) error {
-	// Generate markdown documentation for all commands
-	console.Println("# gonuget CLI Reference")
-	console.Println("")
-	console.Println("Auto-generated command reference documentation.")
-	console.Println("")
-	console.Println("## Table of Contents")
-	console.Println("")
-
-	// Generate TOC
-	cmds := rootCmd.Commands()
-	sort.Slice(cmds, func(i, j int) bool {
-		return cmds[i].Name() < cmds[j].Name()
-	})
-
-	for _, cmd := range cmds {
-		if !cmd.Hidden {
-			console.Println("- [%s](#%s)", cmd.Name(), cmd.Name())
-		}
-	}
-	console.Println("")
-
-	// Generate command documentation
-	for _, cmd := range cmds {
-		if !cmd.Hidden {
-			generateCommandMarkdown(console, cmd)
-		}
-	}
-
-	return nil
-}
-
-func generateCommandMarkdown(console *output.Console, cmd *cobra.Command) {
-	console.Println("## %s", cmd.Name())
-	console.Println("")
-
-	// Description
-	if cmd.Long != "" {
-		console.Println(cmd.Long)
-	} else {
-		console.Println(cmd.Short)
-	}
-	console.Println("")
-
-	// Usage
-	console.Println("### Usage")
-	console.Println("")
-	console.Println("```")
-	console.Println("gonuget %s", cmd.UseLine())
-	console.Println("```")
-	console.Println("")
-
-	// Subcommands
-	if cmd.HasSubCommands() {
-		console.Println("### Subcommands")
-		console.Println("")
-
-		for _, sub := range cmd.Commands() {
-			if !sub.Hidden {
-				console.Println("- **%s**: %s", sub.Name(), sub.Short)
-			}
-		}
-		console.Println("")
-	}
-
-	// Options
-	if cmd.HasAvailableFlags() {
-		console.Println("### Options")
-		console.Println("")
-		console.Println("```")
-		console.Println(cmd.Flags().FlagUsages())
-		console.Println("```")
-		console.Println("")
-	}
-
-	// Examples
-	if cmd.Example != "" {
-		console.Println("### Examples")
-		console.Println("")
-		console.Println("```")
-		console.Println(cmd.Example)
-		console.Println("```")
-		console.Println("")
-	}
-
-	console.Println("---")
-	console.Println("")
-}
-```
-
----
-
-### Step 7.3: Create Help Command Tests
+### Step 7.4: Create Tests for --help Flag Behavior
 
 **File**: `cmd/gonuget/commands/help_test.go`
 
@@ -1738,44 +1676,39 @@ func TestPrintCommandGroup(t *testing.T) {
 
 ### Verification
 
-Compare `gonuget help` with `dotnet nuget --help` to ensure similar structure:
+Compare `gonuget --help` with `dotnet nuget --help` to ensure exact output match:
 
 ```bash
 # Build CLI
-go build -o gonuget ./cmd/gonuget
+cd cmd/gonuget && go build .
 
 # Test general help (compare with: dotnet nuget --help)
-./gonuget help
-dotnet nuget --help
+./gonuget --help > /tmp/gonuget.txt
+dotnet nuget --help > /tmp/dotnet.txt
 
-# Test command-specific help (compare with: dotnet nuget list source --help)
-./gonuget help list
+# Compare outputs (should be nearly identical except version numbers)
+diff /tmp/gonuget.txt /tmp/dotnet.txt
+
+# Test command-specific help (compare with: dotnet nuget list --help)
+./gonuget list --help
 dotnet nuget list source --help
-
-./gonuget help version
-./gonuget help config
-
-# Test --all flag (shows hidden commands)
-./gonuget help --all
-
-# Test markdown generation
-./gonuget help --markdown > docs/CLI-REFERENCE.md
-cat docs/CLI-REFERENCE.md
 
 # Test help via -h flag
 ./gonuget -h
 ./gonuget version -h
-./gonuget list source -h
-./gonuget add source -h
+./gonuget config -h
+
+# Test that help command does NOT exist (matches dotnet nuget behavior)
+./gonuget help  # Should fail with error just like dotnet nuget
 ```
 
-**Note**: Command grouping should be logical and similar to `dotnet nuget --help` structure.
+**Critical Note**: `gonuget help` should NOT work (it's not a valid command). Only `--help` flag is supported, matching dotnet nuget behavior exactly.
 
 ---
 
 ### CLI Interop Testing
 
-Add CLI interop test handler for help command output comparison.
+Add CLI interop test handler for --help flag output comparison.
 
 **File**: `cmd/gonuget-cli-interop-test/handlers_help.go` (new)
 
@@ -1784,77 +1717,144 @@ package main
 
 import (
 	"encoding/json"
-	"os/exec"
+	"fmt"
+	"strings"
 )
 
+// ExecuteHelpHandler handles help command execution
 type ExecuteHelpHandler struct{}
 
-func (h *ExecuteHelpHandler) Handle(data json.RawMessage) (interface{}, error) {
-	var req struct {
-		Command string `json:"command"` // Command to get help for (empty for general help)
-	}
+func (h *ExecuteHelpHandler) ErrorCode() string { return "CLI_HELP_001" }
 
+func (h *ExecuteHelpHandler) Handle(data json.RawMessage) (any, error) {
+	var req ExecuteHelpRequest
 	if err := json.Unmarshal(data, &req); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("parse request: %w", err)
 	}
 
-	// Execute: dotnet nuget --help or dotnet nuget <command> --help
-	var dotnetResult []byte
+	// Execute dotnet nuget --help or dotnet nuget <command> --help
+	var dotnetCommand string
 	if req.Command == "" {
-		dotnetResult, _ = exec.Command("dotnet", "nuget", "--help").CombinedOutput()
+		dotnetCommand = "--help"
 	} else {
-		dotnetResult, _ = exec.Command("dotnet", "nuget", req.Command, "--help").CombinedOutput()
+		dotnetCommand = req.Command + " --help"
 	}
 
-	// Execute: gonuget help or gonuget help <command>
-	var gonugetResult []byte
+	dotnetResult, err := ExecuteDotnetNuget(dotnetCommand, req.WorkingDir, "", 30)
+	if err != nil {
+		return nil, fmt.Errorf("execute dotnet nuget: %w", err)
+	}
+
+	// Execute gonuget --help or gonuget <command> --help
+	// NOTE: Match dotnet nuget behavior - use --help flag, not help command
+	var gonugetCommand string
 	if req.Command == "" {
-		gonugetResult, _ = exec.Command("gonuget", "help").CombinedOutput()
+		gonugetCommand = "--help"
 	} else {
-		gonugetResult, _ = exec.Command("gonuget", "help", req.Command).CombinedOutput()
+		gonugetCommand = req.Command + " --help"
 	}
 
-	return ExecuteCommandPairResponse{
-		DotnetStdout:   string(dotnetResult),
-		GonugetStdout:  string(gonugetResult),
+	gonugetResult, err := ExecuteGonuget(gonugetCommand, req.WorkingDir, "", 30)
+	if err != nil {
+		return nil, fmt.Errorf("execute gonuget: %w", err)
+	}
+
+	// Analyze outputs
+	bothShowCommands := containsCommandList(dotnetResult.StdOut) && containsCommandList(gonugetResult.StdOut)
+	bothShowUsage := containsUsageInfo(dotnetResult.StdOut) && containsUsageInfo(gonugetResult.StdOut)
+	outputFormatSimilar := bothShowCommands || bothShowUsage
+
+	return ExecuteHelpResponse{
+		DotnetExitCode:      dotnetResult.ExitCode,
+		GonugetExitCode:     gonugetResult.ExitCode,
+		DotnetStdOut:        dotnetResult.StdOut,
+		GonugetStdOut:       gonugetResult.StdOut,
+		DotnetStdErr:        dotnetResult.StdErr,
+		GonugetStdErr:       gonugetResult.StdErr,
+		ExitCodesMatch:      dotnetResult.ExitCode == gonugetResult.ExitCode,
+		BothShowCommands:    bothShowCommands,
+		BothShowUsage:       bothShowUsage,
+		OutputFormatSimilar: outputFormatSimilar,
 	}, nil
 }
 
-func (h *ExecuteHelpHandler) ErrorCode() string {
-	return "help_error"
+// containsCommandList checks if output contains a list of commands
+func containsCommandList(output string) bool {
+	output = strings.ToLower(output)
+	return strings.Contains(output, "commands:") ||
+		(strings.Contains(output, "version") && strings.Contains(output, "config"))
+}
+
+// containsUsageInfo checks if output contains usage information
+func containsUsageInfo(output string) bool {
+	output = strings.ToLower(output)
+	return strings.Contains(output, "usage:") || strings.Contains(output, "usage")
 }
 ```
 
-**File**: `tests/cli-interop/GonugetCliInterop.Tests/HelpTests.cs` (new)
+**File**: `tests/cli-interop/GonugetCliInterop.Tests/Foundation/HelpCommandTests.cs` (new)
 
 ```csharp
 using Xunit;
 
-namespace GonugetCliInterop.Tests
+namespace GonugetCliInterop.Tests.Foundation
 {
-    public class HelpTests
+    public class HelpCommandTests
     {
         [Fact]
-        public void Help_GeneralHelp_ShouldShowCommandList()
+        public void HelpCommand_GeneralHelp_ShowsCommandList()
         {
-            var result = GonugetCliBridge.ExecuteHelp("");
+            var bridge = new TestHelpers.GonugetCliBridge();
+            var result = bridge.ExecuteHelp(Directory.GetCurrentDirectory());
 
-            Assert.Equal(0, result.DotnetExitCode);
-            Assert.Equal(0, result.GonugetExitCode);
-
-            // Both should list available commands
-            Assert.Contains("version", result.DotnetStdout.ToLower());
-            Assert.Contains("version", result.GonugetStdout.ToLower());
+            // Both should return exit code 0
+            result.ExitCodesMatch.Should().BeTrue("Exit codes should match");
+            result.BothShowCommands.Should().BeTrue("Both outputs should show commands");
         }
 
         [Fact]
-        public void Help_CommandSpecific_ShouldShowUsage()
+        public void HelpCommand_GeneralHelp_ShowsUsageInformation()
         {
-            var result = GonugetCliBridge.ExecuteHelp("list");
+            var bridge = new TestHelpers.GonugetCliBridge();
+            var result = bridge.ExecuteHelp(Directory.GetCurrentDirectory());
 
-            // Both should show usage information for list command
-            Assert.Contains("usage", result.DotnetStdout.ToLower());
-            Assert.Contains("usage", result.GonugetStdout.ToLower());
+            result.BothShowUsage.Should().BeTrue("Both outputs should show usage information");
+        }
+
+        [Fact]
+        public void HelpCommand_CommandSpecificHelp_ShowsUsage()
+        {
+            var bridge = new TestHelpers.GonugetCliBridge();
+            var result = bridge.ExecuteHelp(Directory.GetCurrentDirectory(), "version");
+
+            result.GonugetExitCode.Should().Be(0, "gonuget should handle version help successfully");
+        }
+
+        [Fact]
+        public void HelpCommand_VersionCommandHelp_ShowsVersionUsage()
+        {
+            var bridge = new TestHelpers.GonugetCliBridge();
+            var result = bridge.ExecuteHelp(Directory.GetCurrentDirectory(), "version");
+
+            result.GonugetExitCode.Should().Be(0);
+        }
+
+        [Fact]
+        public void HelpCommand_ConfigCommandHelp_ShowsConfigUsage()
+        {
+            var bridge = new TestHelpers.GonugetCliBridge();
+            var result = bridge.ExecuteHelp(Directory.GetCurrentDirectory(), "config");
+
+            result.GonugetExitCode.Should().Be(0);
+        }
+
+        [Fact]
+        public void HelpCommand_FormatIsSimilar()
+        {
+            var bridge = new TestHelpers.GonugetCliBridge();
+            var result = bridge.ExecuteHelp(Directory.GetCurrentDirectory());
+
+            result.OutputFormatSimilar.Should().BeTrue("Output formats should be similar");
         }
     }
 }

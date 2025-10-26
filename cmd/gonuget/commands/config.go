@@ -16,7 +16,7 @@ import (
 func NewConfigCommand(console *output.Console) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "config",
-		Short: "Manage NuGet configuration",
+		Short: "NuGet configuration CLI",
 		Long: `Gets, sets, unsets, or displays paths for NuGet configuration values.
 
 This command has four subcommands:

@@ -80,6 +80,10 @@ func main() {
 	case "execute_source_update":
 		handler = &ExecuteSourceUpdateHandler{}
 
+	// Help command action
+	case "execute_help":
+		handler = &ExecuteHelpHandler{}
+
 	default:
 		sendError("ACT_001", "Unknown action", fmt.Sprintf("action=%s", req.Action))
 		os.Exit(1)
