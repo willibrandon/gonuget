@@ -2,6 +2,7 @@
 package commands
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -307,7 +308,8 @@ func loadOrCreateConfig(path string) (*config.NuGetConfig, error) {
 	cfg, err := config.LoadNuGetConfig(path)
 	if err != nil {
 		// If file doesn't exist, create a new config
-		if os.IsNotExist(err) || strings.Contains(err.Error(), "no such file or directory") {
+		// Use errors.Is to check through wrapped errors
+		if errors.Is(err, os.ErrNotExist) {
 			return config.NewDefaultConfig(), nil
 		}
 		return nil, err
