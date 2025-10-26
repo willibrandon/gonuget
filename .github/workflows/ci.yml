@@ -46,10 +46,11 @@ jobs:
     - name: Compile and verify benchmarks
       shell: bash
       run: |
-        # Compile benchmark tests to ensure they build
-        go test -tags=benchmark -run=^$ -bench=^$ ./cmd/gonuget
+        # Run existing benchmarks across all packages (no build tags)
+        # These include critical zero-allocation benchmarks (version, frameworks, etc.)
+        go test -run=^$ -bench=. -benchtime=1x ./...
 
-        # Run each benchmark once to verify they execute without crashing
+        # Run tagged CLI benchmarks (require //go:build benchmark tag)
         # Note: Results are not tracked as CI performance is too variable
         go test -tags=benchmark -run=^$ -bench=. -benchtime=1x ./cmd/gonuget
 
