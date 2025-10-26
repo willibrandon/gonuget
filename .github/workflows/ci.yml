@@ -85,6 +85,14 @@ jobs:
         cd tests/nuget-client-interop
         make test
 
+    - name: Build CLI interop binaries
+      shell: bash
+      run: |
+        cd cmd/gonuget
+        go build -o ../../gonuget
+        cd ../gonuget-cli-interop-test
+        go build -o ../../gonuget-cli-interop-test
+
     - name: Run CLI interop tests
       shell: bash
       run: |
