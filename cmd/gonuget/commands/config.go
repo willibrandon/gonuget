@@ -110,7 +110,13 @@ func runConfigGet(console *output.Console, allOrConfigKey string, opts *configGe
 
 // Config Set Subcommand
 
+type configSetOptions struct {
+	configFile string
+}
+
 func newConfigSetCommand(console *output.Console) *cobra.Command {
+	opts := &configSetOptions{}
+
 	cmd := &cobra.Command{
 		Use:   "set <config-key> <config-value>",
 		Short: "Set a configuration value",
@@ -119,27 +125,35 @@ func newConfigSetCommand(console *output.Console) *cobra.Command {
 Examples:
   gonuget config set repositoryPath ~/packages
   gonuget config set globalPackagesFolder ~/.nuget/packages
-  gonuget config set http_proxy http://proxy:8080`,
+  gonuget config set http_proxy http://proxy:8080
+  gonuget config set --configfile custom.config repositoryPath ~/packages`,
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runConfigSet(console, args[0], args[1])
+			return runConfigSet(console, args[0], args[1], opts)
 		},
 	}
+
+	cmd.Flags().StringVar(&opts.configFile, "configfile", "", "The NuGet configuration file to use")
 
 	return cmd
 }
 
-func runConfigSet(console *output.Console, configKey string, configValue string) error {
+func runConfigSet(console *output.Console, configKey string, configValue string, opts *configSetOptions) error {
 	// Validate config key (match dotnet nuget behavior)
 	if !isValidConfigKey(configKey) {
 		console.Printf("error: '%s' is not a valid config key in config section.\n", configKey)
 		os.Exit(1)
 	}
 
-	// Determine config file from hierarchy (matches dotnet nuget behavior)
-	configPath := config.FindConfigFile()
-	if configPath == "" {
-		return fmt.Errorf("unable to find a NuGet.config file. Create one in the current or parent directory")
+	// Determine config file (use --configfile if provided, otherwise hierarchy)
+	var configPath string
+	if opts.configFile != "" {
+		configPath = opts.configFile
+	} else {
+		configPath = config.FindConfigFile()
+		if configPath == "" {
+			return fmt.Errorf("unable to find a NuGet.config file. Create one in the current or parent directory")
+		}
 	}
 
 	// Load or create config
@@ -292,6 +306,10 @@ func determineConfigPath(workingDirectory string) string {
 func loadOrCreateConfig(path string) (*config.NuGetConfig, error) {
 	cfg, err := config.LoadNuGetConfig(path)
 	if err != nil {
+		// If file doesn't exist, create a new config
+		if os.IsNotExist(err) || strings.Contains(err.Error(), "no such file or directory") {
+			return config.NewDefaultConfig(), nil
+		}
 		return nil, err
 	}
 	return cfg, nil

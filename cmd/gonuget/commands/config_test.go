@@ -209,7 +209,8 @@ func TestConfigSet(t *testing.T) {
 	console := output.NewConsole(&out, &out, output.VerbosityNormal)
 
 	// Use valid config key
-	if err := runConfigSet(console, "repositoryPath", "~/packages"); err != nil {
+	opts := &configSetOptions{}
+	if err := runConfigSet(console, "repositoryPath", "~/packages", opts); err != nil {
 		t.Fatalf("runConfigSet() error = %v", err)
 	}
 
@@ -252,7 +253,8 @@ func TestConfigSet_Update(t *testing.T) {
 	console := output.NewConsole(&out, &out, output.VerbosityNormal)
 
 	// Update value
-	if err := runConfigSet(console, "repositoryPath", "~/new-packages"); err != nil {
+	opts := &configSetOptions{}
+	if err := runConfigSet(console, "repositoryPath", "~/new-packages", opts); err != nil {
 		t.Fatalf("runConfigSet() error = %v", err)
 	}
 
@@ -591,10 +593,13 @@ func TestLoadOrCreateConfig_Create(t *testing.T) {
 	tmpDir := t.TempDir()
 	nonexistent := filepath.Join(tmpDir, "nonexistent.config")
 
-	// Should return error for nonexistent config (doesn't actually create)
-	_, err := loadOrCreateConfig(nonexistent)
-	if err == nil {
-		t.Error("loadOrCreateConfig() should return error for nonexistent file")
+	// Should create new config for nonexistent file
+	cfg, err := loadOrCreateConfig(nonexistent)
+	if err != nil {
+		t.Fatalf("loadOrCreateConfig() error = %v, want nil", err)
+	}
+	if cfg == nil {
+		t.Error("loadOrCreateConfig() should return new config for nonexistent file")
 	}
 }
 
