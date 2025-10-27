@@ -239,7 +239,7 @@ type v3MetadataClientAdapter struct {
 }
 
 // GetPackageMetadata implements resolver.PackageMetadataClient by fetching from NuGet V3 API.
-func (a *v3MetadataClientAdapter) GetPackageMetadata(ctx context.Context, source string, packageID string) ([]*resolver.PackageDependencyInfo, error) {
+func (a *v3MetadataClientAdapter) GetPackageMetadata(ctx context.Context, source string, packageID string, versionRange string) ([]*resolver.PackageDependencyInfo, error) {
 	// Fetch registration index from V3 API
 	index, err := a.v3Client.GetPackageMetadata(ctx, source, packageID)
 	if err != nil {
@@ -819,7 +819,7 @@ type countingMetadataClient struct {
 	maxConcurrent int
 }
 
-func (c *countingMetadataClient) GetPackageMetadata(ctx context.Context, source string, packageID string) ([]*resolver.PackageDependencyInfo, error) {
+func (c *countingMetadataClient) GetPackageMetadata(ctx context.Context, source string, packageID string, versionRange string) ([]*resolver.PackageDependencyInfo, error) {
 	// Track concurrency
 	c.mu.Lock()
 	c.concurrent++
@@ -837,5 +837,5 @@ func (c *countingMetadataClient) GetPackageMetadata(ctx context.Context, source 
 
 	// Delegate to real client
 	adapter := &v3MetadataClientAdapter{v3Client: c.v3Client}
-	return adapter.GetPackageMetadata(ctx, source, packageID)
+	return adapter.GetPackageMetadata(ctx, source, packageID, versionRange)
 }

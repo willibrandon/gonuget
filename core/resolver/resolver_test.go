@@ -216,10 +216,22 @@ func TestResolver_EmptyInput(t *testing.T) {
 
 	resolver := NewResolver(client, []string{"source1"}, "net8.0")
 
-	_, err := resolver.Resolve(context.Background(), "NonExistent", "[1.0.0]")
+	result, err := resolver.Resolve(context.Background(), "NonExistent", "[1.0.0]")
 
-	if err == nil {
-		t.Error("Expected error for non-existent package, got nil")
+	// Should NOT error - should return result with unresolved package
+	// Matches NuGet.Client: resolver never throws, collects unresolved packages
+	if err != nil {
+		t.Fatalf("Resolve() should not error, got: %v", err)
+	}
+
+	// Should have unresolved package
+	if len(result.Unresolved) != 1 {
+		t.Errorf("Expected 1 unresolved package, got %d", len(result.Unresolved))
+	}
+
+	// Should fail success check
+	if result.Success() {
+		t.Error("Expected Success() = false with unresolved package")
 	}
 }
 

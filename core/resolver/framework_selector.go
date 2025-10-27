@@ -47,6 +47,9 @@ func (fs *FrameworkSelector) SelectDependencies(
 			continue
 		}
 
+		// Check if group framework is compatible with target framework
+		// e.g., "Can net8.0 (target) use a package built for netstandard2.0 (groupFw)?"
+		// Matches NuGetFramework.IsCompatible semantics: packageFw.IsCompatible(projectFw)
 		if groupFw.IsCompatible(target) {
 			compatibleGroups = append(compatibleGroups, group)
 		}

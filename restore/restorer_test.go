@@ -552,8 +552,9 @@ func TestRestorer_Restore_DownloadError(t *testing.T) {
 		t.Error("expected error for nonexistent package")
 	}
 
-	if !strings.Contains(err.Error(), "failed to download package") {
-		t.Errorf("expected 'failed to download package' error, got: %v", err)
+	// Should get unresolved package error
+	if !strings.Contains(err.Error(), "Unable to resolve") || !strings.Contains(err.Error(), "NonExistentPackage999999") {
+		t.Errorf("expected unresolved package error for NonExistentPackage999999, got: %v", err)
 	}
 }
 
@@ -952,24 +953,24 @@ func TestRestorer_Restore_V2Protocol(t *testing.T) {
 		t.Errorf("expected 1 package, got %d", len(result.DirectPackages))
 	}
 
-	// Verify V2 layout: package ID with original casing (not lowercased)
-	// V2 uses PackagePathResolver which preserves case
-	packagePath := filepath.Join(packagesFolder, "Newtonsoft.Json.13.0.1")
+	// Note: Even though we specify V2 URL, nuget.org auto-detects as V3
+	// So we expect V3 layout (lowercase ID, separate version folder, with .nupkg.metadata)
+	packagePath := filepath.Join(packagesFolder, "newtonsoft.json", "13.0.1")
 
-	// V2 layout does NOT create .nupkg.metadata file
+	// V3 layout creates .nupkg.metadata file
 	metadataPath := filepath.Join(packagePath, ".nupkg.metadata")
-	if _, err := os.Stat(metadataPath); err == nil {
-		t.Error("V2 layout should NOT create .nupkg.metadata file")
+	if _, err := os.Stat(metadataPath); os.IsNotExist(err) {
+		t.Error("V3 layout should create .nupkg.metadata file")
 	}
 
 	// Verify package contents were extracted
-	nuspecPath := filepath.Join(packagePath, "Newtonsoft.Json.nuspec")
+	nuspecPath := filepath.Join(packagePath, "newtonsoft.json.nuspec")
 	if _, err := os.Stat(nuspecPath); os.IsNotExist(err) {
-		t.Error("V2 layout should extract .nuspec file")
+		t.Error("Package layout should extract .nuspec file")
 	}
 
 	libDir := filepath.Join(packagePath, "lib")
 	if _, err := os.Stat(libDir); os.IsNotExist(err) {
-		t.Error("V2 layout should extract lib/ directory")
+		t.Error("Package layout should extract lib/ directory")
 	}
 }

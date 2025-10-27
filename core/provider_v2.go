@@ -44,7 +44,80 @@ func NewV2ResourceProvider(sourceURL string, httpClient HTTPClient, mtCache *cac
 	}
 }
 
-// GetMetadata retrieves metadata for a specific package version
+// FindPackagesByID retrieves all versions of a package with full metadata in a single call.
+// This is the efficient V2 method matching NuGet.Client's DependencyInfoResourceV2Feed.
+func (p *V2ResourceProvider) FindPackagesByID(ctx context.Context, cacheCtx *cache.SourceCacheContext, packageID string) ([]*ProtocolMetadata, error) {
+	// Use default cache context if none provided
+	if cacheCtx == nil {
+		cacheCtx = cache.NewSourceCacheContext()
+	}
+
+	// Check cache if enabled
+	if p.cache != nil && !cacheCtx.NoCache {
+		cacheKey := fmt.Sprintf("findpackagesbyid:%s", packageID)
+		cached, hit, err := p.cache.Get(ctx, p.sourceURL, cacheKey, cacheCtx.MaxAge)
+		if err == nil && hit {
+			var packages []*ProtocolMetadata
+			if err := json.Unmarshal(cached, &packages); err == nil {
+				return packages, nil
+			}
+		}
+	}
+
+	// Fetch from network - single HTTP call gets all versions with dependencies
+	v2Packages, err := p.metadataClient.FindPackagesByID(ctx, p.sourceURL, packageID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Convert all packages to protocol format
+	packages := make([]*ProtocolMetadata, 0, len(v2Packages))
+	for _, v2Metadata := range v2Packages {
+		metadata := &ProtocolMetadata{
+			ID:                       v2Metadata.ID,
+			Version:                  v2Metadata.Version,
+			Title:                    v2Metadata.Title,
+			Description:              v2Metadata.Description,
+			IconURL:                  v2Metadata.IconURL,
+			LicenseURL:               v2Metadata.LicenseURL,
+			ProjectURL:               v2Metadata.ProjectURL,
+			Tags:                     v2Metadata.Tags,
+			DownloadCount:            v2Metadata.DownloadCount,
+			IsPrerelease:             v2Metadata.IsPrerelease,
+			Published:                v2Metadata.Published,
+			RequireLicenseAcceptance: v2Metadata.RequireLicenseAcceptance,
+			DownloadURL:              v2Metadata.DownloadURL,
+		}
+
+		// Parse authors
+		if v2Metadata.Authors != "" {
+			metadata.Authors = strings.Split(v2Metadata.Authors, ",")
+			for i := range metadata.Authors {
+				metadata.Authors[i] = strings.TrimSpace(metadata.Authors[i])
+			}
+		}
+
+		// Parse v2 dependency string into ProtocolDependencyGroup
+		if v2Metadata.Dependencies != "" {
+			metadata.Dependencies = parseDependencies(v2Metadata.Dependencies)
+		}
+
+		packages = append(packages, metadata)
+	}
+
+	// Cache result if enabled
+	if p.cache != nil && !cacheCtx.DirectDownload {
+		cacheKey := fmt.Sprintf("findpackagesbyid:%s", packageID)
+		if jsonData, err := json.Marshal(packages); err == nil {
+			_ = p.cache.Set(ctx, p.sourceURL, cacheKey, bytes.NewReader(jsonData), cacheCtx.MaxAge, nil)
+		}
+	}
+
+	return packages, nil
+}
+
+// GetMetadata retrieves metadata for a specific package version.
+// Uses V2 OData feed to fetch detailed package information.
 func (p *V2ResourceProvider) GetMetadata(ctx context.Context, cacheCtx *cache.SourceCacheContext, packageID, version string) (*ProtocolMetadata, error) {
 	// Use default cache context if none provided
 	if cacheCtx == nil {
@@ -152,12 +225,31 @@ func parseDependencies(deps string) []ProtocolDependencyGroup {
 			continue
 		}
 
+		// Handle empty dependency groups: "::net45" means no dependencies for net45
+		// Format: "::framework" for empty groups, "id:range:framework" for dependencies
+		if strings.HasPrefix(part, "::") {
+			// Empty dependency group marker
+			framework := trimWhitespace(part[2:]) // Skip "::"
+			if framework != "" {
+				// Ensure empty group exists in map
+				if _, exists := groups[framework]; !exists {
+					groups[framework] = []ProtocolDependency{}
+				}
+			}
+			continue
+		}
+
 		// Parse id:range:targetFramework
 		id, rest, ok := strings.Cut(part, ":")
 		if !ok {
 			continue
 		}
 		id = trimWhitespace(id)
+
+		// Skip empty IDs (can occur in malformed V2 metadata)
+		if id == "" {
+			continue
+		}
 
 		versionRange, targetFramework, _ := strings.Cut(rest, ":")
 		versionRange = trimWhitespace(versionRange)

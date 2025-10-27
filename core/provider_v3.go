@@ -15,7 +15,8 @@ import (
 
 // V3ResourceProvider implements ResourceProvider for NuGet v3 feeds
 type V3ResourceProvider struct {
-	sourceURL          string
+	sourceURL          string // Repository source URL (for matching)
+	serviceIndexURL    string // V3 service index URL (for API calls)
 	serviceIndexClient *v3.ServiceIndexClient
 	searchClient       *v3.SearchClient
 	metadataClient     *v3.MetadataClient
@@ -25,7 +26,17 @@ type V3ResourceProvider struct {
 
 // NewV3ResourceProvider creates a new v3 resource provider
 // mtCache can be nil if caching is not desired
+// For normal V3 feeds: sourceURL is the service index URL
+// For fast-path: use NewV3ResourceProviderWithServiceIndex to specify different URLs
 func NewV3ResourceProvider(sourceURL string, httpClient HTTPClient, mtCache *cache.MultiTierCache) *V3ResourceProvider {
+	return NewV3ResourceProviderWithServiceIndex(sourceURL, sourceURL, httpClient, mtCache)
+}
+
+// NewV3ResourceProviderWithServiceIndex creates a V3 provider with separate source and service index URLs
+// sourceURL: Repository identifier (used for matching repositories)
+// serviceIndexURL: Actual V3 service index endpoint
+// Used for nuget.org fast-path: sourceURL="https://www.nuget.org/api/v2", serviceIndexURL="https://api.nuget.org/v3/index.json"
+func NewV3ResourceProviderWithServiceIndex(sourceURL, serviceIndexURL string, httpClient HTTPClient, mtCache *cache.MultiTierCache) *V3ResourceProvider {
 	// Type assert to *nugethttp.Client for protocol clients
 	// This is safe because HTTPClient interface is implemented by *nugethttp.Client
 	// and authenticatedHTTPClient which wraps it
@@ -36,10 +47,12 @@ func NewV3ResourceProvider(sourceURL string, httpClient HTTPClient, mtCache *cac
 		client = ac.base
 	}
 
-	serviceIndexClient := v3.NewServiceIndexClient(client)
+	// Pass cache to service index client for disk caching (critical for first-run performance)
+	serviceIndexClient := v3.NewServiceIndexClientWithCache(client, mtCache)
 
 	return &V3ResourceProvider{
 		sourceURL:          sourceURL,
+		serviceIndexURL:    serviceIndexURL,
 		serviceIndexClient: serviceIndexClient,
 		searchClient:       v3.NewSearchClient(client, serviceIndexClient),
 		metadataClient:     v3.NewMetadataClient(client, serviceIndexClient),
@@ -68,7 +81,7 @@ func (p *V3ResourceProvider) GetMetadata(ctx context.Context, cacheCtx *cache.So
 	}
 
 	// Fetch from network
-	catalog, err := p.metadataClient.GetVersionMetadata(ctx, p.sourceURL, packageID, version)
+	catalog, err := p.metadataClient.GetVersionMetadata(ctx, p.serviceIndexURL, packageID, version)
 	if err != nil {
 		return nil, err
 	}
@@ -146,7 +159,7 @@ func (p *V3ResourceProvider) ListVersions(ctx context.Context, cacheCtx *cache.S
 	}
 
 	// Fetch from network
-	versions, err := p.metadataClient.ListVersions(ctx, p.sourceURL, packageID)
+	versions, err := p.metadataClient.ListVersions(ctx, p.serviceIndexURL, packageID)
 	if err != nil {
 		return nil, err
 	}
@@ -189,7 +202,7 @@ func (p *V3ResourceProvider) Search(ctx context.Context, cacheCtx *cache.SourceC
 		Prerelease: opts.IncludePrerelease,
 	}
 
-	resp, err := p.searchClient.Search(ctx, p.sourceURL, searchOpts)
+	resp, err := p.searchClient.Search(ctx, p.serviceIndexURL, searchOpts)
 	if err != nil {
 		return nil, err
 	}
@@ -238,7 +251,7 @@ func (p *V3ResourceProvider) DownloadPackage(ctx context.Context, cacheCtx *cach
 	}
 
 	// Download from network
-	reader, err := p.downloadClient.DownloadPackage(ctx, p.sourceURL, packageID, version)
+	reader, err := p.downloadClient.DownloadPackage(ctx, p.serviceIndexURL, packageID, version)
 	if err != nil {
 		return nil, err
 	}
@@ -279,4 +292,9 @@ func (p *V3ResourceProvider) SourceURL() string {
 // ProtocolVersion returns "v3"
 func (p *V3ResourceProvider) ProtocolVersion() string {
 	return "v3"
+}
+
+// ServiceIndexURL returns the V3 service index URL
+func (p *V3ResourceProvider) ServiceIndexURL() string {
+	return p.serviceIndexURL
 }

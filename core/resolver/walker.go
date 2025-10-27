@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/willibrandon/gonuget/observability"
 	"github.com/willibrandon/gonuget/version"
 )
 
@@ -20,7 +21,7 @@ type DependencyWalker struct {
 
 // PackageMetadataClient interface for fetching package metadata
 type PackageMetadataClient interface {
-	GetPackageMetadata(ctx context.Context, source string, packageID string) ([]*PackageDependencyInfo, error)
+	GetPackageMetadata(ctx context.Context, source string, packageID string, versionRange string) ([]*PackageDependencyInfo, error)
 }
 
 // NewDependencyWalker creates a new dependency walker
@@ -44,6 +45,9 @@ func (w *DependencyWalker) Walk(
 	targetFramework string,
 	recursive bool,
 ) (*GraphNode, error) {
+	ctx, span := observability.StartResolverWalkSpan(ctx, packageID, targetFramework)
+	defer span.End()
+
 	// Fetch root package
 	rootInfo, err := w.fetchDependency(ctx, PackageDependency{
 		ID:           packageID,
@@ -53,8 +57,16 @@ func (w *DependencyWalker) Walk(
 		return nil, fmt.Errorf("fetch root package: %w", err)
 	}
 
+	// If package not found, create unresolved node instead of failing
+	// Matches NuGet.Client's ResolverUtility.CreateUnresolvedResult (lines 515-542)
 	if rootInfo == nil {
-		return nil, fmt.Errorf("package not found: %s %s", packageID, versionRange)
+		rootInfo = &PackageDependencyInfo{
+			ID:               packageID,
+			Version:          versionRange, // Use requested range as version
+			Dependencies:     []PackageDependency{},
+			DependencyGroups: []DependencyGroup{},
+			IsUnresolved:     true,
+		}
 	}
 
 	// Create root node
@@ -117,6 +129,11 @@ func (w *DependencyWalker) walkStackBased(
 			deps := w.getDependenciesForFramework(node.Item, targetFramework)
 
 			for _, dep := range deps {
+				// Skip empty dependency IDs (can occur in malformed V2 metadata)
+				if dep.ID == "" {
+					continue
+				}
+
 				// If not recursive, mark all dependencies as Eclipsed (NuGet.Client behavior)
 				var result DependencyResult
 				if !recursive {
@@ -198,15 +215,15 @@ func (w *DependencyWalker) walkStackBased(
 				}
 
 				if result.Info == nil {
-					// Dependency not found - skip
-					// Push parent state with index+1 to continue
-					stack = append(stack, &WalkerStackState{
-						Node:            node,
-						DependencyTasks: state.DependencyTasks,
-						Index:           index + 1,
-						OuterEdge:       state.OuterEdge,
-					})
-					continue
+					// Dependency not found - create unresolved node instead of skipping
+					// Matches NuGet.Client's ResolverUtility.CreateUnresolvedResult (lines 515-542)
+					result.Info = &PackageDependencyInfo{
+						ID:               task.Dependency.ID,
+						Version:          task.Dependency.VersionRange,
+						Dependencies:     []PackageDependency{},
+						DependencyGroups: []DependencyGroup{},
+						IsUnresolved:     true,
+					}
 				}
 
 				// Create child node
@@ -318,8 +335,12 @@ func (w *DependencyWalker) fetchDependency(
 
 		// Try all sources
 		for _, source := range w.sources {
-			packages, err := w.client.GetPackageMetadata(ctx, source, dep.ID)
+			packages, err := w.client.GetPackageMetadata(ctx, source, dep.ID, dep.VersionRange)
 			if err != nil {
+				// If context was cancelled or deadline exceeded, propagate immediately
+				if ctx.Err() != nil {
+					return nil, ctx.Err()
+				}
 				continue
 			}
 

@@ -65,6 +65,10 @@ type PackageDependencyInfo struct {
 
 	// For framework-specific dependencies
 	DependencyGroups []DependencyGroup
+
+	// IsUnresolved indicates this package could not be found
+	// Maps to LibraryType.Unresolved in NuGet.Client
+	IsUnresolved bool
 }
 
 // Key returns a unique key for this package
@@ -82,12 +86,20 @@ type DependencyGroup struct {
 	Dependencies    []PackageDependency
 }
 
-// ResolutionResult represents the result of dependency resolution
+// ResolutionResult represents the result of dependency resolution.
+// Maps to NuGet's RestoreTargetGraph.
 type ResolutionResult struct {
 	Packages   []*PackageDependencyInfo
 	Conflicts  []VersionConflict
 	Downgrades []DowngradeWarning
 	Cycles     []CycleReport
+	Unresolved []UnresolvedPackage // Packages that could not be resolved
+}
+
+// Success returns true if resolution completed without unresolved packages.
+// Matches NuGet.Client's success check: graphs.All(g => g.Unresolved.Count == 0)
+func (r *ResolutionResult) Success() bool {
+	return len(r.Unresolved) == 0
 }
 
 // VersionConflict represents a version conflict between dependencies
@@ -119,3 +131,45 @@ type CycleReport struct {
 	// Description is a human-readable description
 	Description string
 }
+
+// UnresolvedPackage represents a package that could not be resolved.
+// Maps to NuGet's LibraryRange with LibraryType.Unresolved.
+type UnresolvedPackage struct {
+	// ID is the package identifier
+	ID string
+
+	// VersionRange is the requested version range
+	VersionRange string
+
+	// TargetFramework where this was unresolved (empty for all)
+	TargetFramework string
+
+	// ErrorCode is the NuGet error code (NU1101, NU1102, NU1103)
+	ErrorCode string
+
+	// Message is the detailed error message
+	Message string
+
+	// Sources lists sources that were checked
+	Sources []string
+
+	// AvailableVersions lists versions found (for NU1102)
+	AvailableVersions []string
+
+	// NearestVersion is the closest version found (for NU1102)
+	NearestVersion string
+}
+
+// NuGetErrorCode represents standard NuGet error codes
+type NuGetErrorCode string
+
+const (
+	// NU1101 - No versions of package exist on any configured source
+	NU1101 NuGetErrorCode = "NU1101"
+
+	// NU1102 - Package exists but no version matches the requested range
+	NU1102 NuGetErrorCode = "NU1102"
+
+	// NU1103 - Only prerelease versions available when stable requested
+	NU1103 NuGetErrorCode = "NU1103"
+)

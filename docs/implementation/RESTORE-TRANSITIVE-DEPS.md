@@ -7,6 +7,93 @@
 
 ---
 
+## Improve Error Handling (NuGet.Client Parity)
+
+**Status**: ✅ COMPLETE - Implemented in Phase 1
+**Priority**: High (affects user experience)
+
+### Current Behavior (Non-Compliant)
+
+gonuget's walker throws immediately on missing packages during dependency walk:
+```
+Error: failed to walk dependencies for NonExistentPackage999999: package not found
+```
+
+**Problems**:
+- Users only see **one error at a time** (must fix, re-run, see next error, repeat)
+- Generic error messages with no context
+- Fails fast instead of collecting all errors
+
+### Required Behavior (NuGet.Client Parity)
+
+NuGet.Client's walker **never throws during resolution**:
+
+1. **Mark unresolved packages** - Creates `LibraryType.Unresolved` nodes and continues walking
+2. **Complete the graph** - Walks entire dependency tree even with missing packages
+3. **Collect all errors** - Reports all issues together after graph completion
+4. **Detailed diagnostics** - Shows which sources were checked, nearest versions available
+
+**Error Codes**:
+- **NU1101**: No versions of package exist on any configured source
+- **NU1102**: Package exists but no version matches requested range
+- **NU1103**: Only prerelease versions available when stable required
+
+### Implementation Completed
+
+**File**: `core/resolver/types.go`
+- ✅ Added `UnresolvedPackage` type with fields matching NuGet's LibraryRange
+- ✅ Added `NuGetErrorCode` constants (NU1101, NU1102, NU1103)
+- ✅ Added `Unresolved []UnresolvedPackage` field to `ResolutionResult`
+- ✅ Added `IsUnresolved bool` field to `PackageDependencyInfo`
+- ✅ Added `Success()` method to `ResolutionResult` (returns `len(Unresolved) == 0`)
+
+**File**: `core/resolver/walker.go`
+- ✅ Updated `Walk()` to create unresolved root node when package not found (lines 56-66)
+- ✅ Updated dependency fetch handler to create unresolved child nodes (lines 208-218)
+- ✅ Walker continues processing even with unresolved packages (no early exit)
+- ✅ Matches NuGet.Client's `ResolverUtility.CreateUnresolvedResult` behavior
+
+**File**: `core/resolver/resolver.go`
+- ✅ Added `collectUnresolvedPackages()` method to traverse graph and collect unresolved nodes
+- ✅ Updated `Resolve()` to populate `ResolutionResult.Unresolved` collection
+- ✅ Updated `flattenGraph()` to exclude unresolved packages from resolved list
+- ✅ Matches NuGet.Client's `RestoreTargetGraph.Create` behavior
+
+**Enhanced Diagnostics**:
+- ✅ Added `diagnoseUnresolvedPackage()` method to query sources and determine error codes
+- ✅ Automatic NU1101 detection (package doesn't exist - no versions found)
+- ✅ Automatic NU1102 detection (package exists but version doesn't match)
+- ✅ Populates `AvailableVersions`, `NearestVersion`, and `Sources` fields
+- ✅ Generates detailed error messages matching NuGet.Client format
+
+**Tests Added**:
+- ✅ `walker_unresolved_test.go` - 6 walker tests for unresolved package handling
+- ✅ `resolver_unresolved_test.go` - 7 resolver tests (5 collection + 2 diagnostics tests)
+- ✅ All 13 new tests passing, full resolver test suite passing
+
+**Future Enhancement**: NU1103 detection (prerelease-only packages) - requires prerelease version detection
+
+**Reference**:
+- `/Users/brandon/src/NuGet.Client/src/NuGet.Core/NuGet.Commands/RestoreCommand/Diagnostics/UnresolvedMessages.cs`
+- `/Users/brandon/src/NuGet.Client/src/NuGet.Core/NuGet.DependencyResolver.Core/ResolverUtility.cs` (lines 515-542)
+
+**User Experience Improvement**:
+```
+# Instead of:
+Error: failed to walk dependencies for PackageA: package not found
+
+# Show:
+NU1101: Unable to find package 'PackageA'. No packages exist with this id in source(s): https://api.nuget.org/v3/index.json
+NU1102: Unable to find package 'PackageB' with version (>= 2.0.0)
+  - Found 15 version(s) in nuget.org [ Nearest version: 1.9.5 ]
+NU1103: Unable to find a stable package 'PackageC' with version (>= 1.0.0)
+  - Only prerelease versions are available: 1.0.0-beta1, 1.0.0-rc1
+
+Restore FAILED with 3 error(s).
+```
+
+---
+
 ## Executive Summary
 
 gonuget's restore currently downloads ONLY direct dependencies (packages listed in .csproj). NuGet.Client downloads ALL transitive dependencies (packages required by direct dependencies). This guide implements full transitive resolution matching RestoreCommand.cs line-by-line behavior.

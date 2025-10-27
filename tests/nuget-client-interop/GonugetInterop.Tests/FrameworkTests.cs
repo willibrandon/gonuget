@@ -214,7 +214,7 @@ public sealed class FrameworkTests
     }
 
     // ============================================================================
-    // Cross-Platform Incompatibility Tests (4 tests)
+    // Cross-Platform Incompatibility Tests (8 tests)
     // ============================================================================
 
     [Theory]
@@ -223,6 +223,25 @@ public sealed class FrameworkTests
     [InlineData("net6.0", "net48", false)]
     [InlineData("netcoreapp3.1", "net461", false)]
     public void Compatibility_CrossPlatform_Incompatible(
+        string packageFramework,
+        string projectFramework,
+        bool expectedCompatible)
+    {
+        var result = GonugetBridge.CheckFrameworkCompat(packageFramework, projectFramework);
+        Assert.Equal(expectedCompatible, result.Compatible);
+    }
+
+    // ============================================================================
+    // .NET 5+ and .NET Framework Incompatibility Tests (4 tests)
+    // Per NuGet.Client CompatibilityTests.cs: "net5.0 and later is not compat with net1.0 through net 4.x.xxx"
+    // ============================================================================
+
+    [Theory]
+    [InlineData("net35", "net8.0", false)]
+    [InlineData("net35", "net6.0", false)]
+    [InlineData("net8.0", "net35", false)]
+    [InlineData("net6.0", "net35", false)]
+    public void Compatibility_Net5Plus_NotCompatible_WithOldNetFramework(
         string packageFramework,
         string projectFramework,
         bool expectedCompatible)

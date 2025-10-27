@@ -32,6 +32,12 @@ func (c *DownloadClient) DownloadPackage(ctx context.Context, feedURL, packageID
 		return nil, fmt.Errorf("build download URL: %w", err)
 	}
 
+	// Check redirect cache first (eliminates V2→CDN redirect on fresh processes!)
+	// V2 downloads redirect from www.nuget.org to globalcdn.nuget.org
+	if cachedURL, found := nugethttp.GetCachedRedirect(downloadURL); found {
+		downloadURL = cachedURL
+	}
+
 	// Execute download request
 	req, err := http.NewRequest("GET", downloadURL, nil)
 	if err != nil {
@@ -41,6 +47,11 @@ func (c *DownloadClient) DownloadPackage(ctx context.Context, feedURL, packageID
 	resp, err := c.httpClient.DoWithRetry(ctx, req)
 	if err != nil {
 		return nil, fmt.Errorf("download request: %w", err)
+	}
+
+	// Cache redirect if one occurred (for next fresh process)
+	if resp.Request.URL.String() != downloadURL {
+		_ = nugethttp.SetCachedRedirect(downloadURL, resp.Request.URL.String())
 	}
 
 	if resp.StatusCode == http.StatusNotFound {

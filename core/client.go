@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"io"
 	"slices"
+	"sync"
 
 	"github.com/willibrandon/gonuget/core/resolver"
 	"github.com/willibrandon/gonuget/frameworks"
 	nugethttp "github.com/willibrandon/gonuget/http"
+	"github.com/willibrandon/gonuget/observability"
 	"github.com/willibrandon/gonuget/protocol/v3"
 	"github.com/willibrandon/gonuget/version"
 )
@@ -34,6 +36,9 @@ type clientMetadataAdapter struct {
 	client           *Client
 	v3MetadataClient *v3.MetadataClient
 	v3ServiceClient  *v3.ServiceIndexClient
+	// Cache for V2 FindPackagesById results to avoid repeated calls
+	v2PackageCache map[string][]*ProtocolMetadata
+	v2CacheMutex   sync.RWMutex
 }
 
 // NewClient creates a new NuGet client
@@ -74,6 +79,7 @@ func NewClient(cfg ClientConfig) *Client {
 			client:           client,
 			v3MetadataClient: metadataClient,
 			v3ServiceClient:  serviceIndexClient,
+			v2PackageCache:   make(map[string][]*ProtocolMetadata),
 		}
 
 		// Create resolver with adapter
@@ -281,21 +287,80 @@ func (c *Client) ResolvePackageVersion(ctx context.Context, packageID, versionSt
 // GetPackageMetadata implements resolver.PackageMetadataClient interface for the adapter.
 // This method retrieves all versions of a package and their dependency information,
 // which the resolver uses to find the best matching version and walk the dependency graph.
-// Uses V3 registration API for efficient single-request metadata retrieval.
-func (a *clientMetadataAdapter) GetPackageMetadata(ctx context.Context, source string, packageID string) ([]*resolver.PackageDependencyInfo, error) {
+// Uses protocol-aware approach: V3 registration API for v3 feeds, fallback for v2 feeds.
+func (a *clientMetadataAdapter) GetPackageMetadata(ctx context.Context, source string, packageID string, versionRangeStr string) ([]*resolver.PackageDependencyInfo, error) {
+	// Parse version range for filtering
+	versionRange, err := version.ParseVersionRange(versionRangeStr)
+	if err != nil {
+		return nil, fmt.Errorf("parse version range %q: %w", versionRangeStr, err)
+	}
+
+	// Find repository for this source
+	repos := a.client.repositoryManager.ListRepositories()
+	var repo *SourceRepository
+	for _, r := range repos {
+		if r.SourceURL() == source {
+			repo = r
+			break
+		}
+	}
+
+	if repo == nil {
+		return nil, fmt.Errorf("no repository found for source: %s", source)
+	}
+
+	// Get provider to detect protocol version
+	provider, err := repo.GetProvider(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("get provider: %w", err)
+	}
+
+	// Use V3 registration API for v3 feeds (efficient single HTTP call)
+	if provider.ProtocolVersion() == "v3" {
+		return a.getPackageMetadataV3(ctx, provider, packageID, versionRange)
+	}
+
+	// For v2 feeds, list versions and get metadata individually
+	return a.getPackageMetadataV2(ctx, repo, packageID, versionRange)
+}
+
+// getPackageMetadataV3 uses V3 registration API for efficient batch retrieval
+func (a *clientMetadataAdapter) getPackageMetadataV3(ctx context.Context, provider ResourceProvider, packageID string, versionRange *version.Range) ([]*resolver.PackageDependencyInfo, error) {
+	ctx, span := observability.StartMetadataFetchV3Span(ctx, packageID, provider.SourceURL())
+	defer span.End()
+
+	// Extract service index URL from V3 provider
+	// For nuget.org fast-path: sourceURL="https://www.nuget.org/api/v2", serviceIndexURL="https://api.nuget.org/v3/index.json"
+	var serviceIndexURL string
+	if v3Provider, ok := provider.(*V3ResourceProvider); ok {
+		serviceIndexURL = v3Provider.ServiceIndexURL()
+	} else {
+		serviceIndexURL = provider.SourceURL()
+	}
+
 	// Use V3 registration API to get all versions in a single HTTP call
-	// This is much faster than calling GetMetadata for each version
-	index, err := a.v3MetadataClient.GetPackageMetadata(ctx, source, packageID)
+	index, err := a.v3MetadataClient.GetPackageMetadata(ctx, serviceIndexURL, packageID)
 	if err != nil {
 		return nil, err
 	}
 
-	// Convert all versions to PackageDependencyInfo
+	// Convert matching versions to PackageDependencyInfo
+	// Matches NuGet.Client's ResolverMetadataClient.GetDependencies line 50
 	var packages []*resolver.PackageDependencyInfo
 	for _, page := range index.Items {
 		for _, leaf := range page.Items {
 			if leaf.CatalogEntry == nil {
 				continue
+			}
+
+			// Parse version and check if it satisfies the range
+			ver, err := version.Parse(leaf.CatalogEntry.Version)
+			if err != nil {
+				continue // Skip invalid versions
+			}
+
+			if !versionRange.Satisfies(ver) {
+				continue // Skip versions that don't match the range
 			}
 
 			pkg := &resolver.PackageDependencyInfo{
@@ -329,6 +394,128 @@ func (a *clientMetadataAdapter) GetPackageMetadata(ctx context.Context, source s
 	}
 
 	return packages, nil
+}
+
+// getPackageMetadataV2 uses efficient FindPackagesById for v2 feeds (single HTTP call)
+func (a *clientMetadataAdapter) getPackageMetadataV2(ctx context.Context, repo *SourceRepository, packageID string, versionRange *version.Range) ([]*resolver.PackageDependencyInfo, error) {
+	ctx, span := observability.StartMetadataFetchV2Span(ctx, packageID, repo.SourceURL())
+	defer span.End()
+
+	// Check cache first (avoid repeated FindPackagesById calls)
+	cacheKey := fmt.Sprintf("%s|%s", repo.SourceURL(), packageID)
+
+	a.v2CacheMutex.RLock()
+	allMetadata, cached := a.v2PackageCache[cacheKey]
+	a.v2CacheMutex.RUnlock()
+
+	if cached {
+		observability.RecordCacheHit(ctx, true)
+	} else {
+		observability.RecordCacheHit(ctx, false)
+
+		// Get V2 provider
+		provider, err := repo.GetProvider(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("get provider: %w", err)
+		}
+
+		v2Provider, ok := provider.(*V2ResourceProvider)
+		if !ok {
+			return nil, fmt.Errorf("expected V2 provider, got %T", provider)
+		}
+
+		// Use FindPackagesByID - single HTTP call gets all versions with dependencies
+		// Matches NuGet.Client's DependencyInfoResourceV2Feed approach
+		allMetadata, err = v2Provider.FindPackagesByID(ctx, nil, packageID)
+		if err != nil {
+			return nil, err
+		}
+
+		// Cache the result
+		a.v2CacheMutex.Lock()
+		a.v2PackageCache[cacheKey] = allMetadata
+		a.v2CacheMutex.Unlock()
+	}
+
+	// Filter by version range and convert to PackageDependencyInfo
+	var packages []*resolver.PackageDependencyInfo
+	for _, metadata := range allMetadata {
+		ver, err := version.Parse(metadata.Version)
+		if err != nil {
+			continue
+		}
+
+		if !versionRange.Satisfies(ver) {
+			continue
+		}
+
+		// Convert to PackageDependencyInfo
+		pkg := &resolver.PackageDependencyInfo{
+			ID:               metadata.ID,
+			Version:          metadata.Version,
+			DependencyGroups: make([]resolver.DependencyGroup, 0, len(metadata.Dependencies)),
+		}
+
+		// Convert dependency groups
+		for _, metaGroup := range metadata.Dependencies {
+			// Use framework string as-is from V2 API
+			// TODO: Normalize framework string to short form if needed
+			normalizedFw := metaGroup.TargetFramework
+
+			group := resolver.DependencyGroup{
+				TargetFramework: normalizedFw,
+				Dependencies:    make([]resolver.PackageDependency, 0, len(metaGroup.Dependencies)),
+			}
+
+			for _, metaDep := range metaGroup.Dependencies {
+				// Handle empty version range (means any version >= 0.0.0)
+				// NuGet spec: empty version range = minimum version of 0.0.0
+				depVersionRange := metaDep.Range
+				if depVersionRange == "" {
+					depVersionRange = "0.0.0"
+				}
+				dep := resolver.PackageDependency{
+					ID:              metaDep.ID,
+					VersionRange:    depVersionRange,
+					TargetFramework: group.TargetFramework,
+				}
+				group.Dependencies = append(group.Dependencies, dep)
+			}
+
+			pkg.DependencyGroups = append(pkg.DependencyGroups, group)
+		}
+
+		packages = append(packages, pkg)
+	}
+
+	return packages, nil
+}
+
+// CreateDependencyWalker creates a DependencyWalker using the client's efficient metadata adapter.
+// The adapter uses V3 registration API to fetch all versions in a single HTTP call.
+func (c *Client) CreateDependencyWalker(sources []string, targetFramework string) (*resolver.DependencyWalker, error) {
+	// Create V3 clients for efficient metadata retrieval
+	repos := c.repositoryManager.ListRepositories()
+	var httpClient *nugethttp.Client
+	if len(repos) > 0 && repos[0].httpClient != nil {
+		httpClient = repos[0].httpClient
+	} else {
+		httpClient = nugethttp.NewClient(nil)
+	}
+
+	serviceIndexClient := v3.NewServiceIndexClient(httpClient)
+	metadataClient := v3.NewMetadataClient(httpClient, serviceIndexClient)
+
+	// Create adapter that implements PackageMetadataClient
+	adapter := &clientMetadataAdapter{
+		client:           c,
+		v3MetadataClient: metadataClient,
+		v3ServiceClient:  serviceIndexClient,
+		v2PackageCache:   make(map[string][]*ProtocolMetadata),
+	}
+
+	// Create walker with efficient adapter
+	return resolver.NewDependencyWalker(adapter, sources, targetFramework), nil
 }
 
 // ResolvePackageDependencies resolves all dependencies for a package

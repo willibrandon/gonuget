@@ -225,6 +225,7 @@ func (c *slowMockClient) GetPackageMetadata(
 	ctx context.Context,
 	source string,
 	packageID string,
+	versionRange string,
 ) ([]*PackageDependencyInfo, error) {
 	select {
 	case <-time.After(c.delay):
@@ -254,6 +255,7 @@ func (c *countingMockClient) GetPackageMetadata(
 	ctx context.Context,
 	source string,
 	packageID string,
+	versionRange string,
 ) ([]*PackageDependencyInfo, error) {
 	// Track concurrent requests
 	c.mu.Lock()

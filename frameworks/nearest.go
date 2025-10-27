@@ -79,9 +79,23 @@ func calculateCompatibilityScore(fw, target *NuGetFramework) int {
 		if target.Framework == ".NETFramework" {
 			baseScore = 850
 		}
+		// BUT: For .NET 5+ targets, prefer .NETFramework over .NETStandard
+		// This matches NuGet.Client's behavior and avoids downloading NETStandard.Library
+		if target.Framework == ".NETCoreApp" && target.Version.Major >= 5 {
+			baseScore = 400 // Lower than .NETFramework priority
+		}
 		score += baseScore
 		// Higher .NET Standard versions are better
 		score += fw.Version.Major*20 + fw.Version.Minor
+		return score
+	}
+
+	// .NETFramework packages on .NET 5+ get high priority
+	// This ensures we prefer net45 (empty deps) over netstandard1.0 (91 transitive deps via NETStandard.Library)
+	if fw.Framework == ".NETFramework" && target.Framework == ".NETCoreApp" && target.Version.Major >= 5 {
+		score += 600 // Higher than .NETStandard base score (400)
+		// Newer .NET Framework versions are better
+		score += fw.Version.Major*10 + fw.Version.Minor*5
 		return score
 	}
 

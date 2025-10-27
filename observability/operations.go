@@ -93,6 +93,16 @@ func RecordRetry(ctx context.Context, attempt int, err error) {
 	)
 }
 
+// StartServiceIndexFetchSpan starts a span for service index fetch
+func StartServiceIndexFetchSpan(ctx context.Context, sourceURL string) (context.Context, trace.Span) {
+	return StartSpan(ctx, TracerName, "service_index.fetch",
+		trace.WithAttributes(
+			AttrSourceURL.String(sourceURL),
+			AttrOperation.String("fetch_service_index"),
+		),
+	)
+}
+
 // EndSpanWithError ends a span with an error status
 func EndSpanWithError(span trace.Span, err error) {
 	if err != nil {

@@ -13,7 +13,7 @@ type v3MetadataClientAdapter struct {
 	v3Client *v3.MetadataClient
 }
 
-func (a *v3MetadataClientAdapter) GetPackageMetadata(ctx context.Context, source string, packageID string) ([]*PackageDependencyInfo, error) {
+func (a *v3MetadataClientAdapter) GetPackageMetadata(ctx context.Context, source string, packageID string, versionRange string) ([]*PackageDependencyInfo, error) {
 	// Fetch registration index from V3 API
 	index, err := a.v3Client.GetPackageMetadata(ctx, source, packageID)
 	if err != nil {

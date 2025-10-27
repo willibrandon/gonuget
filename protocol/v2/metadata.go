@@ -107,13 +107,14 @@ func (c *MetadataClient) GetPackageMetadata(ctx context.Context, feedURL, packag
 	return metadata, nil
 }
 
-// ListVersions returns all available versions for a package ID.
-// Uses the /FindPackagesById() endpoint.
-func (c *MetadataClient) ListVersions(ctx context.Context, feedURL, packageID string) ([]string, error) {
-	// Build list versions URL
+// FindPackagesByID retrieves all versions of a package with full metadata in a single call.
+// This is the efficient method matching NuGet.Client's DependencyInfoResourceV2Feed approach.
+// Uses the /FindPackagesById() endpoint which returns all versions with dependencies.
+func (c *MetadataClient) FindPackagesByID(ctx context.Context, feedURL, packageID string) ([]*PackageMetadata, error) {
+	// Build FindPackagesById URL
 	listURL, err := c.buildListVersionsURL(feedURL, packageID)
 	if err != nil {
-		return nil, fmt.Errorf("build list versions URL: %w", err)
+		return nil, fmt.Errorf("build FindPackagesById URL: %w", err)
 	}
 
 	// Execute request
@@ -124,7 +125,7 @@ func (c *MetadataClient) ListVersions(ctx context.Context, feedURL, packageID st
 
 	resp, err := c.httpClient.DoWithRetry(ctx, req)
 	if err != nil {
-		return nil, fmt.Errorf("list versions request: %w", err)
+		return nil, fmt.Errorf("FindPackagesById request: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -134,7 +135,7 @@ func (c *MetadataClient) ListVersions(ctx context.Context, feedURL, packageID st
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
-		return nil, fmt.Errorf("list versions returned %d: %s", resp.StatusCode, body)
+		return nil, fmt.Errorf("FindPackagesById returned %d: %s", resp.StatusCode, body)
 	}
 
 	// Parse Atom feed response
@@ -143,11 +144,56 @@ func (c *MetadataClient) ListVersions(ctx context.Context, feedURL, packageID st
 		return nil, fmt.Errorf("decode feed: %w", err)
 	}
 
-	// Extract versions from entries
-	versions := make([]string, 0, len(feed.Entries))
+	// Convert all entries to PackageMetadata (includes dependencies!)
+	packages := make([]*PackageMetadata, 0, len(feed.Entries))
 	for _, entry := range feed.Entries {
-		if entry.Properties.Version != "" {
-			versions = append(versions, entry.Properties.Version)
+		if entry.Properties.Version == "" {
+			continue
+		}
+
+		metadata := &PackageMetadata{
+			ID:                       entry.Properties.ID,
+			Version:                  entry.Properties.Version,
+			Description:              entry.Properties.Description,
+			Authors:                  entry.Properties.Authors,
+			IconURL:                  entry.Properties.IconURL,
+			LicenseURL:               entry.Properties.LicenseURL,
+			ProjectURL:               entry.Properties.ProjectURL,
+			Dependencies:             entry.Properties.Dependencies,
+			DownloadCount:            entry.Properties.DownloadCount,
+			IsPrerelease:             entry.Properties.IsPrerelease,
+			Published:                entry.Properties.Published,
+			RequireLicenseAcceptance: entry.Properties.RequireLicenseAcceptance,
+			DownloadURL:              entry.Content.Src,
+			Title:                    entry.Title,
+			Updated:                  entry.Updated,
+		}
+
+		// Parse tags
+		if entry.Properties.Tags != "" {
+			metadata.Tags = strings.Split(entry.Properties.Tags, " ")
+		}
+
+		packages = append(packages, metadata)
+	}
+
+	return packages, nil
+}
+
+// ListVersions returns all available versions for a package ID.
+// Uses the /FindPackagesById() endpoint.
+func (c *MetadataClient) ListVersions(ctx context.Context, feedURL, packageID string) ([]string, error) {
+	// Use FindPackagesByID and extract just the versions
+	packages, err := c.FindPackagesByID(ctx, feedURL, packageID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Extract versions from packages
+	versions := make([]string, 0, len(packages))
+	for _, pkg := range packages {
+		if pkg.Version != "" {
+			versions = append(versions, pkg.Version)
 		}
 	}
 

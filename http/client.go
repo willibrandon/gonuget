@@ -77,12 +77,18 @@ func NewClient(cfg *Config) *Client {
 			Timeout:   cfg.DialTimeout,
 			KeepAlive: 30 * time.Second,
 		}).DialContext,
-		MaxIdleConns:        cfg.MaxIdleConns,
-		MaxIdleConnsPerHost: 10,
-		IdleConnTimeout:     90 * time.Second,
-		TLSHandshakeTimeout: 10 * time.Second,
-		TLSClientConfig:     cfg.TLSConfig,
-		ForceAttemptHTTP2:   cfg.EnableHTTP2,
+		// AGGRESSIVE connection pooling for maximum reuse (beats .NET defaults)
+		MaxIdleConns:          200, // Global pool size (up from 100)
+		MaxIdleConnsPerHost:   100, // Per-host pool (up from 10) - critical for NuGet CDN
+		MaxConnsPerHost:       0,   // Unlimited concurrent connections
+		IdleConnTimeout:       90 * time.Second,
+		TLSHandshakeTimeout:   1500 * time.Millisecond, // Faster timeout (down from 10s)
+		ExpectContinueTimeout: 200 * time.Millisecond,  // Faster 100-continue handling
+		ResponseHeaderTimeout: 10 * time.Second,        // Detect stalled connections
+		TLSClientConfig:       cfg.TLSConfig,
+		ForceAttemptHTTP2:     cfg.EnableHTTP2,
+		DisableKeepAlives:     false, // NEVER disable keep-alives
+		DisableCompression:    false, // Enable gzip for metadata (packages are already compressed)
 	}
 
 	// Wrap transport with tracing if enabled

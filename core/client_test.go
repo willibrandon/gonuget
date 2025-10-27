@@ -392,7 +392,7 @@ func TestClientMetadataAdapter_NoRepositories(t *testing.T) {
 	}
 	ctx := context.Background()
 
-	_, err := adapter.GetPackageMetadata(ctx, "", "test")
+	_, err := adapter.GetPackageMetadata(ctx, "", "test", "*")
 	if err == nil {
 		t.Error("GetPackageMetadata() expected error for package not found")
 	}

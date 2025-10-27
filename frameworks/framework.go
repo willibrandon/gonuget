@@ -643,13 +643,6 @@ func isCompatibleWith(pkg, target *NuGetFramework) bool {
 		return pkg.Version.Compare(target.Version) <= 0
 	}
 
-	// .NET 5+ unified platform (treat as .NETCoreApp for compatibility)
-	if pkg.Framework == ".NETCoreApp" && target.Framework == ".NETCoreApp" {
-		if pkg.Version.Major >= 5 && target.Version.Major >= 5 {
-			return pkg.Version.Compare(target.Version) <= 0
-		}
-	}
-
 	return false
 }
 

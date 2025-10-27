@@ -71,6 +71,7 @@ func (c *InMemoryPackageClient) GetPackageMetadata(
 	ctx context.Context,
 	source string,
 	packageID string,
+	versionRange string,
 ) ([]*resolver.PackageDependencyInfo, error) {
 	versions, found := c.packages[packageID]
 	if !found {

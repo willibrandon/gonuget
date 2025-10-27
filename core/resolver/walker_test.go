@@ -272,9 +272,21 @@ func TestDependencyWalker_MissingPackage(t *testing.T) {
 		t.Fatalf("Walk() failed: %v", err)
 	}
 
-	// Should still succeed but have no children (missing package is skipped)
-	if len(node.InnerNodes) != 0 {
-		t.Errorf("Expected 0 children when dependency is missing, got %d", len(node.InnerNodes))
+	// Should create unresolved child node instead of skipping
+	// Matches NuGet.Client behavior: walker never throws, creates unresolved nodes
+	if len(node.InnerNodes) != 1 {
+		t.Errorf("Expected 1 child (unresolved), got %d", len(node.InnerNodes))
+	}
+
+	// Verify child is unresolved
+	if len(node.InnerNodes) > 0 {
+		child := node.InnerNodes[0]
+		if !child.Item.IsUnresolved {
+			t.Error("Expected child to be marked as unresolved")
+		}
+		if child.Item.ID != "Missing" {
+			t.Errorf("Expected child ID 'Missing', got %s", child.Item.ID)
+		}
 	}
 }
 
@@ -535,10 +547,25 @@ func TestDependencyWalker_RootPackageNotFound(t *testing.T) {
 
 	walker := NewDependencyWalker(client, []string{"source1"}, "net8.0")
 
-	_, err := walker.Walk(context.Background(), "Missing", "[1.0.0]", "net8.0", true)
+	node, err := walker.Walk(context.Background(), "Missing", "[1.0.0]", "net8.0", true)
 
-	if err == nil {
-		t.Error("Expected error when root package not found, got nil")
+	// Should NOT error - should create unresolved root node instead
+	// Matches NuGet.Client: walker never throws, creates unresolved nodes
+	if err != nil {
+		t.Fatalf("Walk() should not error on missing root, got: %v", err)
+	}
+
+	// Root node should be marked as unresolved
+	if node == nil || node.Item == nil {
+		t.Fatal("Expected root node to be created")
+	}
+
+	if !node.Item.IsUnresolved {
+		t.Error("Expected root node to be marked as unresolved")
+	}
+
+	if node.Item.ID != "Missing" {
+		t.Errorf("Expected package ID 'Missing', got %s", node.Item.ID)
 	}
 }
 
@@ -659,6 +686,7 @@ func (m *mockPackageMetadataClientWithCounter) GetPackageMetadata(
 	ctx context.Context,
 	source string,
 	packageID string,
+	versionRange string,
 ) ([]*PackageDependencyInfo, error) {
 	*m.callCount++
 	result := make([]*PackageDependencyInfo, 0)
@@ -679,6 +707,7 @@ func (m *mockPackageMetadataClient) GetPackageMetadata(
 	ctx context.Context,
 	source string,
 	packageID string,
+	versionRange string,
 ) ([]*PackageDependencyInfo, error) {
 	result := make([]*PackageDependencyInfo, 0)
 	for _, pkg := range m.packages {
