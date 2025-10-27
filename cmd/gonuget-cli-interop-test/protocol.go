@@ -257,3 +257,13 @@ type ExecuteHelpResponse struct {
 	BothShowUsage       bool   `json:"bothShowUsage"`       // Both outputs show usage information
 	OutputFormatSimilar bool   `json:"outputFormatSimilar"` // Format is similar (both structured help)
 }
+
+// ExecuteAddPackageResponse contains add package command results
+type ExecuteAddPackageResponse struct {
+	DotnetExitCode  int    `json:"dotnetExitCode"`
+	DotnetStdOut    string `json:"dotnetStdOut"`
+	DotnetStdErr    string `json:"dotnetStdErr"`
+	GonugetExitCode int    `json:"gonugetExitCode"`
+	GonugetStdOut   string `json:"gonugetStdOut"`
+	GonugetStdErr   string `json:"gonugetStdErr"`
+}

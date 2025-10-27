@@ -84,6 +84,10 @@ func main() {
 	case "execute_help":
 		handler = &ExecuteHelpHandler{}
 
+	// Package management actions
+	case "execute_add_package":
+		handler = &ExecuteAddPackageHandler{}
+
 	default:
 		sendError("ACT_001", "Unknown action", fmt.Sprintf("action=%s", req.Action))
 		os.Exit(1)

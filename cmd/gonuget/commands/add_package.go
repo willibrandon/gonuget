@@ -123,18 +123,46 @@ func runAddPackage(ctx context.Context, packageID string, opts *AddPackageOption
 
 	// 9. Report success
 	if updated {
-		fmt.Printf("Updated package '%s' from project '%s'\n", packageID, projectPath)
+		fmt.Printf("Updated package '%s' version '%s' in project '%s'\n", packageID, packageVersion, projectPath)
 	} else {
-		fmt.Printf("Added package '%s' to project '%s'\n", packageID, projectPath)
+		fmt.Printf("Added package '%s' version '%s' to project '%s'\n", packageID, packageVersion, projectPath)
 	}
 
-	// 10. Perform restore if needed (M2.1 Chunk 5-7)
+	// 10. Perform restore if needed
 	if !opts.NoRestore {
-		fmt.Println("Restore is not yet implemented (coming in Chunk 5)")
-		// TODO: Implement restore in Chunk 5
+		restoreOpts := &restore.Options{
+			PackagesFolder: opts.PackageDirectory,
+			Sources:        []string{},
+		}
+		if opts.Source != "" {
+			restoreOpts.Sources = []string{opts.Source}
+		}
+
+		console := &cliConsole{}
+		restorer := restore.NewRestorer(restoreOpts, console)
+
+		packageRefs := proj.GetPackageReferences()
+		if _, err := restorer.Restore(ctx, proj, packageRefs); err != nil {
+			return fmt.Errorf("restore failed: %w", err)
+		}
 	}
 
 	return nil
+}
+
+// cliConsole implements the restore.Console interface for CLI output.
+type cliConsole struct{}
+
+func (c *cliConsole) Printf(format string, args ...any) {
+	fmt.Printf(format, args...)
+}
+
+func (c *cliConsole) Error(format string, args ...any) {
+	fmt.Fprintf(os.Stderr, "error : "+format, args...)
+}
+
+func (c *cliConsole) Warning(format string, args ...any) {
+	fmt.Fprintf(os.Stderr, "warn  : "+format, args...)
 }
 
 // resolveLatestVersion resolves the latest version of a package from the package source.

@@ -113,6 +113,25 @@ public class TestEnvironment : IDisposable
     }
 
     /// <summary>
+    /// Creates a basic SDK-style .NET project file for testing.
+    /// </summary>
+    /// <param name="projectName">Name of the project (without .csproj extension).</param>
+    /// <param name="targetFramework">Target framework version (default: net8.0).</param>
+    /// <returns>The full path to the created project file.</returns>
+    public string CreateTestProject(string projectName, string targetFramework = "net8.0")
+    {
+        var projectPath = Path.Combine(TestDirectory, $"{projectName}.csproj");
+        var content = $@"<Project Sdk=""Microsoft.NET.Sdk"">
+  <PropertyGroup>
+    <TargetFramework>{targetFramework}</TargetFramework>
+  </PropertyGroup>
+</Project>";
+
+        File.WriteAllText(projectPath, content);
+        return projectPath;
+    }
+
+    /// <summary>
     /// Disposes the test environment by deleting the temporary test directory and all its contents.
     /// </summary>
     public void Dispose()

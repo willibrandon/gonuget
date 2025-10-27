@@ -391,6 +391,44 @@ public class GonugetCliBridge
     }
 
     /// <summary>
+    /// Executes the 'add package' command on both dotnet add and gonuget add.
+    /// </summary>
+    /// <param name="projectPath">Path to the project file.</param>
+    /// <param name="packageId">Package ID to add.</param>
+    /// <param name="workingDir">The working directory for command execution.</param>
+    /// <param name="version">Optional version to install.</param>
+    /// <param name="source">Optional package source URL.</param>
+    /// <param name="noRestore">Whether to skip restoring packages.</param>
+    /// <param name="prerelease">Whether to allow prerelease versions.</param>
+    /// <returns>Response containing exit codes and output from both commands.</returns>
+    public ExecuteAddPackageResponse ExecuteAddPackage(
+        string projectPath,
+        string packageId,
+        string workingDir,
+        string? version = null,
+        string? source = null,
+        bool noRestore = false,
+        bool prerelease = false)
+    {
+        var request = new
+        {
+            action = "execute_add_package",
+            data = new
+            {
+                projectPath,
+                packageId,
+                workingDir,
+                version,
+                source,
+                noRestore,
+                prerelease
+            }
+        };
+
+        return Execute<ExecuteAddPackageResponse>(request);
+    }
+
+    /// <summary>
     /// Executes a JSON-RPC request by piping it to the gonuget-cli-interop-test process.
     /// </summary>
     /// <typeparam name="T">The expected response data type.</typeparam>
