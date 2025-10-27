@@ -68,11 +68,20 @@ This guide covers chunks 5-7 and 9 from the CLI implementation roadmap.
 **Prerequisites:** Chunks 1-4 complete
 
 **Files to Create:**
-- `cmd/gonuget/commands/restore.go`
-- `cmd/gonuget/commands/restore_test.go`
+
+**Library Package (restore/) - All NuGet.Client Logic**:
+- `restore/restorer.go` - Core restore engine (port of NuGet.Commands/RestoreCommand/RestoreCommand.cs)
+- `restore/lock_file_builder.go` - Builds project.assets.json (port of NuGet.Commands/RestoreCommand/LockFileBuilder.cs)
+- `restore/lock_file_format.go` - LockFile types and JSON serialization (port of NuGet.ProjectModel/LockFile*.cs)
+- `restore/restorer_test.go` - Unit tests for restore logic
+
+**CLI Commands (cmd/gonuget/commands/) - Thin Wrappers Only**:
+- `cmd/gonuget/commands/restore.go` - CLI flags and argument parsing, calls restore.Run()
+- `cmd/gonuget/commands/restore_test.go` - CLI integration tests
 
 **Files to Modify:**
-- `cmd/gonuget/cli/app.go` - Register command
+- `cmd/gonuget/cli/app.go` - Register restore command
+- `cmd/gonuget/commands/add_package.go` - Refactor to call library instead of having resolveLatestVersion() logic in CLI
 
 **Scope:**
 - Read PackageReference elements from .csproj
@@ -257,7 +266,9 @@ Dependency resolution + package download
 
 ## Go Implementation
 
-### Command Entry Point
+### Command Entry Point (CLI - Thin Wrapper)
+
+The CLI command is a thin wrapper that parses flags and calls the library.
 
 ```go
 // cmd/gonuget/commands/restore.go
@@ -265,28 +276,14 @@ Dependency resolution + package download
 package commands
 
 import (
-    "context"
-    "fmt"
-    "time"
-
     "github.com/spf13/cobra"
     "github.com/willibrandon/gonuget/cmd/gonuget/output"
-    "github.com/willibrandon/gonuget/cmd/gonuget/project"
-    "github.com/willibrandon/gonuget/core"
+    "github.com/willibrandon/gonuget/restore"
 )
 
-type restoreOptions struct {
-    source         []string
-    packagesFolder string
-    configFile     string
-    force          bool
-    noCache        bool
-    noDependencies bool
-    verbosity      string
-}
-
+// NewRestoreCommand creates the restore command.
 func NewRestoreCommand(console *output.Console) *cobra.Command {
-    opts := &restoreOptions{}
+    opts := &restore.Options{}
 
     cmd := &cobra.Command{
         Use:   "restore [<PROJECT|SOLUTION>]",
@@ -302,38 +299,88 @@ Examples:
   gonuget restore --force`,
         Args: cobra.MaximumNArgs(1),
         RunE: func(cmd *cobra.Command, args []string) error {
-            projectPath := ""
-            if len(args) > 0 {
-                projectPath = args[0]
-            }
-            return runRestore(cmd.Context(), console, projectPath, opts)
+            // CLI just calls library function
+            return restore.Run(cmd.Context(), args, opts, console)
         },
     }
 
-    cmd.Flags().StringSliceVar(&opts.source, "source", nil, "Package source(s)")
-    cmd.Flags().StringVar(&opts.packagesFolder, "packages", "", "Global packages folder")
-    cmd.Flags().StringVar(&opts.configFile, "configfile", "", "NuGet configuration file")
-    cmd.Flags().BoolVar(&opts.force, "force", false, "Force re-download")
-    cmd.Flags().BoolVar(&opts.noCache, "no-cache", false, "Don't use HTTP cache")
-    cmd.Flags().BoolVar(&opts.noDependencies, "no-dependencies", false, "Skip transitive dependencies")
-    cmd.Flags().StringVar(&opts.verbosity, "verbosity", "normal", "Output verbosity")
+    // Flag binding
+    cmd.Flags().StringSliceVarP(&opts.Sources, "source", "s", nil, "Package source(s) to use")
+    cmd.Flags().StringVar(&opts.PackagesFolder, "packages", "", "Custom global packages folder")
+    cmd.Flags().StringVar(&opts.ConfigFile, "configfile", "", "NuGet configuration file")
+    cmd.Flags().BoolVar(&opts.Force, "force", false, "Force re-download even if packages exist")
+    cmd.Flags().BoolVar(&opts.NoCache, "no-cache", false, "Don't use HTTP cache")
+    cmd.Flags().BoolVar(&opts.NoDependencies, "no-dependencies", false, "Only restore direct references")
+    cmd.Flags().StringVar(&opts.Verbosity, "verbosity", "normal", "Verbosity level")
 
     return cmd
 }
+```
 
-func runRestore(ctx context.Context, console *output.Console, projectPath string, opts *restoreOptions) error {
+**Key Points**:
+- CLI has NO business logic
+- Just flag parsing and calling `restore.Run()`
+- All NuGet logic is in the library
+
+---
+
+### Library Implementation (restore/ package)
+
+All restore logic goes in the library package, ported from NuGet.Client.
+
+#### restore/restorer.go
+
+Core restore engine ported from NuGet.Commands/RestoreCommand/RestoreCommand.cs (1,400+ lines).
+
+```go
+// restore/restorer.go
+
+package restore
+
+import (
+    "context"
+    "fmt"
+    "io"
+    "os"
+    "path/filepath"
+    "time"
+
+    "github.com/willibrandon/gonuget/cmd/gonuget/project"
+    "github.com/willibrandon/gonuget/core"
+    "github.com/willibrandon/gonuget/frameworks"
+    "github.com/willibrandon/gonuget/packaging"
+    "github.com/willibrandon/gonuget/version"
+)
+
+// Console interface for output (injected from CLI)
+type Console interface {
+    Printf(format string, args ...any)
+    Error(msg string)
+    Warning(msg string)
+}
+
+// Options holds restore configuration
+type Options struct {
+    Sources        []string
+    PackagesFolder string
+    ConfigFile     string
+    Force          bool
+    NoCache        bool
+    NoDependencies bool
+    Verbosity      string
+}
+
+// Run executes the restore operation (entry point called from CLI)
+func Run(ctx context.Context, args []string, opts *Options, console Console) error {
     start := time.Now()
 
-    // 1. Locate project file
-    if projectPath == "" {
-        var err error
-        projectPath, err = project.FindProjectFile(".")
-        if err != nil {
-            return fmt.Errorf("failed to locate project file: %w", err)
-        }
+    // 1. Find project file
+    projectPath, err := findProjectFile(args)
+    if err != nil {
+        return err
     }
 
-    console.Printf("  Restoring packages for %s...\n", projectPath)
+    console.Printf("Restoring packages for %s...\n", projectPath)
 
     // 2. Load project
     proj, err := project.LoadProject(projectPath)
@@ -341,56 +388,30 @@ func runRestore(ctx context.Context, console *output.Console, projectPath string
         return fmt.Errorf("failed to load project: %w", err)
     }
 
-    // 3. Extract package references
-    packageRefs := proj.GetPackageReferences()
+    // 3. Get package references
+    packageRefs, err := proj.GetPackageReferences()
+    if err != nil {
+        return fmt.Errorf("failed to get package references: %w", err)
+    }
+
     if len(packageRefs) == 0 {
-        console.Println("  Nothing to restore")
+        console.Printf("Nothing to restore\n")
         return nil
     }
 
-    // 4. Create restore context
-    restoreCtx := &RestoreContext{
-        Project:        proj,
-        Console:        console,
-        PackagesFolder: opts.packagesFolder,
-        Sources:        opts.source,
-        Force:          opts.force,
-        NoCache:        opts.noCache,
-        NoDependencies: opts.noDependencies,
-    }
+    // 4. Create restorer
+    restorer := NewRestorer(opts, console)
 
-    // 5. Resolve and download packages
-    restorer := NewRestorer(restoreCtx)
-    result, err := restorer.Restore(ctx, packageRefs)
+    // 5. Execute restore
+    result, err := restorer.Restore(ctx, proj, packageRefs)
     if err != nil {
         return fmt.Errorf("restore failed: %w", err)
     }
 
-    // 6. Generate project.assets.json
-    assetsFile := &AssetsFile{
-        Version:   3,
-        Targets:   result.Targets,
-        Libraries: result.Libraries,
-        ProjectFileDependencyGroups: result.DependencyGroups,
-        PackageFolders: map[string]interface{}{
-            result.PackagesFolder: map[string]interface{}{},
-        },
-        Project: &AssetsProject{
-            Version: proj.GetVersion(),
-            Restore: &AssetsRestore{
-                ProjectUniqueName: projectPath,
-                ProjectName:       proj.GetProjectName(),
-                ProjectPath:       projectPath,
-                PackagesPath:      result.PackagesFolder,
-                OutputPath:        proj.GetOutputPath(),
-                ProjectStyle:      "PackageReference",
-                Frameworks:        result.Frameworks,
-            },
-        },
-    }
-
+    // 6. Generate lock file (project.assets.json)
+    lockFile := NewLockFileBuilder().Build(proj, result)
     assetsPath := proj.GetAssetsFilePath()
-    if err := assetsFile.Save(assetsPath); err != nil {
+    if err := lockFile.Save(assetsPath); err != nil {
         return fmt.Errorf("failed to save project.assets.json: %w", err)
     }
 
@@ -400,199 +421,142 @@ func runRestore(ctx context.Context, console *output.Console, projectPath string
 
     return nil
 }
-```
 
-### Restore Engine
+func findProjectFile(args []string) (string, error) {
+    if len(args) > 0 {
+        return args[0], nil
+    }
 
-```go
-// cmd/gonuget/commands/restore_engine.go
+    cwd, err := os.Getwd()
+    if err != nil {
+        return "", err
+    }
 
-package commands
+    return project.FindProjectFile(cwd)
+}
 
-import (
-    "context"
-    "fmt"
-    "io"
-    "os"
-    "path/filepath"
-    "sort"
-    "strings"
-
-    "github.com/willibrandon/gonuget/cmd/gonuget/output"
-    "github.com/willibrandon/gonuget/cmd/gonuget/project"
-    "github.com/willibrandon/gonuget/core"
-    "github.com/willibrandon/gonuget/frameworks"
-    "github.com/willibrandon/gonuget/packaging"
-    "github.com/willibrandon/gonuget/packaging/assets"
-    "github.com/willibrandon/gonuget/version"
-)
-
+// Restorer executes restore operations
 type Restorer struct {
-    ctx    *RestoreContext
-    client *core.Client
+    opts    *Options
+    console Console
+    client  *core.Client
 }
 
-type RestoreContext struct {
-    Project        *project.Project
-    Console        *output.Console
-    PackagesFolder string
-    Sources        []string
-    Force          bool
-    NoCache        bool
-    NoDependencies bool
-}
+// NewRestorer creates a new restorer
+func NewRestorer(opts *Options, console Console) *Restorer {
+    // Create client
+    repoManager := core.NewRepositoryManager()
 
-type RestoreResult struct {
-    PackagesFolder  string
-    Targets         map[string]interface{}
-    Libraries       map[string]interface{}
-    DependencyGroups map[string][]string
-    Frameworks      map[string]interface{}
-}
+    sources := opts.Sources
+    if len(sources) == 0 {
+        sources = []string{"https://api.nuget.org/v3/index.json"}
+    }
 
-func NewRestorer(ctx *RestoreContext) *Restorer {
-    // Create client from context
-    client := createClient(ctx)
+    for _, sourceURL := range sources {
+        repo := core.NewSourceRepository(core.RepositoryConfig{
+            SourceURL: sourceURL,
+        })
+        repoManager.AddRepository(repo)
+    }
 
     return &Restorer{
-        ctx:    ctx,
-        client: client,
+        opts:    opts,
+        console: console,
+        client: core.NewClient(core.ClientConfig{
+            RepositoryManager: repoManager,
+        }),
     }
 }
 
-func (r *Restorer) Restore(ctx context.Context, packageRefs []*project.PackageReference) (*RestoreResult, error) {
+// RestoreResult holds restore operation results
+type RestoreResult struct {
+    Packages       []*ResolvedPackage
+    PackagesFolder string
+    TargetFramework *frameworks.NuGetFramework
+}
+
+// ResolvedPackage represents a resolved package
+type ResolvedPackage struct {
+    ID      string
+    Version string
+}
+
+// Restore performs the restore operation
+func (r *Restorer) Restore(ctx context.Context, proj *project.Project, packageRefs []project.PackageReference) (*RestoreResult, error) {
     // Get target framework
-    tfm, err := r.ctx.Project.GetTargetFramework()
+    tfm, err := proj.GetTargetFramework()
     if err != nil {
         return nil, err
     }
 
-    r.ctx.Console.Printf("  Target framework: %s\n", tfm)
+    r.console.Printf("  Target framework: %s\n", tfm)
 
-    // Resolve dependencies
-    var allPackages []*ResolvedPackage
-    if r.ctx.NoDependencies {
-        // Direct only
-        allPackages = r.resolveDirectOnly(ctx, packageRefs, tfm)
-    } else {
-        // Full transitive resolution
-        allPackages, err = r.resolveTransitive(ctx, packageRefs, tfm)
-        if err != nil {
-            return nil, err
-        }
-    }
+    // Resolve packages (direct only for Chunk 5)
+    packages := r.resolveDirectOnly(packageRefs)
 
-    r.ctx.Console.Printf("  Resolved %d package(s)\n", len(allPackages))
+    r.console.Printf("  Resolved %d package(s)\n", len(packages))
 
     // Download packages
     packagesFolder := r.getPackagesFolder()
-    for _, pkg := range allPackages {
+    for _, pkg := range packages {
         if err := r.downloadPackage(ctx, pkg, packagesFolder); err != nil {
             return nil, fmt.Errorf("failed to download %s: %w", pkg.ID, err)
         }
     }
 
-    // Build restore result
-    result := &RestoreResult{
-        PackagesFolder:   packagesFolder,
-        Targets:          r.buildTargets(tfm, allPackages),
-        Libraries:        r.buildLibraries(allPackages),
-        DependencyGroups: r.buildDependencyGroups(tfm, packageRefs),
-        Frameworks:       r.buildFrameworks(tfm),
-    }
-
-    return result, nil
+    return &RestoreResult{
+        Packages:        packages,
+        PackagesFolder:  packagesFolder,
+        TargetFramework: tfm,
+    }, nil
 }
 
-func (r *Restorer) resolveDirectOnly(ctx context.Context, packageRefs []*project.PackageReference, tfm *frameworks.NuGetFramework) []*ResolvedPackage {
+func (r *Restorer) resolveDirectOnly(packageRefs []project.PackageReference) []*ResolvedPackage {
     var packages []*ResolvedPackage
-
     for _, ref := range packageRefs {
-        pkg := &ResolvedPackage{
+        packages = append(packages, &ResolvedPackage{
             ID:      ref.Include,
             Version: ref.Version,
-            Type:    "package",
-        }
-        packages = append(packages, pkg)
+        })
     }
-
     return packages
 }
 
-func (r *Restorer) resolveTransitive(ctx context.Context, packageRefs []*project.PackageReference, tfm *frameworks.NuGetFramework) ([]*ResolvedPackage, error) {
-    // Use existing resolver via core.Client
-    // core.Client has ResolvePackageDependencies which uses resolver internally
-
-    var allPackages []*ResolvedPackage
-    seen := make(map[string]bool)
-
-    for _, ref := range packageRefs {
-        // Resolve each package and its dependencies
-        result, err := r.client.ResolvePackageDependencies(ctx, ref.Include, ref.Version)
-        if err != nil {
-            return nil, fmt.Errorf("failed to resolve %s: %w", ref.Include, err)
-        }
-
-        // Add all resolved packages (including transitive)
-        for _, pkg := range result.Packages {
-            key := fmt.Sprintf("%s/%s", pkg.ID, pkg.Version)
-            if !seen[key] {
-                seen[key] = true
-                allPackages = append(allPackages, &ResolvedPackage{
-                    ID:      pkg.ID,
-                    Version: pkg.Version,
-                    Type:    "package",
-                })
-            }
-        }
-    }
-
-    return allPackages, nil
-}
-
 func (r *Restorer) downloadPackage(ctx context.Context, pkg *ResolvedPackage, packagesFolder string) error {
-    // Create package identity
     pkgVer, err := version.Parse(pkg.Version)
     if err != nil {
-        return fmt.Errorf("invalid version: %w", err)
+        return err
     }
 
-    packageIdentity := &packaging.PackageIdentity{
-        ID:      pkg.ID,
-        Version: pkgVer,
-    }
-
-    // Create version folder path resolver
-    versionFolderResolver := packaging.NewVersionFolderPathResolver(packagesFolder)
-
-    // Check if package already exists (via completion marker .nupkg.metadata)
-    metadataPath := versionFolderResolver.GetNupkgMetadataPath(pkg.ID, pkg.Version)
-    if !r.ctx.Force {
+    // Check if already installed
+    pathResolver := packaging.NewVersionFolderPathResolver(packagesFolder, true)
+    metadataPath := pathResolver.GetNupkgMetadataPath(pkg.ID, pkg.Version)
+    if !r.opts.Force {
         if _, err := os.Stat(metadataPath); err == nil {
             return nil // Already installed
         }
     }
 
-    r.ctx.Console.Printf("  Downloading %s %s\n", pkg.ID, pkg.Version)
+    r.console.Printf("  Downloading %s %s\n", pkg.ID, pkg.Version)
 
-    // Create extraction context
+    // Download and extract using library API
+    packageIdentity := &packaging.PackageIdentity{
+        ID:      pkg.ID,
+        Version: pkgVer,
+    }
+
     extractionContext := &packaging.PackageExtractionContext{
         PackageSaveMode:    packaging.PackageSaveModeNupkg | packaging.PackageSaveModeNuspec | packaging.PackageSaveModeFiles,
         XMLDocFileSaveMode: packaging.XMLDocFileSaveModeNone,
-        SignatureVerifier:  nil, // No signature verification in M2.1
-        Logger:             nil,
     }
 
-    // Download callback - downloads .nupkg to temp location
     copyToAsync := func(targetPath string) error {
-        // Download package stream
         stream, err := r.client.DownloadPackage(ctx, pkg.ID, pkg.Version)
         if err != nil {
             return err
         }
         defer stream.Close()
 
-        // Write to temp file
         outFile, err := os.Create(targetPath)
         if err != nil {
             return err
@@ -603,20 +567,18 @@ func (r *Restorer) downloadPackage(ctx context.Context, pkg *ResolvedPackage, pa
         return err
     }
 
-    // Get source URL (from first configured repository)
     repos := r.client.GetRepositoryManager().ListRepositories()
     var sourceURL string
     if len(repos) > 0 {
         sourceURL = repos[0].SourceURL()
     }
 
-    // Install package using V3 extraction (with file locking for concurrent safety)
     _, err = packaging.InstallFromSourceV3(
         ctx,
         sourceURL,
         packageIdentity,
         copyToAsync,
-        versionFolderResolver,
+        pathResolver,
         extractionContext,
     )
 
@@ -624,44 +586,101 @@ func (r *Restorer) downloadPackage(ctx context.Context, pkg *ResolvedPackage, pa
 }
 
 func (r *Restorer) getPackagesFolder() string {
-    if r.ctx.PackagesFolder != "" {
-        return r.ctx.PackagesFolder
+    if r.opts.PackagesFolder != "" {
+        return r.opts.PackagesFolder
     }
-
-    // Default: ~/.nuget/packages
     home, _ := os.UserHomeDir()
     return filepath.Join(home, ".nuget", "packages")
 }
+```
 
-// buildTargets builds the targets section of project.assets.json
-func (r *Restorer) buildTargets(tfm *frameworks.NuGetFramework, packages []*ResolvedPackage) map[string]any {
+**Reference**: Port from `/Users/brandon/src/NuGet.Client/src/NuGet.Core/NuGet.Commands/RestoreCommand/RestoreCommand.cs`
+
+---
+
+#### restore/lock_file_builder.go
+
+Builds project.assets.json, ported from NuGet.Commands/RestoreCommand/LockFileBuilder.cs (682 lines).
+
+```go
+// restore/lock_file_builder.go
+
+package restore
+
+import (
+    "fmt"
+    "os"
+    "path/filepath"
+    "sort"
+    "strings"
+
+    "github.com/willibrandon/gonuget/cmd/gonuget/project"
+    "github.com/willibrandon/gonuget/frameworks"
+    "github.com/willibrandon/gonuget/packaging"
+    "github.com/willibrandon/gonuget/packaging/assets"
+    "github.com/willibrandon/gonuget/version"
+)
+
+// LockFileBuilder builds project.assets.json from restore results
+type LockFileBuilder struct {
+    pathResolver *packaging.VersionFolderPathResolver
+}
+
+// NewLockFileBuilder creates a new lock file builder
+func NewLockFileBuilder() *LockFileBuilder {
+    return &LockFileBuilder{}
+}
+
+// Build creates a LockFile from restore results
+func (b *LockFileBuilder) Build(proj *project.Project, result *RestoreResult) *LockFile {
+    b.pathResolver = packaging.NewVersionFolderPathResolver(result.PackagesFolder, true)
+
+    projectPath, _ := filepath.Abs(proj.FilePath)
+    projectName := filepath.Base(filepath.Dir(projectPath))
+
+    return &LockFile{
+        Version:                     3,
+        Targets:                     b.buildTargets(result.TargetFramework, result.Packages),
+        Libraries:                   b.buildLibraries(result.Packages),
+        ProjectFileDependencyGroups: b.buildDependencyGroups(result.TargetFramework, result.Packages),
+        PackageFolders: map[string]any{
+            result.PackagesFolder: map[string]any{},
+        },
+        Project: &LockFileProject{
+            Version: "1.0.0",
+            Restore: &LockFileRestore{
+                ProjectUniqueName: projectPath,
+                ProjectName:       projectName,
+                ProjectPath:       projectPath,
+                PackagesPath:      result.PackagesFolder,
+                OutputPath:        proj.GetOutputPath(),
+                ProjectStyle:      "PackageReference",
+                Frameworks:        b.buildFrameworks(result.TargetFramework),
+            },
+        },
+    }
+}
+
+// buildTargets builds the targets section (ported from LockFileBuilder.CreateTargetSection)
+func (b *LockFileBuilder) buildTargets(tfm *frameworks.NuGetFramework, packages []*ResolvedPackage) map[string]any {
     targets := make(map[string]any)
-
-    // Target key format: ".NETCoreApp,Version=v8.0"
     provider := frameworks.DefaultFrameworkNameProvider()
     targetKey := tfm.DotNetFrameworkName(provider)
 
-    // Create per-package entries
     targetLibraries := make(map[string]any)
 
-    packagesFolder := r.getPackagesFolder()
-    pathResolver := packaging.NewVersionFolderPathResolver(packagesFolder, true)
-
     for _, pkg := range packages {
-        // Parse version
         pkgVer, err := version.Parse(pkg.Version)
         if err != nil {
             continue
         }
 
-        // Select assets and dependencies
-        compile, runtime, dependencies := r.selectAssets(pkg.ID, pkgVer, tfm, pathResolver)
+        // Select assets and dependencies for this package
+        compile, runtime, dependencies := b.selectAssets(pkg.ID, pkgVer, tfm)
 
-        // Build target library entry
         targetLib := map[string]any{
             "type": "package",
         }
-
         if len(dependencies) > 0 {
             targetLib["dependencies"] = dependencies
         }
@@ -679,26 +698,24 @@ func (r *Restorer) buildTargets(tfm *frameworks.NuGetFramework, packages []*Reso
     return targets
 }
 
-// selectAssets selects compile/runtime assets and dependencies for the target framework
-func (r *Restorer) selectAssets(packageID string, pkgVer *version.NuGetVersion, tfm *frameworks.NuGetFramework, pathResolver *packaging.VersionFolderPathResolver) (map[string]any, map[string]any, map[string]string) {
+// selectAssets selects compile/runtime assets (ported from LockFileBuilder)
+func (b *LockFileBuilder) selectAssets(packageID string, pkgVer *version.NuGetVersion, tfm *frameworks.NuGetFramework) (map[string]any, map[string]any, map[string]string) {
     compile := make(map[string]any)
     runtime := make(map[string]any)
     dependencies := make(map[string]string)
 
-    // Open package from global cache
-    nupkgPath := pathResolver.GetPackageFilePath(packageID, pkgVer)
+    nupkgPath := b.pathResolver.GetPackageFilePath(packageID, pkgVer)
     pkgReader, err := packaging.OpenPackage(nupkgPath)
     if err != nil {
         return compile, runtime, dependencies
     }
     defer pkgReader.Close()
 
-    // Read nuspec for dependencies
-    nuspec, err := pkgReader.GetNuspec()
-    if err == nil {
-        depGroups, err := nuspec.GetDependencyGroups()
-        if err == nil {
-            // Find nearest compatible dependency group
+    // Get dependencies from nuspec
+    nuspec, _ := pkgReader.GetNuspec()
+    if nuspec != nil {
+        depGroups, _ := nuspec.GetDependencyGroups()
+        if depGroups != nil {
             reducer := frameworks.NewFrameworkReducer()
             var compatible []*frameworks.NuGetFramework
             for i := range depGroups {
@@ -724,7 +741,7 @@ func (r *Restorer) selectAssets(packageID string, pkgVer *version.NuGetVersion, 
         }
     }
 
-    // Use asset selector to find compile/runtime assemblies
+    // Select assets using ManagedCodeConventions
     conventions := assets.NewManagedCodeConventions()
     criteria := assets.ForFramework(tfm, conventions.Properties)
     collection := assets.NewContentItemCollection()
@@ -737,7 +754,6 @@ func (r *Restorer) selectAssets(packageID string, pkgVer *version.NuGetVersion, 
     }
     collection.Load(filePaths)
 
-    // Select compile assets (ref/ or lib/)
     compileGroup := collection.FindBestItemGroup(criteria, conventions.CompileRefAssemblies, conventions.CompileLibAssemblies)
     if compileGroup != nil {
         for _, item := range compileGroup.Items {
@@ -745,7 +761,6 @@ func (r *Restorer) selectAssets(packageID string, pkgVer *version.NuGetVersion, 
         }
     }
 
-    // Select runtime assets (lib/)
     runtimeGroup := collection.FindBestItemGroup(criteria, conventions.RuntimeAssemblies)
     if runtimeGroup != nil {
         for _, item := range runtimeGroup.Items {
@@ -756,12 +771,9 @@ func (r *Restorer) selectAssets(packageID string, pkgVer *version.NuGetVersion, 
     return compile, runtime, dependencies
 }
 
-// buildLibraries builds the libraries section with package metadata
-func (r *Restorer) buildLibraries(packages []*ResolvedPackage) map[string]any {
+// buildLibraries builds the libraries section (ported from LockFileBuilder.CreateLibrarySection)
+func (b *LockFileBuilder) buildLibraries(packages []*ResolvedPackage) map[string]any {
     libraries := make(map[string]any)
-
-    packagesFolder := r.getPackagesFolder()
-    pathResolver := packaging.NewVersionFolderPathResolver(packagesFolder, true)
 
     for _, pkg := range packages {
         pkgVer, err := version.Parse(pkg.Version)
@@ -774,18 +786,18 @@ func (r *Restorer) buildLibraries(packages []*ResolvedPackage) map[string]any {
         }
 
         // Add SHA512
-        hashPath := pathResolver.GetHashPath(pkg.ID, pkgVer)
+        hashPath := b.pathResolver.GetHashPath(pkg.ID, pkgVer)
         if hashData, err := os.ReadFile(hashPath); err == nil {
             lib["sha512"] = strings.TrimSpace(string(hashData))
         }
 
-        // Add path (lowercase)
+        // Add normalized path
         normalizedID := strings.ToLower(pkg.ID)
         normalizedVer := strings.ToLower(pkgVer.ToNormalizedString())
         lib["path"] = fmt.Sprintf("%s/%s", normalizedID, normalizedVer)
 
-        // Add files list
-        nupkgPath := pathResolver.GetPackageFilePath(pkg.ID, pkgVer)
+        // Add sorted file list
+        nupkgPath := b.pathResolver.GetPackageFilePath(pkg.ID, pkgVer)
         pkgReader, err := packaging.OpenPackage(nupkgPath)
         if err == nil {
             var files []string
@@ -805,19 +817,19 @@ func (r *Restorer) buildLibraries(packages []*ResolvedPackage) map[string]any {
     return libraries
 }
 
-// buildDependencyGroups builds the projectFileDependencyGroups section
-func (r *Restorer) buildDependencyGroups(tfm *frameworks.NuGetFramework, packageRefs []project.PackageReference) map[string][]string {
+// buildDependencyGroups builds projectFileDependencyGroups section
+func (b *LockFileBuilder) buildDependencyGroups(tfm *frameworks.NuGetFramework, packages []*ResolvedPackage) map[string][]string {
     groups := make(map[string][]string)
     provider := frameworks.DefaultFrameworkNameProvider()
     targetKey := tfm.DotNetFrameworkName(provider)
 
     var deps []string
-    for _, ref := range packageRefs {
-        pkgVer, err := version.Parse(ref.Version)
+    for _, pkg := range packages {
+        pkgVer, err := version.Parse(pkg.Version)
         if err != nil {
             continue
         }
-        deps = append(deps, fmt.Sprintf("%s >= %s", ref.Include, pkgVer.ToNormalizedString()))
+        deps = append(deps, fmt.Sprintf("%s >= %s", pkg.ID, pkgVer.ToNormalizedString()))
     }
 
     sort.Strings(deps)
@@ -826,7 +838,7 @@ func (r *Restorer) buildDependencyGroups(tfm *frameworks.NuGetFramework, package
 }
 
 // buildFrameworks builds the frameworks section
-func (r *Restorer) buildFrameworks(tfm *frameworks.NuGetFramework) map[string]any {
+func (b *LockFileBuilder) buildFrameworks(tfm *frameworks.NuGetFramework) map[string]any {
     frameworks := make(map[string]any)
     provider := frameworks.DefaultFrameworkNameProvider()
     shortName := tfm.GetShortFolderName(provider)
@@ -837,141 +849,179 @@ func (r *Restorer) buildFrameworks(tfm *frameworks.NuGetFramework) map[string]an
     }
     return frameworks
 }
+```
 
-func createClient(ctx *RestoreContext) *core.Client {
-    repoManager := core.NewRepositoryManager()
+**Reference**: Port from `/Users/brandon/src/NuGet.Client/src/NuGet.Core/NuGet.Commands/RestoreCommand/LockFileBuilder.cs`
 
-    sources := ctx.Sources
-    if len(sources) == 0 {
-        sources = []string{"https://api.nuget.org/v3/index.json"}
+---
+
+#### restore/lock_file_format.go
+
+LockFile types and JSON serialization, ported from NuGet.ProjectModel.
+
+```go
+// restore/lock_file_format.go
+
+package restore
+
+import (
+    "encoding/json"
+    "os"
+)
+
+// LockFile represents project.assets.json structure (V3 format)
+// Ported from NuGet.ProjectModel/LockFile.cs
+type LockFile struct {
+    Version                     int                    `json:"version"`
+    Targets                     map[string]any         `json:"targets"`
+    Libraries                   map[string]any         `json:"libraries"`
+    ProjectFileDependencyGroups map[string][]string    `json:"projectFileDependencyGroups"`
+    PackageFolders              map[string]any         `json:"packageFolders"`
+    Project                     *LockFileProject       `json:"project"`
+}
+
+// LockFileProject represents the project section
+type LockFileProject struct {
+    Version string            `json:"version"`
+    Restore *LockFileRestore  `json:"restore"`
+}
+
+// LockFileRestore represents the restore metadata
+type LockFileRestore struct {
+    ProjectUniqueName string         `json:"projectUniqueName"`
+    ProjectName       string         `json:"projectName"`
+    ProjectPath       string         `json:"projectPath"`
+    PackagesPath      string         `json:"packagesPath"`
+    OutputPath        string         `json:"outputPath"`
+    ProjectStyle      string         `json:"projectStyle"`
+    Frameworks        map[string]any `json:"frameworks"`
+}
+
+// Save writes the lock file to disk
+func (lf *LockFile) Save(path string) error {
+    data, err := json.MarshalIndent(lf, "", "  ")
+    if err != nil {
+        return err
     }
+    return os.WriteFile(path, data, 0644)
+}
+```
 
-    for _, sourceURL := range sources {
-        repoManager.AddRepository(sourceURL)
-    }
+**Reference**: Port from `/Users/brandon/src/NuGet.Client/src/NuGet.Core/NuGet.ProjectModel/LockFile*.cs`
 
-    tfm, _ := ctx.Project.GetTargetFramework()
+---
 
-    return core.NewClient(core.ClientConfig{
-        RepositoryManager: repoManager,
-        TargetFramework:   tfm,
+### Refactor Existing CLI Code
+
+#### cmd/gonuget/commands/add_package.go
+
+Move `resolveLatestVersion()` logic to the library.
+
+**Before (WRONG - logic in CLI)**:
+```go
+func resolveLatestVersion(ctx context.Context, packageID string, opts *AddPackageOptions) (string, error) {
+    // 70 lines of NuGet logic in CLI...
+}
+```
+
+**After (CORRECT - call library)**:
+```go
+func resolveLatestVersion(ctx context.Context, packageID string, opts *AddPackageOptions) (string, error) {
+    return restore.ResolveLatestVersion(ctx, &restore.ResolveOptions{
+        PackageID:  packageID,
+        Source:     opts.Source,
+        Prerelease: opts.Prerelease,
     })
 }
 ```
 
-### project.assets.json Generation
+Then add to `restore/package_resolver.go`:
 
 ```go
-// cmd/gonuget/commands/assets_file.go
+// restore/package_resolver.go
 
-package commands
+package restore
 
 import (
-    "encoding/json"
+    "context"
     "fmt"
-    "os"
+    "time"
+
+    "github.com/willibrandon/gonuget/core"
+    "github.com/willibrandon/gonuget/version"
 )
 
-// AssetsFile represents project.assets.json structure
-type AssetsFile struct {
-    Version                     int                         `json:"version"`
-    Targets                     map[string]interface{}      `json:"targets"`
-    Libraries                   map[string]interface{}      `json:"libraries"`
-    ProjectFileDependencyGroups map[string][]string         `json:"projectFileDependencyGroups"`
-    PackageFolders              map[string]interface{}      `json:"packageFolders"`
-    Project                     *AssetsProject              `json:"project"`
+// ResolveOptions holds version resolution options
+type ResolveOptions struct {
+    PackageID  string
+    Source     string
+    Prerelease bool
 }
 
-type AssetsProject struct {
-    Version string        `json:"version"`
-    Restore *AssetsRestore `json:"restore"`
-}
+// ResolveLatestVersion resolves the latest version of a package
+func ResolveLatestVersion(ctx context.Context, opts *ResolveOptions) (string, error) {
+    ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+    defer cancel()
 
-type AssetsRestore struct {
-    ProjectUniqueName string                 `json:"projectUniqueName"`
-    ProjectName       string                 `json:"projectName"`
-    ProjectPath       string                 `json:"projectPath"`
-    PackagesPath      string                 `json:"packagesPath"`
-    OutputPath        string                 `json:"outputPath"`
-    ProjectStyle      string                 `json:"projectStyle"`
-    Frameworks        map[string]interface{} `json:"frameworks"`
-}
+    source := opts.Source
+    if source == "" {
+        source = "https://api.nuget.org/v3/index.json"
+    }
 
-func (af *AssetsFile) Save(path string) error {
-    data, err := json.MarshalIndent(af, "", "  ")
+    repoManager := core.NewRepositoryManager()
+    repo := core.NewSourceRepository(core.RepositoryConfig{
+        SourceURL: source,
+    })
+    repoManager.AddRepository(repo)
+
+    versions, err := repo.ListVersions(ctx, nil, opts.PackageID)
     if err != nil {
-        return fmt.Errorf("failed to marshal assets file: %w", err)
+        return "", err
     }
 
-    if err := os.WriteFile(path, data, 0644); err != nil {
-        return fmt.Errorf("failed to write assets file: %w", err)
+    if len(versions) == 0 {
+        return "", fmt.Errorf("package '%s' not found", opts.PackageID)
     }
 
-    return nil
+    var latestStable, latestPrerelease *version.NuGetVersion
+    for _, v := range versions {
+        parsed, err := version.Parse(v)
+        if err != nil {
+            continue
+        }
+
+        if parsed.IsPrerelease() {
+            if latestPrerelease == nil || parsed.Compare(latestPrerelease) > 0 {
+                latestPrerelease = parsed
+            }
+        } else {
+            if latestStable == nil || parsed.Compare(latestStable) > 0 {
+                latestStable = parsed
+            }
+        }
+    }
+
+    if opts.Prerelease {
+        if latestPrerelease != nil {
+            return latestPrerelease.String(), nil
+        }
+        if latestStable != nil {
+            return latestStable.String(), nil
+        }
+    } else {
+        if latestStable != nil {
+            return latestStable.String(), nil
+        }
+        return "", fmt.Errorf("no stable version found for '%s'", opts.PackageID)
+    }
+
+    return "", fmt.Errorf("no versions found")
 }
 ```
 
-## project.assets.json Format
+---
 
-### Minimal Example
-
-```json
-{
-  "version": 3,
-  "targets": {
-    ".NETCoreApp,Version=v8.0": {
-      "Newtonsoft.Json/13.0.3": {
-        "type": "package",
-        "compile": {
-          "lib/net6.0/Newtonsoft.Json.dll": {}
-        },
-        "runtime": {
-          "lib/net6.0/Newtonsoft.Json.dll": {}
-        }
-      }
-    }
-  },
-  "libraries": {
-    "Newtonsoft.Json/13.0.3": {
-      "sha512": "...",
-      "type": "package",
-      "path": "newtonsoft.json/13.0.3",
-      "files": [
-        ".nupkg.metadata",
-        "newtonsoft.json.13.0.3.nupkg.sha512",
-        "newtonsoft.json.nuspec",
-        "lib/net6.0/Newtonsoft.Json.dll",
-        "lib/net6.0/Newtonsoft.Json.xml"
-      ]
-    }
-  },
-  "projectFileDependencyGroups": {
-    ".NETCoreApp,Version=v8.0": [
-      "Newtonsoft.Json >= 13.0.3"
-    ]
-  },
-  "packageFolders": {
-    "/Users/brandon/.nuget/packages/": {}
-  },
-  "project": {
-    "version": "1.0.0",
-    "restore": {
-      "projectUniqueName": "/path/to/MyProject.csproj",
-      "projectName": "MyProject",
-      "projectPath": "/path/to/MyProject.csproj",
-      "packagesPath": "/Users/brandon/.nuget/packages/",
-      "outputPath": "/path/to/obj/",
-      "projectStyle": "PackageReference",
-      "frameworks": {
-        "net8.0": {
-          "targetAlias": "net8.0",
-          "projectReferences": {}
-        }
-      }
-    }
-  }
-}
-```
+## Testing Strategy
 
 ## Testing Strategy
 
