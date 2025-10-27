@@ -412,12 +412,18 @@ package commands
 import (
     "context"
     "fmt"
+    "io"
+    "os"
     "path/filepath"
+    "sort"
+    "strings"
 
+    "github.com/willibrandon/gonuget/cmd/gonuget/output"
+    "github.com/willibrandon/gonuget/cmd/gonuget/project"
     "github.com/willibrandon/gonuget/core"
-    "github.com/willibrandon/gonuget/core/resolver"
     "github.com/willibrandon/gonuget/frameworks"
     "github.com/willibrandon/gonuget/packaging"
+    "github.com/willibrandon/gonuget/packaging/assets"
     "github.com/willibrandon/gonuget/version"
 )
 
@@ -514,61 +520,107 @@ func (r *Restorer) resolveDirectOnly(ctx context.Context, packageRefs []*project
 }
 
 func (r *Restorer) resolveTransitive(ctx context.Context, packageRefs []*project.PackageReference, tfm *frameworks.NuGetFramework) ([]*ResolvedPackage, error) {
-    // Use existing resolver package
-    walker := resolver.NewDependencyWalker(r.client)
+    // Use existing resolver via core.Client
+    // core.Client has ResolvePackageDependencies which uses resolver internally
 
-    // Convert to resolver format
-    roots := make([]*resolver.GraphNode, 0, len(packageRefs))
+    var allPackages []*ResolvedPackage
+    seen := make(map[string]bool)
+
     for _, ref := range packageRefs {
-        ver, err := version.Parse(ref.Version)
+        // Resolve each package and its dependencies
+        result, err := r.client.ResolvePackageDependencies(ctx, ref.Include, ref.Version)
         if err != nil {
-            return nil, fmt.Errorf("invalid version for %s: %w", ref.Include, err)
+            return nil, fmt.Errorf("failed to resolve %s: %w", ref.Include, err)
         }
 
-        root := &resolver.GraphNode{
-            Item: &resolver.LibraryIdentity{
-                Name:    ref.Include,
-                Version: ver,
-            },
-            OuterEdge: nil,
+        // Add all resolved packages (including transitive)
+        for _, pkg := range result.Packages {
+            key := fmt.Sprintf("%s/%s", pkg.ID, pkg.Version)
+            if !seen[key] {
+                seen[key] = true
+                allPackages = append(allPackages, &ResolvedPackage{
+                    ID:      pkg.ID,
+                    Version: pkg.Version,
+                    Type:    "package",
+                })
+            }
         }
-        roots = append(roots, root)
     }
 
-    // Walk dependency graph
-    graph, err := walker.WalkAsync(ctx, roots)
-    if err != nil {
-        return nil, err
-    }
-
-    // Flatten to package list
-    packages := r.flattenGraph(graph)
-    return packages, nil
+    return allPackages, nil
 }
 
 func (r *Restorer) downloadPackage(ctx context.Context, pkg *ResolvedPackage, packagesFolder string) error {
-    // Check if package already exists
-    pkgPath := filepath.Join(packagesFolder, pkg.ID, pkg.Version)
-    if !r.ctx.Force && packageExists(pkgPath) {
-        return nil // Already downloaded
+    // Create package identity
+    pkgVer, err := version.Parse(pkg.Version)
+    if err != nil {
+        return fmt.Errorf("invalid version: %w", err)
+    }
+
+    packageIdentity := &packaging.PackageIdentity{
+        ID:      pkg.ID,
+        Version: pkgVer,
+    }
+
+    // Create version folder path resolver
+    versionFolderResolver := packaging.NewVersionFolderPathResolver(packagesFolder)
+
+    // Check if package already exists (via completion marker .nupkg.metadata)
+    metadataPath := versionFolderResolver.GetNupkgMetadataPath(pkg.ID, pkg.Version)
+    if !r.ctx.Force {
+        if _, err := os.Stat(metadataPath); err == nil {
+            return nil // Already installed
+        }
     }
 
     r.ctx.Console.Printf("  Downloading %s %s\n", pkg.ID, pkg.Version)
 
-    // Download .nupkg
-    reader, err := r.client.DownloadPackage(ctx, pkg.ID, pkg.Version)
-    if err != nil {
-        return err
-    }
-    defer reader.Close()
-
-    // Extract to global cache
-    extractor := packaging.NewPackageExtractor()
-    if err := extractor.ExtractToDirectory(reader, pkgPath); err != nil {
-        return err
+    // Create extraction context
+    extractionContext := &packaging.PackageExtractionContext{
+        PackageSaveMode:    packaging.PackageSaveModeNupkg | packaging.PackageSaveModeNuspec | packaging.PackageSaveModeFiles,
+        XMLDocFileSaveMode: packaging.XMLDocFileSaveModeNone,
+        SignatureVerifier:  nil, // No signature verification in M2.1
+        Logger:             nil,
     }
 
-    return nil
+    // Download callback - downloads .nupkg to temp location
+    copyToAsync := func(targetPath string) error {
+        // Download package stream
+        stream, err := r.client.DownloadPackage(ctx, pkg.ID, pkg.Version)
+        if err != nil {
+            return err
+        }
+        defer stream.Close()
+
+        // Write to temp file
+        outFile, err := os.Create(targetPath)
+        if err != nil {
+            return err
+        }
+        defer outFile.Close()
+
+        _, err = io.Copy(outFile, stream)
+        return err
+    }
+
+    // Get source URL (from first configured repository)
+    repos := r.client.GetRepositoryManager().ListRepositories()
+    var sourceURL string
+    if len(repos) > 0 {
+        sourceURL = repos[0].SourceURL()
+    }
+
+    // Install package using V3 extraction (with file locking for concurrent safety)
+    _, err = packaging.InstallFromSourceV3(
+        ctx,
+        sourceURL,
+        packageIdentity,
+        copyToAsync,
+        versionFolderResolver,
+        extractionContext,
+    )
+
+    return err
 }
 
 func (r *Restorer) getPackagesFolder() string {
@@ -579,6 +631,231 @@ func (r *Restorer) getPackagesFolder() string {
     // Default: ~/.nuget/packages
     home, _ := os.UserHomeDir()
     return filepath.Join(home, ".nuget", "packages")
+}
+
+// buildTargets builds the targets section of project.assets.json
+func (r *Restorer) buildTargets(tfm *frameworks.NuGetFramework, packages []*ResolvedPackage) map[string]any {
+    targets := make(map[string]any)
+
+    // Target key format: ".NETCoreApp,Version=v8.0"
+    provider := frameworks.DefaultFrameworkNameProvider()
+    targetKey := tfm.DotNetFrameworkName(provider)
+
+    // Create per-package entries
+    targetLibraries := make(map[string]any)
+
+    packagesFolder := r.getPackagesFolder()
+    pathResolver := packaging.NewVersionFolderPathResolver(packagesFolder, true)
+
+    for _, pkg := range packages {
+        // Parse version
+        pkgVer, err := version.Parse(pkg.Version)
+        if err != nil {
+            continue
+        }
+
+        // Select assets and dependencies
+        compile, runtime, dependencies := r.selectAssets(pkg.ID, pkgVer, tfm, pathResolver)
+
+        // Build target library entry
+        targetLib := map[string]any{
+            "type": "package",
+        }
+
+        if len(dependencies) > 0 {
+            targetLib["dependencies"] = dependencies
+        }
+        if len(compile) > 0 {
+            targetLib["compile"] = compile
+        }
+        if len(runtime) > 0 {
+            targetLib["runtime"] = runtime
+        }
+
+        targetLibraries[fmt.Sprintf("%s/%s", pkg.ID, pkg.Version)] = targetLib
+    }
+
+    targets[targetKey] = targetLibraries
+    return targets
+}
+
+// selectAssets selects compile/runtime assets and dependencies for the target framework
+func (r *Restorer) selectAssets(packageID string, pkgVer *version.NuGetVersion, tfm *frameworks.NuGetFramework, pathResolver *packaging.VersionFolderPathResolver) (map[string]any, map[string]any, map[string]string) {
+    compile := make(map[string]any)
+    runtime := make(map[string]any)
+    dependencies := make(map[string]string)
+
+    // Open package from global cache
+    nupkgPath := pathResolver.GetPackageFilePath(packageID, pkgVer)
+    pkgReader, err := packaging.OpenPackage(nupkgPath)
+    if err != nil {
+        return compile, runtime, dependencies
+    }
+    defer pkgReader.Close()
+
+    // Read nuspec for dependencies
+    nuspec, err := pkgReader.GetNuspec()
+    if err == nil {
+        depGroups, err := nuspec.GetDependencyGroups()
+        if err == nil {
+            // Find nearest compatible dependency group
+            reducer := frameworks.NewFrameworkReducer()
+            var compatible []*frameworks.NuGetFramework
+            for i := range depGroups {
+                if tfm.IsCompatibleWith(depGroups[i].TargetFramework) {
+                    compatible = append(compatible, depGroups[i].TargetFramework)
+                }
+            }
+            if len(compatible) > 0 {
+                nearest := reducer.GetNearest(tfm, compatible)
+                for i := range depGroups {
+                    if depGroups[i].TargetFramework.Equals(nearest) {
+                        for _, dep := range depGroups[i].Dependencies {
+                            versionStr := ">= 1.0.0"
+                            if dep.VersionRange != nil {
+                                versionStr = dep.VersionRange.String()
+                            }
+                            dependencies[dep.ID] = versionStr
+                        }
+                        break
+                    }
+                }
+            }
+        }
+    }
+
+    // Use asset selector to find compile/runtime assemblies
+    conventions := assets.NewManagedCodeConventions()
+    criteria := assets.ForFramework(tfm, conventions.Properties)
+    collection := assets.NewContentItemCollection()
+
+    var filePaths []string
+    for _, f := range pkgReader.Files() {
+        if !strings.HasSuffix(f.Name, "/") {
+            filePaths = append(filePaths, f.Name)
+        }
+    }
+    collection.Load(filePaths)
+
+    // Select compile assets (ref/ or lib/)
+    compileGroup := collection.FindBestItemGroup(criteria, conventions.CompileRefAssemblies, conventions.CompileLibAssemblies)
+    if compileGroup != nil {
+        for _, item := range compileGroup.Items {
+            compile[item.Path] = map[string]any{}
+        }
+    }
+
+    // Select runtime assets (lib/)
+    runtimeGroup := collection.FindBestItemGroup(criteria, conventions.RuntimeAssemblies)
+    if runtimeGroup != nil {
+        for _, item := range runtimeGroup.Items {
+            runtime[item.Path] = map[string]any{}
+        }
+    }
+
+    return compile, runtime, dependencies
+}
+
+// buildLibraries builds the libraries section with package metadata
+func (r *Restorer) buildLibraries(packages []*ResolvedPackage) map[string]any {
+    libraries := make(map[string]any)
+
+    packagesFolder := r.getPackagesFolder()
+    pathResolver := packaging.NewVersionFolderPathResolver(packagesFolder, true)
+
+    for _, pkg := range packages {
+        pkgVer, err := version.Parse(pkg.Version)
+        if err != nil {
+            continue
+        }
+
+        lib := map[string]any{
+            "type": "package",
+        }
+
+        // Add SHA512
+        hashPath := pathResolver.GetHashPath(pkg.ID, pkgVer)
+        if hashData, err := os.ReadFile(hashPath); err == nil {
+            lib["sha512"] = strings.TrimSpace(string(hashData))
+        }
+
+        // Add path (lowercase)
+        normalizedID := strings.ToLower(pkg.ID)
+        normalizedVer := strings.ToLower(pkgVer.ToNormalizedString())
+        lib["path"] = fmt.Sprintf("%s/%s", normalizedID, normalizedVer)
+
+        // Add files list
+        nupkgPath := pathResolver.GetPackageFilePath(pkg.ID, pkgVer)
+        pkgReader, err := packaging.OpenPackage(nupkgPath)
+        if err == nil {
+            var files []string
+            for _, f := range pkgReader.Files() {
+                if !strings.HasSuffix(f.Name, "/") {
+                    files = append(files, strings.ToLower(strings.ReplaceAll(f.Name, "\\", "/")))
+                }
+            }
+            pkgReader.Close()
+            sort.Strings(files)
+            lib["files"] = files
+        }
+
+        libraries[fmt.Sprintf("%s/%s", pkg.ID, pkg.Version)] = lib
+    }
+
+    return libraries
+}
+
+// buildDependencyGroups builds the projectFileDependencyGroups section
+func (r *Restorer) buildDependencyGroups(tfm *frameworks.NuGetFramework, packageRefs []project.PackageReference) map[string][]string {
+    groups := make(map[string][]string)
+    provider := frameworks.DefaultFrameworkNameProvider()
+    targetKey := tfm.DotNetFrameworkName(provider)
+
+    var deps []string
+    for _, ref := range packageRefs {
+        pkgVer, err := version.Parse(ref.Version)
+        if err != nil {
+            continue
+        }
+        deps = append(deps, fmt.Sprintf("%s >= %s", ref.Include, pkgVer.ToNormalizedString()))
+    }
+
+    sort.Strings(deps)
+    groups[targetKey] = deps
+    return groups
+}
+
+// buildFrameworks builds the frameworks section
+func (r *Restorer) buildFrameworks(tfm *frameworks.NuGetFramework) map[string]any {
+    frameworks := make(map[string]any)
+    provider := frameworks.DefaultFrameworkNameProvider()
+    shortName := tfm.GetShortFolderName(provider)
+
+    frameworks[shortName] = map[string]any{
+        "targetAlias":       shortName,
+        "projectReferences": map[string]any{},
+    }
+    return frameworks
+}
+
+func createClient(ctx *RestoreContext) *core.Client {
+    repoManager := core.NewRepositoryManager()
+
+    sources := ctx.Sources
+    if len(sources) == 0 {
+        sources = []string{"https://api.nuget.org/v3/index.json"}
+    }
+
+    for _, sourceURL := range sources {
+        repoManager.AddRepository(sourceURL)
+    }
+
+    tfm, _ := ctx.Project.GetTargetFramework()
+
+    return core.NewClient(core.ClientConfig{
+        RepositoryManager: repoManager,
+        TargetFramework:   tfm,
+    })
 }
 ```
 

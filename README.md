@@ -5,6 +5,7 @@ NuGet client library and CLI for Go with protocol parity to the official .NET Nu
 ## Status
 
 **Library**: 77% complete (68/88 milestones)
+
 **CLI**: Phase 2 in progress (add package command implemented)
 
 Interop tests passing against NuGet.Client for feature parity validation.

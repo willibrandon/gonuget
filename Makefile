@@ -112,9 +112,11 @@ fmt: ## Format Go code
 	@gofmt -w .
 
 # Run linter
-lint: ## Run golangci-lint
+lint: ## Run golangci-lint and modernize checks
 	@echo "Running linter..."
 	@golangci-lint run ./...
+	@echo "Running modernize checks..."
+	@go run golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@latest ./...
 
 # Help target
 help: ## Show this help message
