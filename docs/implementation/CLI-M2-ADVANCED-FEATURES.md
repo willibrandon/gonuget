@@ -166,23 +166,27 @@ func normalizeCondition(condition string) string {
 	return condition
 }
 
-// validateFrameworkCompatibility checks if a package is compatible with a target framework
+// validateFrameworkCompatibility checks if a package is compatible with a target framework.
+// This performs basic TFM validation. Full package compatibility is validated during restore.
 func validateFrameworkCompatibility(p *Project, packageID, framework string) error {
-	// Use gonuget's existing framework compatibility logic
-	// This integrates with the frameworks package
-
-	// Parse target framework
-	tf, err := frameworks.Parse(framework)
+	// Parse and validate the target framework moniker
+	_, err := frameworks.Parse(framework)
 	if err != nil {
 		return fmt.Errorf("invalid target framework '%s': %w", framework, err)
 	}
 
-	// For now, accept all packages (validation can be enhanced later)
-	// Full validation would require:
-	// 1. Downloading package
-	// 2. Reading nuspec
-	// 3. Checking <dependencies> groups for framework compatibility
-	_ = tf
+	// Design Note: Package-to-framework compatibility validation is intentionally deferred
+	// to the restore phase. This matches dotnet behavior (see sdk/src/Cli/dotnet/Commands/Package/Add/PackageAddCommand.cs).
+	//
+	// Rationale:
+	// 1. The restore.Restorer already downloads packages and parses nuspecs
+	// 2. Restore uses frameworks.FrameworkReducer for compatibility checks
+	// 3. Restore provides detailed error messages when incompatible
+	// 4. Pre-validation would duplicate work and slow down add command
+	// 5. Users get immediate feedback since restore runs by default (unless --no-restore)
+	//
+	// If --no-restore is used, users won't see compatibility errors until they run restore.
+	// This is acceptable and matches dotnet behavior.
 	return nil
 }
 
@@ -686,20 +690,31 @@ func (p *Project) AddOrUpdatePackageReference(id, version string, frameworks []s
 	// ... rest of existing logic ...
 }
 
-// validateMultiFrameworkCompatibility checks package compatibility across multiple frameworks
+// validateMultiFrameworkCompatibility validates target framework monikers for a multi-TFM project.
+// Returns lists of valid and invalid TFMs. Package compatibility is checked during restore.
 func validateMultiFrameworkCompatibility(packageID, version string, targetFrameworks []string) (compatible, incompatible []string) {
 	for _, tfm := range targetFrameworks {
-		tf, err := frameworks.Parse(tfm)
+		// Validate TFM syntax
+		_, err := frameworks.Parse(tfm)
 		if err != nil {
+			// Invalid TFM syntax
 			incompatible = append(incompatible, tfm)
 			continue
 		}
 
-		// For now, assume compatible (full validation requires downloading package)
-		// TODO: Download package, read nuspec, check dependency groups
-		_ = tf
+		// TFM is valid
 		compatible = append(compatible, tfm)
 	}
+
+	// Design Note: We only validate TFM syntax here, not package-to-framework compatibility.
+	// Package compatibility validation happens during restore (matches dotnet behavior).
+	//
+	// The restore.Restorer will:
+	// - Download package and parse nuspec
+	// - Check nuspec dependency groups using frameworks.FrameworkReducer
+	// - Report detailed compatibility errors if package doesn't support the framework
+	//
+	// This avoids duplicate work and provides better error messages.
 	return compatible, incompatible
 }
 ```
