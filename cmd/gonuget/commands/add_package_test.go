@@ -261,11 +261,17 @@ func TestRunAddPackage_NoRestore(t *testing.T) {
 	opts := &AddPackageOptions{
 		ProjectPath: projectPath,
 		Version:     "13.0.3",
-		NoRestore:   false, // Explicitly set to false to trigger restore branch
+		NoRestore:   true, // Test --no-restore flag
 	}
 
 	err = runAddPackage(context.Background(), "Newtonsoft.Json", opts)
 	assert.NoError(t, err)
+
+	// Verify package was added to project file but NOT restored
+	content, err := os.ReadFile(projectPath)
+	require.NoError(t, err)
+	assert.Contains(t, string(content), "Newtonsoft.Json")
+	assert.Contains(t, string(content), "13.0.3")
 }
 
 func TestRunAddPackage_SaveError(t *testing.T) {
