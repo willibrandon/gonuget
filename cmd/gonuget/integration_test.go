@@ -72,7 +72,23 @@ func (e *testEnv) run(args ...string) (stdout, stderr string, exitCode int) {
 
 	cmd := exec.Command(e.binPath, args...)
 	cmd.Dir = e.tempDir
-	cmd.Env = append(os.Environ(), "HOME="+e.homeDir)
+
+	// Set up environment with fake home directory
+	// Filter out HOME/USERPROFILE from parent environment and set our test home
+	env := []string{}
+	for _, envVar := range os.Environ() {
+		// Skip HOME and USERPROFILE to avoid conflicts
+		if !strings.HasPrefix(envVar, "HOME=") && !strings.HasPrefix(envVar, "USERPROFILE=") {
+			env = append(env, envVar)
+		}
+	}
+	// Add our test home directory
+	if runtime.GOOS == "windows" {
+		env = append(env, "USERPROFILE="+e.homeDir)
+	} else {
+		env = append(env, "HOME="+e.homeDir)
+	}
+	cmd.Env = env
 
 	var outBuf, errBuf bytes.Buffer
 	cmd.Stdout = &outBuf
