@@ -1,10 +1,11 @@
 # gonuget
 
-NuGet client library for Go with protocol parity to the official .NET NuGet.Client.
+NuGet client library and CLI for Go with protocol parity to the official .NET NuGet.Client.
 
 ## Status
 
-**In Development** - 77% complete (68/88 milestones)
+**Library**: 77% complete (68/88 milestones)
+**CLI**: Phase 2 in progress (add package command implemented)
 
 Interop tests passing against NuGet.Client for feature parity validation.
 
@@ -57,11 +58,42 @@ Interop tests passing against NuGet.Client for feature parity validation.
 
 ## Installation
 
+### Library
+
 ```bash
 go get github.com/willibrandon/gonuget
 ```
 
-## Usage
+### CLI
+
+```bash
+git clone https://github.com/willibrandon/gonuget
+cd gonuget
+make build
+./gonuget --version
+```
+
+See [cmd/gonuget/README.md](cmd/gonuget/README.md) for CLI documentation.
+
+## CLI Quick Start
+
+```bash
+# Add a package source
+gonuget add source https://api.nuget.org/v3/index.json --name "NuGet.org"
+
+# List configured sources
+gonuget list source
+
+# Add a package to a project
+gonuget add package Newtonsoft.Json --version 13.0.3
+
+# Get configuration value
+gonuget config get repositoryPath
+```
+
+**Performance**: 15-17x faster than dotnet nuget for CLI operations
+
+## Library Usage
 
 ### Basic Package Search
 
@@ -257,6 +289,8 @@ repo := core.NewSourceRepository(core.RepositoryConfig{
 
 ## Testing
 
+### Library Tests
+
 ```bash
 # All tests
 make test
@@ -274,13 +308,34 @@ go test ./core/resolver
 
 The project includes C# interop tests that validate exact behavioral parity with NuGet.Client by running identical operations in both implementations and comparing results.
 
+### CLI Tests
+
+```bash
+# Run CLI tests
+go test ./cmd/gonuget/... -v
+
+# Run CLI benchmarks
+go test -tags=benchmark -bench=. ./cmd/gonuget
+```
+
 ## Performance
 
-- Version comparison: <20ns/op
+### Library
+
+- Version comparison: <20ns/op (zero allocations)
 - Framework compatibility checks: optimized for hot path operations
 - HTTP/2 connection pooling and multiplexing
 - HTTP/3 support for reduced latency
 - Multi-tier caching with efficient TTL and ETag validation
+
+### CLI
+
+- **15-17x faster** than dotnet nuget for common operations
+- **30-35% less memory** per command invocation
+- Startup time: ~6-7ms (vs ~100-120ms for dotnet nuget)
+- Zero runtime overhead (native binary)
+
+See [cmd/gonuget/benchmarks/README.md](cmd/gonuget/benchmarks/README.md) for detailed benchmarks.
 
 ## Requirements
 
