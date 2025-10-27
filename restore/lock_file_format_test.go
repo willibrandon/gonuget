@@ -3,6 +3,7 @@ package restore
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -137,8 +138,15 @@ func TestLockFile_Save_InvalidPath(t *testing.T) {
 		Version: 3,
 	}
 
-	// Try to save to invalid path (directory that doesn't exist and can't be created)
-	err := lockFile.Save("/nonexistent/invalid/path/project.assets.json")
+	// Use null device path which is invalid on all platforms
+	var invalidPath string
+	if runtime.GOOS == "windows" {
+		invalidPath = `\\?\NUL\invalid\path\project.assets.json`
+	} else {
+		invalidPath = "/dev/null/invalid/path/project.assets.json"
+	}
+
+	err := lockFile.Save(invalidPath)
 	if err == nil {
 		t.Error("expected error for invalid path")
 	}
@@ -186,14 +194,6 @@ func TestLockFile_Save_CreatesDirectory(t *testing.T) {
 func TestLockFile_Save_WriteError(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	// Create a read-only directory
-	objDir := filepath.Join(tmpDir, "obj")
-	if err := os.MkdirAll(objDir, 0444); err != nil {
-		t.Fatal(err)
-	}
-
-	assetsPath := filepath.Join(objDir, "project.assets.json")
-
 	lockFile := &LockFile{
 		Version:                     3,
 		Targets:                     map[string]Target{},
@@ -212,8 +212,16 @@ func TestLockFile_Save_WriteError(t *testing.T) {
 		},
 	}
 
+	// Create a file where we want a directory, causing mkdir to fail
+	filePath := filepath.Join(tmpDir, "notadir")
+	if err := os.WriteFile(filePath, []byte("test"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Try to save to a path where a file exists instead of directory
+	assetsPath := filepath.Join(filePath, "project.assets.json")
 	err := lockFile.Save(assetsPath)
 	if err == nil {
-		t.Error("expected error for read-only directory")
+		t.Error("expected error when directory creation fails")
 	}
 }
