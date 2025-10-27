@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/spf13/cobra"
+	"github.com/willibrandon/gonuget/cmd/gonuget/config"
 	"github.com/willibrandon/gonuget/cmd/gonuget/project"
 	"github.com/willibrandon/gonuget/restore"
 	"github.com/willibrandon/gonuget/version"
@@ -134,8 +136,18 @@ func runAddPackage(ctx context.Context, packageID string, opts *AddPackageOption
 			PackagesFolder: opts.PackageDirectory,
 			Sources:        []string{},
 		}
+
 		if opts.Source != "" {
+			// Explicit --source flag takes precedence
 			restoreOpts.Sources = []string{opts.Source}
+		} else {
+			// Load sources from NuGet.Config hierarchy with fallback to defaults
+			// This matches dotnet behavior: read from config, fallback to nuget.org
+			projectDir := filepath.Dir(projectPath)
+			sources := config.GetEnabledSourcesOrDefault(projectDir)
+			for _, source := range sources {
+				restoreOpts.Sources = append(restoreOpts.Sources, source.Value)
+			}
 		}
 
 		console := &cliConsole{}
@@ -171,9 +183,30 @@ func resolveLatestVersion(ctx context.Context, packageID string, opts *AddPackag
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
+	source := opts.Source
+	// If no explicit source, use first enabled source from config with fallback to defaults
+	// This matches dotnet behavior
+	if source == "" {
+		var projectDir string
+		if opts.ProjectPath != "" {
+			projectDir = filepath.Dir(opts.ProjectPath)
+		} else {
+			var err error
+			projectDir, err = os.Getwd()
+			if err != nil {
+				projectDir = "."
+			}
+		}
+
+		sources := config.GetEnabledSourcesOrDefault(projectDir)
+		if len(sources) > 0 {
+			source = sources[0].Value
+		}
+	}
+
 	// Call library function
 	return restore.ResolveLatestVersion(ctx, packageID, &restore.ResolveLatestVersionOptions{
-		Source:     opts.Source,
+		Source:     source,
 		Prerelease: opts.Prerelease,
 	})
 }

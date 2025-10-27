@@ -381,3 +381,73 @@ func (c *NuGetConfig) EnableSource(key string) {
 		c.DisabledPackageSources = nil
 	}
 }
+
+// GetEnabledPackageSources returns all enabled package sources from the config.
+// A source is enabled if it's not in the disabledPackageSources section or if its enabled attribute is "true".
+func (c *NuGetConfig) GetEnabledPackageSources() []PackageSource {
+	if c.PackageSources == nil {
+		return []PackageSource{}
+	}
+
+	var enabled []PackageSource
+	for _, source := range c.PackageSources.Add {
+		// Check if explicitly disabled in disabledPackageSources section
+		if c.IsSourceDisabled(source.Key) {
+			continue
+		}
+
+		// Check if disabled via enabled attribute
+		if source.Enabled == "false" {
+			continue
+		}
+
+		enabled = append(enabled, source)
+	}
+
+	return enabled
+}
+
+// GetEnabledSourcesOrDefault returns enabled package sources from the config hierarchy,
+// or default sources if none are configured. This matches NuGet.Client behavior where
+// the default nuget.org source is always available as a fallback.
+//
+// The function searches for config files starting from startDir and walking up the directory tree,
+// then checks the user config location. If no sources are found in any config, it returns
+// the default sources (nuget.org).
+func GetEnabledSourcesOrDefault(startDir string) []PackageSource {
+	// Try to find and load config from the hierarchy
+	configPath := FindConfigFileFrom(startDir)
+	if configPath != "" {
+		cfg, err := LoadNuGetConfig(configPath)
+		if err == nil {
+			sources := cfg.GetEnabledPackageSources()
+			if len(sources) > 0 {
+				return sources
+			}
+		}
+	}
+
+	// If no sources found, ensure user config exists and return default sources
+	// This matches NuGet.Client behavior where it auto-creates the config with defaults
+	EnsureUserConfigExists()
+	return DefaultPackageSources()
+}
+
+// EnsureUserConfigExists creates the user-level NuGet.Config file with default sources
+// if it doesn't already exist. This matches NuGet.Client's behavior of auto-creating
+// the config file when any NuGet operation is performed.
+func EnsureUserConfigExists() error {
+	configPath := GetUserConfigPath()
+	if configPath == "" {
+		return fmt.Errorf("unable to determine user config path")
+	}
+
+	// Check if config already exists
+	if _, err := os.Stat(configPath); err == nil {
+		return nil // Config already exists
+	}
+
+	// Create the config with default sources
+	cfg := NewDefaultConfig()
+	return SaveNuGetConfig(configPath, cfg)
+}
