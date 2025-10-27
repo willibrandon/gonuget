@@ -42,10 +42,18 @@ func newTestEnv(t *testing.T) *testEnv {
 		t.Fatalf("failed to build binary: %v\n%s", err, output)
 	}
 
-	// Create fake home directory
+	// Create fake home directory with proper config structure
 	homeDir := filepath.Join(tempDir, "home")
-	if err := os.MkdirAll(filepath.Join(homeDir, ".nuget"), 0755); err != nil {
-		t.Fatalf("failed to create home directory: %v", err)
+	if runtime.GOOS == "windows" {
+		// On Windows, configs are in %APPDATA%\NuGet (which we'll set APPDATA=homeDir)
+		if err := os.MkdirAll(filepath.Join(homeDir, "NuGet"), 0755); err != nil {
+			t.Fatalf("failed to create config directory: %v", err)
+		}
+	} else {
+		// On Unix, configs are in ~/.nuget/NuGet
+		if err := os.MkdirAll(filepath.Join(homeDir, ".nuget", "NuGet"), 0755); err != nil {
+			t.Fatalf("failed to create config directory: %v", err)
+		}
 	}
 
 	// Save old HOME
@@ -74,17 +82,21 @@ func (e *testEnv) run(args ...string) (stdout, stderr string, exitCode int) {
 	cmd.Dir = e.tempDir
 
 	// Set up environment with fake home directory
-	// Filter out HOME/USERPROFILE from parent environment and set our test home
+	// Filter out HOME/USERPROFILE/APPDATA from parent environment and set our test home
 	env := []string{}
 	for _, envVar := range os.Environ() {
-		// Skip HOME and USERPROFILE to avoid conflicts
-		if !strings.HasPrefix(envVar, "HOME=") && !strings.HasPrefix(envVar, "USERPROFILE=") {
+		// Skip HOME, USERPROFILE, and APPDATA to avoid conflicts
+		if !strings.HasPrefix(envVar, "HOME=") &&
+		   !strings.HasPrefix(envVar, "USERPROFILE=") &&
+		   !strings.HasPrefix(envVar, "APPDATA=") {
 			env = append(env, envVar)
 		}
 	}
 	// Add our test home directory
 	if runtime.GOOS == "windows" {
 		env = append(env, "USERPROFILE="+e.homeDir)
+		// On Windows, APPDATA is used for config paths, not USERPROFILE
+		env = append(env, "APPDATA="+e.homeDir)
 	} else {
 		env = append(env, "HOME="+e.homeDir)
 	}
@@ -137,6 +149,11 @@ func (e *testEnv) runExpectError(args ...string) (stderr string) {
 
 // configPath returns the path to the user NuGet.config
 func (e *testEnv) configPath() string {
+	if runtime.GOOS == "windows" {
+		// On Windows: %APPDATA%\NuGet\NuGet.Config
+		return filepath.Join(e.homeDir, "NuGet", "NuGet.Config")
+	}
+	// On Unix: ~/.nuget/NuGet/NuGet.Config
 	return filepath.Join(e.homeDir, ".nuget", "NuGet", "NuGet.Config")
 }
 
