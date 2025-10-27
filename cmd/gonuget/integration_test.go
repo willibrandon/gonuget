@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -27,7 +28,11 @@ func newTestEnv(t *testing.T) *testEnv {
 	tempDir := t.TempDir()
 
 	// Build binary
-	binPath := filepath.Join(tempDir, "gonuget")
+	binName := "gonuget"
+	if runtime.GOOS == "windows" {
+		binName = "gonuget.exe"
+	}
+	binPath := filepath.Join(tempDir, binName)
 
 	// Get the repo root (two directories up from cmd/gonuget)
 	repoRoot := filepath.Join(getCwd(t), "..", "..")
@@ -67,6 +72,7 @@ func (e *testEnv) run(args ...string) (stdout, stderr string, exitCode int) {
 
 	cmd := exec.Command(e.binPath, args...)
 	cmd.Dir = e.tempDir
+	cmd.Env = append(os.Environ(), "HOME="+e.homeDir)
 
 	var outBuf, errBuf bytes.Buffer
 	cmd.Stdout = &outBuf
