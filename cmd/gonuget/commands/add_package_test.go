@@ -70,19 +70,21 @@ func TestRunAddPackage_CPMEnabled(t *testing.T) {
 	tmpDir := t.TempDir()
 	projectPath := filepath.Join(tmpDir, "test.csproj")
 
-	// Create Directory.Packages.props to enable CPM
+	// Create Directory.Packages.props
 	dppPath := filepath.Join(tmpDir, "Directory.Packages.props")
 	dppContent := `<Project>
-  <PropertyGroup>
-    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
-  </PropertyGroup>
+  <ItemGroup>
+    <PackageVersion Include="TestPackage" Version="1.0.0" />
+  </ItemGroup>
 </Project>`
 	err := os.WriteFile(dppPath, []byte(dppContent), 0644)
 	require.NoError(t, err)
 
+	// Project file with ManagePackageVersionsCentrally enabled
 	projectContent := `<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
   </PropertyGroup>
 </Project>`
 	err = os.WriteFile(projectPath, []byte(projectContent), 0644)
@@ -91,11 +93,13 @@ func TestRunAddPackage_CPMEnabled(t *testing.T) {
 	opts := &AddPackageOptions{
 		ProjectPath: projectPath,
 		Version:     "1.0.0",
+		NoRestore:   true, // Skip restore for unit test
 	}
 
+	// For now, CPM detection works but doesn't prevent adding packages
+	// Full CPM support (Chunks 12-13) will add version to Directory.Packages.props
 	err = runAddPackage(context.Background(), "TestPackage", opts)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "Central Package Management")
+	assert.NoError(t, err, "CPM projects should allow adding packages (version goes to Directory.Packages.props in Chunks 12-13)")
 }
 
 func TestRunAddPackage_WithExplicitVersion(t *testing.T) {

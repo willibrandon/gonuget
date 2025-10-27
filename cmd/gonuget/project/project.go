@@ -189,13 +189,47 @@ func (p *Project) GetPackageReferences() []PackageReference {
 }
 
 // IsCentralPackageManagementEnabled checks if Central Package Management (CPM) is enabled.
-// M2.1: Simple detection - check for Directory.Packages.props existence.
-// M2.2: Full CPM support with Directory.Packages.props manipulation (Chunks 11-13).
+// Checks the ManagePackageVersionsCentrally property in the project file.
 func (p *Project) IsCentralPackageManagementEnabled() bool {
+	for _, pg := range p.Root.PropertyGroup {
+		if strings.EqualFold(pg.ManagePackageVersionsCentrally, "true") {
+			return true
+		}
+	}
+	return false
+}
+
+// GetDirectoryPackagesPropsPath returns the path to Directory.Packages.props.
+// It checks the DirectoryPackagesPropsPath property first, then walks up the directory tree.
+func (p *Project) GetDirectoryPackagesPropsPath() string {
 	dir := filepath.Dir(p.Path)
-	cpmPath := filepath.Join(dir, "Directory.Packages.props")
-	_, err := os.Stat(cpmPath)
-	return err == nil
+
+	// Check DirectoryPackagesPropsPath property
+	for _, pg := range p.Root.PropertyGroup {
+		if pg.DirectoryPackagesPropsPath != "" {
+			// Resolve relative path
+			if !filepath.IsAbs(pg.DirectoryPackagesPropsPath) {
+				return filepath.Join(dir, pg.DirectoryPackagesPropsPath)
+			}
+			return pg.DirectoryPackagesPropsPath
+		}
+	}
+
+	// Walk up directory tree looking for Directory.Packages.props
+	current := dir
+	for {
+		propsPath := filepath.Join(current, "Directory.Packages.props")
+		if _, err := os.Stat(propsPath); err == nil {
+			return propsPath
+		}
+
+		parent := filepath.Dir(current)
+		if parent == current {
+			// Reached root, return default location next to project
+			return filepath.Join(dir, "Directory.Packages.props")
+		}
+		current = parent
+	}
 }
 
 // IsSDKStyle returns true if this is an SDK-style project.

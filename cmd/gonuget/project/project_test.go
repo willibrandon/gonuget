@@ -305,35 +305,6 @@ func TestRemovePackageReference_NotFound(t *testing.T) {
 	assert.False(t, proj.modified)
 }
 
-func TestIsCentralPackageManagementEnabled_Detected(t *testing.T) {
-	tempDir := t.TempDir()
-	projectPath := filepath.Join(tempDir, "Test.csproj")
-	cpmPath := filepath.Join(tempDir, "Directory.Packages.props")
-
-	// Create CPM file
-	err := os.WriteFile(cpmPath, []byte("<Project></Project>"), 0644)
-	require.NoError(t, err)
-
-	proj := &Project{
-		Path: projectPath,
-		Root: &RootElement{},
-	}
-
-	assert.True(t, proj.IsCentralPackageManagementEnabled())
-}
-
-func TestIsCentralPackageManagementEnabled_NotDetected(t *testing.T) {
-	tempDir := t.TempDir()
-	projectPath := filepath.Join(tempDir, "Test.csproj")
-
-	proj := &Project{
-		Path: projectPath,
-		Root: &RootElement{},
-	}
-
-	assert.False(t, proj.IsCentralPackageManagementEnabled())
-}
-
 func TestFindProjectFile_Single(t *testing.T) {
 	tempDir := t.TempDir()
 	projectPath := filepath.Join(tempDir, "Test.csproj")
@@ -410,6 +381,172 @@ func TestIsSDKStyle(t *testing.T) {
 				},
 			}
 			assert.Equal(t, tt.expected, proj.IsSDKStyle())
+		})
+	}
+}
+
+func TestIsCentralPackageManagementEnabled(t *testing.T) {
+	tests := []struct {
+		name     string
+		content  string
+		expected bool
+	}{
+		{
+			name: "CPM enabled",
+			content: `<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+</Project>`,
+			expected: true,
+		},
+		{
+			name: "CPM enabled case insensitive",
+			content: `<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>True</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+</Project>`,
+			expected: true,
+		},
+		{
+			name: "CPM not enabled",
+			content: `<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+  </PropertyGroup>
+</Project>`,
+			expected: false,
+		},
+		{
+			name: "CPM explicitly disabled",
+			content: `<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+</Project>`,
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tempDir := t.TempDir()
+			projectPath := filepath.Join(tempDir, "Test.csproj")
+
+			err := os.WriteFile(projectPath, []byte(tt.content), 0644)
+			require.NoError(t, err)
+
+			proj, err := LoadProject(projectPath)
+			require.NoError(t, err)
+
+			got := proj.IsCentralPackageManagementEnabled()
+			assert.Equal(t, tt.expected, got, "CPM detection mismatch")
+		})
+	}
+}
+
+func TestGetDirectoryPackagesPropsPath(t *testing.T) {
+	tests := []struct {
+		name             string
+		content          string
+		createPropsFile  bool
+		propsInParent    bool
+		expectedBaseName string
+	}{
+		{
+			name: "Default location",
+			content: `<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+  </PropertyGroup>
+</Project>`,
+			createPropsFile:  false,
+			propsInParent:    false,
+			expectedBaseName: "Directory.Packages.props",
+		},
+		{
+			name: "Props file exists in project directory",
+			content: `<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+</Project>`,
+			createPropsFile:  true,
+			propsInParent:    false,
+			expectedBaseName: "Directory.Packages.props",
+		},
+		{
+			name: "Props file in parent directory",
+			content: `<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+</Project>`,
+			createPropsFile:  false,
+			propsInParent:    true,
+			expectedBaseName: "Directory.Packages.props",
+		},
+		{
+			name: "Custom path specified",
+			content: `<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+    <DirectoryPackagesPropsPath>custom/packages.props</DirectoryPackagesPropsPath>
+  </PropertyGroup>
+</Project>`,
+			createPropsFile:  false,
+			propsInParent:    false,
+			expectedBaseName: "packages.props",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tempDir := t.TempDir()
+			projectDir := filepath.Join(tempDir, "src")
+			err := os.MkdirAll(projectDir, 0755)
+			require.NoError(t, err)
+
+			projectPath := filepath.Join(projectDir, "Test.csproj")
+			err = os.WriteFile(projectPath, []byte(tt.content), 0644)
+			require.NoError(t, err)
+
+			if tt.createPropsFile {
+				propsPath := filepath.Join(projectDir, "Directory.Packages.props")
+				err = os.WriteFile(propsPath, []byte("<Project></Project>"), 0644)
+				require.NoError(t, err)
+			}
+
+			if tt.propsInParent {
+				propsPath := filepath.Join(tempDir, "Directory.Packages.props")
+				err = os.WriteFile(propsPath, []byte("<Project></Project>"), 0644)
+				require.NoError(t, err)
+			}
+
+			proj, err := LoadProject(projectPath)
+			require.NoError(t, err)
+
+			got := proj.GetDirectoryPackagesPropsPath()
+			assert.Equal(t, tt.expectedBaseName, filepath.Base(got), "Props path base name mismatch")
+
+			// For non-custom paths, verify the path is in expected directory
+			if tt.name != "Custom path specified" {
+				if tt.propsInParent {
+					assert.Equal(t, tempDir, filepath.Dir(got), "Props should be in parent directory")
+				} else {
+					assert.Equal(t, projectDir, filepath.Dir(got), "Props should be in project directory")
+				}
+			}
 		})
 	}
 }

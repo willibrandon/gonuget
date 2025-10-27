@@ -13,12 +13,14 @@ type RootElement struct {
 
 // PropertyGroup represents a <PropertyGroup> element.
 type PropertyGroup struct {
-	Condition        string `xml:"Condition,attr,omitempty"`
-	TargetFramework  string `xml:"TargetFramework,omitempty"`
-	TargetFrameworks string `xml:"TargetFrameworks,omitempty"`
-	OutputType       string `xml:"OutputType,omitempty"`
-	RootNamespace    string `xml:"RootNamespace,omitempty"`
-	AssemblyName     string `xml:"AssemblyName,omitempty"`
+	Condition                      string `xml:"Condition,attr,omitempty"`
+	TargetFramework                string `xml:"TargetFramework,omitempty"`
+	TargetFrameworks               string `xml:"TargetFrameworks,omitempty"`
+	OutputType                     string `xml:"OutputType,omitempty"`
+	RootNamespace                  string `xml:"RootNamespace,omitempty"`
+	AssemblyName                   string `xml:"AssemblyName,omitempty"`
+	ManagePackageVersionsCentrally string `xml:"ManagePackageVersionsCentrally,omitempty"`
+	DirectoryPackagesPropsPath     string `xml:"DirectoryPackagesPropsPath,omitempty"`
 }
 
 // ItemGroup represents an <ItemGroup> element containing package references or other items.

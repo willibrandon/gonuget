@@ -85,10 +85,14 @@ func runAddPackage(ctx context.Context, packageID string, opts *AddPackageOption
 		return fmt.Errorf("failed to load project %s: %w", projectPath, err)
 	}
 
-	// 3. Check for Central Package Management
-	if proj.IsCentralPackageManagementEnabled() {
-		return fmt.Errorf("this project uses Central Package Management (CPM). Package versions must be managed in Directory.Packages.props. Use 'gonuget add package %s' in the solution directory instead", packageID)
-	}
+	// 3. Check for Central Package Management (CPM)
+	// Note: CPM support will be fully implemented in Chunks 12-13.
+	// For now, we just detect it but don't handle it specially.
+	// In the future, this will:
+	// - Add PackageReference WITHOUT version to project file
+	// - Add/update PackageVersion in Directory.Packages.props
+	cpmEnabled := proj.IsCentralPackageManagementEnabled()
+	_ = cpmEnabled // Will be used in Chunks 12-13
 
 	// 4. Resolve version if not specified
 	packageVersion := opts.Version

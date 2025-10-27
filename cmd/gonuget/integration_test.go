@@ -87,8 +87,8 @@ func (e *testEnv) run(args ...string) (stdout, stderr string, exitCode int) {
 	for _, envVar := range os.Environ() {
 		// Skip HOME, USERPROFILE, and APPDATA to avoid conflicts
 		if !strings.HasPrefix(envVar, "HOME=") &&
-		   !strings.HasPrefix(envVar, "USERPROFILE=") &&
-		   !strings.HasPrefix(envVar, "APPDATA=") {
+			!strings.HasPrefix(envVar, "USERPROFILE=") &&
+			!strings.HasPrefix(envVar, "APPDATA=") {
 			env = append(env, envVar)
 		}
 	}
