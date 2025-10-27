@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/willibrandon/gonuget/cmd/gonuget/project"
@@ -147,8 +148,12 @@ func (r *Restorer) Restore(ctx context.Context, proj *project.Project, packageRe
 	for _, pkgRef := range packageRefs {
 		r.console.Printf("  Restoring %s %s...\n", pkgRef.Include, pkgRef.Version)
 
+		// Normalize package ID to lowercase for cross-platform consistency
+		// This matches NuGet.Client's VersionFolderPathResolver behavior
+		normalizedPackageID := strings.ToLower(pkgRef.Include)
+
 		// Check if package already exists in cache
-		packagePath := filepath.Join(packagesFolder, pkgRef.Include, pkgRef.Version)
+		packagePath := filepath.Join(packagesFolder, normalizedPackageID, pkgRef.Version)
 		if !r.opts.Force {
 			if _, err := os.Stat(packagePath); err == nil {
 				r.console.Printf("    Package already cached at %s\n", packagePath)
@@ -162,7 +167,7 @@ func (r *Restorer) Restore(ctx context.Context, proj *project.Project, packageRe
 		}
 
 		// Download package
-		if err := r.downloadPackage(ctx, pkgRef.Include, pkgRef.Version, packagePath); err != nil {
+		if err := r.downloadPackage(ctx, normalizedPackageID, pkgRef.Version, packagePath); err != nil {
 			return nil, fmt.Errorf("failed to download package %s %s: %w", pkgRef.Include, pkgRef.Version, err)
 		}
 

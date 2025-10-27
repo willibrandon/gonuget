@@ -268,8 +268,9 @@ func TestRestorer_Restore_WithForce(t *testing.T) {
 	}
 
 	// Verify package was downloaded
-	packagePath := filepath.Join(packagesFolder, "Newtonsoft.Json", "13.0.1")
-	nupkgPath := filepath.Join(packagePath, "Newtonsoft.Json.13.0.1.nupkg")
+	// Use lowercase package ID to match NuGet.Client's VersionFolderPathResolver behavior
+	packagePath := filepath.Join(packagesFolder, "newtonsoft.json", "13.0.1")
+	nupkgPath := filepath.Join(packagePath, "newtonsoft.json.13.0.1.nupkg")
 
 	if _, err := os.Stat(nupkgPath); os.IsNotExist(err) {
 		t.Error("package file was not downloaded")
@@ -305,7 +306,8 @@ func TestRestorer_Restore_PackageAlreadyCached(t *testing.T) {
 	packagesFolder := filepath.Join(tmpDir, "packages")
 
 	// Pre-create package directory to simulate cached package
-	packagePath := filepath.Join(packagesFolder, "Newtonsoft.Json", "13.0.1")
+	// Use lowercase package ID to match NuGet.Client's VersionFolderPathResolver behavior
+	packagePath := filepath.Join(packagesFolder, "newtonsoft.json", "13.0.1")
 	if err := os.MkdirAll(packagePath, 0755); err != nil {
 		t.Fatal(err)
 	}
@@ -438,8 +440,9 @@ func TestRun_WithPackages(t *testing.T) {
 	}
 
 	// Verify package was downloaded
-	packagePath := filepath.Join(packagesFolder, "Newtonsoft.Json", "13.0.1")
-	nupkgPath := filepath.Join(packagePath, "Newtonsoft.Json.13.0.1.nupkg")
+	// Use lowercase package ID to match NuGet.Client's VersionFolderPathResolver behavior
+	packagePath := filepath.Join(packagesFolder, "newtonsoft.json", "13.0.1")
+	nupkgPath := filepath.Join(packagePath, "newtonsoft.json.13.0.1.nupkg")
 	if _, err := os.Stat(nupkgPath); os.IsNotExist(err) {
 		t.Error("package file was not downloaded")
 	}
