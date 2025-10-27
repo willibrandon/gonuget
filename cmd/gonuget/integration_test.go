@@ -1,6 +1,3 @@
-//go:build integration
-// +build integration
-
 package main
 
 import (
@@ -48,7 +45,7 @@ func newTestEnv(t *testing.T) *testEnv {
 
 	// Save old HOME
 	oldHome := os.Getenv("HOME")
-	os.Setenv("HOME", homeDir)
+	_ = os.Setenv("HOME", homeDir)
 
 	return &testEnv{
 		t:       t,
@@ -61,7 +58,7 @@ func newTestEnv(t *testing.T) *testEnv {
 
 // cleanup restores the original environment
 func (e *testEnv) cleanup() {
-	os.Setenv("HOME", e.oldHome)
+	_ = os.Setenv("HOME", e.oldHome)
 }
 
 // run executes the gonuget binary with the given arguments
@@ -122,7 +119,7 @@ func (e *testEnv) configPath() string {
 }
 
 // readConfig reads and parses the NuGet.config file
-func (e *testEnv) readConfig() map[string]interface{} {
+func (e *testEnv) readConfig() map[string]any {
 	e.t.Helper()
 
 	data, err := os.ReadFile(e.configPath())
@@ -155,7 +152,7 @@ func (e *testEnv) readConfig() map[string]interface{} {
 		e.t.Fatalf("failed to parse config: %v", err)
 	}
 
-	result := make(map[string]interface{})
+	result := make(map[string]any)
 	result["packageSources"] = config.PackageSources.Add
 	result["disabledPackageSources"] = config.DisabledPackageSources.Add
 	result["config"] = config.Config.Add
@@ -546,4 +543,46 @@ func TestEndToEndWorkflow(t *testing.T) {
 	}
 
 	t.Log("✓ End-to-end workflow completed successfully (dotnet nuget parity)")
+}
+
+// createBasicProject creates a minimal SDK-style project for testing
+func createBasicProject(t *testing.T, path string) {
+	t.Helper()
+	content := `<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+  </PropertyGroup>
+</Project>`
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatalf("failed to create project: %v", err)
+	}
+}
+
+// packageRef represents a package reference for testing
+type packageRef struct {
+	ID      string
+	Version string
+}
+
+// createProjectWithPackages creates a project with specified PackageReferences
+func createProjectWithPackages(t *testing.T, path string, packages []packageRef) {
+	t.Helper()
+	content := `<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+  </PropertyGroup>`
+
+	if len(packages) > 0 {
+		content += "\n  <ItemGroup>"
+		for _, pkg := range packages {
+			content += "\n    <PackageReference Include=\"" + pkg.ID + "\" Version=\"" + pkg.Version + "\" />"
+		}
+		content += "\n  </ItemGroup>"
+	}
+
+	content += "\n</Project>"
+
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatalf("failed to create project: %v", err)
+	}
 }

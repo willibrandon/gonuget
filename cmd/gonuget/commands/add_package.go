@@ -154,8 +154,17 @@ func runAddPackage(ctx context.Context, packageID string, opts *AddPackageOption
 		restorer := restore.NewRestorer(restoreOpts, console)
 
 		packageRefs := proj.GetPackageReferences()
-		if _, err := restorer.Restore(ctx, proj, packageRefs); err != nil {
+		result, err := restorer.Restore(ctx, proj, packageRefs)
+		if err != nil {
 			return fmt.Errorf("restore failed: %w", err)
+		}
+
+		// Generate project.assets.json (matches dotnet add package behavior)
+		lockFile := restore.NewLockFileBuilder().Build(proj, result)
+		objDir := filepath.Join(filepath.Dir(projectPath), "obj")
+		assetsPath := filepath.Join(objDir, "project.assets.json")
+		if err := lockFile.Save(assetsPath); err != nil {
+			return fmt.Errorf("failed to save project.assets.json: %w", err)
 		}
 	}
 
