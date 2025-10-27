@@ -1,8 +1,10 @@
 package restore
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,6 +12,8 @@ import (
 
 	"github.com/willibrandon/gonuget/cmd/gonuget/project"
 	"github.com/willibrandon/gonuget/core"
+	"github.com/willibrandon/gonuget/packaging"
+	"github.com/willibrandon/gonuget/version"
 )
 
 // Run executes the restore operation (entry point called from CLI).
@@ -181,43 +185,148 @@ func (r *Restorer) Restore(ctx context.Context, proj *project.Project, packageRe
 	return result, nil
 }
 
-func (r *Restorer) downloadPackage(ctx context.Context, packageID, version, packagePath string) error {
-	// Create package directory
-	if err := os.MkdirAll(packagePath, 0755); err != nil {
-		return fmt.Errorf("failed to create package directory: %w", err)
+func (r *Restorer) downloadPackage(ctx context.Context, packageID, packageVersion, packagePath string) error {
+	// Parse version
+	pkgVer, err := version.Parse(packageVersion)
+	if err != nil {
+		return fmt.Errorf("invalid version: %w", err)
 	}
 
-	// Download .nupkg
-	nupkgPath := filepath.Join(packagePath, fmt.Sprintf("%s.%s.nupkg", packageID, version))
-	packageReader, err := r.client.DownloadPackage(ctx, packageID, version)
+	// Get source repository and detect protocol
+	repos := r.client.GetRepositoryManager().ListRepositories()
+	if len(repos) == 0 {
+		return fmt.Errorf("no package sources configured")
+	}
+	repo := repos[0]
+
+	provider, err := repo.GetProvider(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to download package: %w", err)
+		return fmt.Errorf("get provider: %w", err)
+	}
+
+	protocolVersion := provider.ProtocolVersion()
+	sourceURL := repo.SourceURL()
+
+	// Create package identity
+	packageIdentity := &packaging.PackageIdentity{
+		ID:      packageID,
+		Version: pkgVer,
+	}
+
+	// Create extraction context with all save modes
+	extractionContext := &packaging.PackageExtractionContext{
+		PackageSaveMode:    packaging.PackageSaveModeNupkg | packaging.PackageSaveModeNuspec | packaging.PackageSaveModeFiles,
+		XMLDocFileSaveMode: packaging.XMLDocFileSaveModeNone,
+	}
+
+	// Use V3 or V2 installer based on protocol
+	if protocolVersion == "v3" {
+		return r.installPackageV3(ctx, packageID, packageVersion, packagePath, packageIdentity, sourceURL, extractionContext)
+	}
+	return r.installPackageV2(ctx, packageID, packageVersion, packagePath, packageIdentity, sourceURL, extractionContext)
+}
+
+func (r *Restorer) installPackageV3(ctx context.Context, packageID, packageVersion, packagePath string, packageIdentity *packaging.PackageIdentity, sourceURL string, extractionContext *packaging.PackageExtractionContext) error {
+	// Create path resolver for V3 layout
+	packagesFolder := filepath.Dir(filepath.Dir(packagePath)) // Go up to packages root
+	pathResolver := packaging.NewVersionFolderPathResolver(packagesFolder, true)
+
+	// Create download callback
+	copyToAsync := func(targetPath string) error {
+		stream, err := r.client.DownloadPackage(ctx, packageID, packageVersion)
+		if err != nil {
+			return fmt.Errorf("download package: %w", err)
+		}
+		defer func() {
+			if cerr := stream.Close(); cerr != nil {
+				r.console.Error("failed to close package stream: %v\n", cerr)
+			}
+		}()
+
+		outFile, err := os.Create(targetPath)
+		if err != nil {
+			return fmt.Errorf("create temp file: %w", err)
+		}
+		defer func() {
+			if cerr := outFile.Close(); cerr != nil {
+				r.console.Error("failed to close temp file: %v\n", cerr)
+			}
+		}()
+
+		if _, err := io.Copy(outFile, stream); err != nil {
+			return fmt.Errorf("write package: %w", err)
+		}
+
+		return nil
+	}
+
+	// Install package (download + extract) using V3 layout
+	installed, err := packaging.InstallFromSourceV3(
+		ctx,
+		sourceURL,
+		packageIdentity,
+		copyToAsync,
+		pathResolver,
+		extractionContext,
+	)
+
+	if err != nil {
+		return fmt.Errorf("failed to install package: %w", err)
+	}
+
+	if installed {
+		r.console.Printf("    Downloaded and extracted to %s\n", packagePath)
+	} else {
+		r.console.Printf("    Package already cached at %s\n", packagePath)
+	}
+
+	return nil
+}
+
+func (r *Restorer) installPackageV2(ctx context.Context, packageID, packageVersion, packagePath string, packageIdentity *packaging.PackageIdentity, sourceURL string, extractionContext *packaging.PackageExtractionContext) error {
+	// Create path resolver for V2 layout
+	packagesFolder := filepath.Dir(filepath.Dir(packagePath)) // Go up to packages root
+	pathResolver := packaging.NewPackagePathResolver(packagesFolder, true)
+
+	// Check if already installed
+	targetPath := pathResolver.GetInstallPath(packageIdentity)
+	if _, err := os.Stat(targetPath); err == nil {
+		r.console.Printf("    Package already cached at %s\n", packagePath)
+		return nil
+	}
+
+	// Download package to memory
+	stream, err := r.client.DownloadPackage(ctx, packageID, packageVersion)
+	if err != nil {
+		return fmt.Errorf("download package: %w", err)
 	}
 	defer func() {
-		if cerr := packageReader.Close(); cerr != nil {
-			r.console.Error("failed to close package reader: %v\n", cerr)
+		if cerr := stream.Close(); cerr != nil {
+			r.console.Error("failed to close package stream: %v\n", cerr)
 		}
 	}()
 
-	// Save .nupkg file
-	nupkgFile, err := os.Create(nupkgPath)
+	// Read into memory (V2 extractor needs ReadSeeker)
+	packageData, err := io.ReadAll(stream)
 	if err != nil {
-		return fmt.Errorf("failed to create .nupkg file: %w", err)
-	}
-	defer func() {
-		if cerr := nupkgFile.Close(); cerr != nil {
-			r.console.Error("failed to close .nupkg file: %v\n", cerr)
-		}
-	}()
-
-	if _, err := nupkgFile.ReadFrom(packageReader); err != nil {
-		return fmt.Errorf("failed to write .nupkg file: %w", err)
+		return fmt.Errorf("read package: %w", err)
 	}
 
-	r.console.Printf("    Downloaded to %s\n", nupkgPath)
+	packageReader := bytes.NewReader(packageData)
 
-	// TODO: Extract package contents (deferred to future chunk)
-	// For Chunk 5, we just download the .nupkg file
+	// Extract package using V2 layout
+	_, err = packaging.ExtractPackageV2(
+		ctx,
+		sourceURL,
+		packageReader,
+		pathResolver,
+		extractionContext,
+	)
 
+	if err != nil {
+		return fmt.Errorf("failed to extract package: %w", err)
+	}
+
+	r.console.Printf("    Downloaded and extracted to %s\n", packagePath)
 	return nil
 }

@@ -605,3 +605,371 @@ func TestFindProjectFile_GetWorkingDirectory(t *testing.T) {
 		t.Errorf("expected /some/path/test.csproj, got %s", path)
 	}
 }
+
+// TestRestorer_Restore_PackageExtraction verifies that packages are fully extracted (not just downloaded).
+func TestRestorer_Restore_PackageExtraction(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test - requires network")
+	}
+
+	tmpDir := t.TempDir()
+	projPath := filepath.Join(tmpDir, "test.csproj")
+
+	content := `<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.1" />
+  </ItemGroup>
+</Project>`
+
+	if err := os.WriteFile(projPath, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	proj, err := project.LoadProject(projPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	packagesFolder := filepath.Join(tmpDir, "packages")
+	console := &mockConsole{}
+	opts := &Options{
+		PackagesFolder: packagesFolder,
+		Sources:        []string{"https://api.nuget.org/v3/index.json"},
+	}
+
+	restorer := NewRestorer(opts, console)
+	packageRefs := proj.GetPackageReferences()
+
+	result, err := restorer.Restore(context.Background(), proj, packageRefs)
+	if err != nil {
+		t.Fatalf("restore failed: %v", err)
+	}
+
+	if len(result.Packages) != 1 {
+		t.Errorf("expected 1 package, got %d", len(result.Packages))
+	}
+
+	// Verify package extraction (matching dotnet restore behavior)
+	// Use lowercase package ID to match NuGet.Client's VersionFolderPathResolver behavior
+	packagePath := filepath.Join(packagesFolder, "newtonsoft.json", "13.0.1")
+
+	// 1. Verify .nupkg file exists
+	nupkgPath := filepath.Join(packagePath, "newtonsoft.json.13.0.1.nupkg")
+	if _, err := os.Stat(nupkgPath); os.IsNotExist(err) {
+		t.Error("package .nupkg file was not downloaded")
+	}
+
+	// 2. Verify .nuspec file was extracted
+	nuspecPath := filepath.Join(packagePath, "newtonsoft.json.nuspec")
+	if _, err := os.Stat(nuspecPath); os.IsNotExist(err) {
+		t.Error("package .nuspec file was not extracted")
+	}
+
+	// 3. Verify lib/ directory was extracted
+	libDir := filepath.Join(packagePath, "lib")
+	if _, err := os.Stat(libDir); os.IsNotExist(err) {
+		t.Error("package lib/ directory was not extracted")
+	}
+
+	// 4. Verify at least one framework folder exists under lib/
+	libEntries, err := os.ReadDir(libDir)
+	if err != nil {
+		t.Fatalf("failed to read lib directory: %v", err)
+	}
+	if len(libEntries) == 0 {
+		t.Error("lib/ directory is empty, no framework folders extracted")
+	}
+
+	// 5. Verify DLL files were extracted (Newtonsoft.Json has DLLs)
+	foundDLL := false
+	for _, entry := range libEntries {
+		if !entry.IsDir() {
+			continue
+		}
+		frameworkDir := filepath.Join(libDir, entry.Name())
+		files, err := os.ReadDir(frameworkDir)
+		if err != nil {
+			continue
+		}
+		for _, file := range files {
+			if strings.HasSuffix(file.Name(), ".dll") {
+				foundDLL = true
+				break
+			}
+		}
+		if foundDLL {
+			break
+		}
+	}
+	if !foundDLL {
+		t.Error("no .dll files found in lib/ subdirectories")
+	}
+}
+
+// TestRestorer_Restore_ExtractionParity verifies extraction matches dotnet restore behavior.
+func TestRestorer_Restore_ExtractionParity(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test - requires network")
+	}
+
+	tmpDir := t.TempDir()
+	projPath := filepath.Join(tmpDir, "test.csproj")
+
+	// Use a package with known structure for verification
+	content := `<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Serilog" Version="4.0.0" />
+  </ItemGroup>
+</Project>`
+
+	if err := os.WriteFile(projPath, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	proj, err := project.LoadProject(projPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	packagesFolder := filepath.Join(tmpDir, "packages")
+	console := &mockConsole{}
+	opts := &Options{
+		PackagesFolder: packagesFolder,
+		Sources:        []string{"https://api.nuget.org/v3/index.json"},
+	}
+
+	restorer := NewRestorer(opts, console)
+	packageRefs := proj.GetPackageReferences()
+
+	_, err = restorer.Restore(context.Background(), proj, packageRefs)
+	if err != nil {
+		t.Fatalf("restore failed: %v", err)
+	}
+
+	// Verify complete package structure (matching dotnet restore)
+	packagePath := filepath.Join(packagesFolder, "serilog", "4.0.0")
+
+	// Check expected files/directories that dotnet restore creates
+	expectedPaths := []string{
+		filepath.Join(packagePath, "serilog.4.0.0.nupkg"),
+		filepath.Join(packagePath, "serilog.nuspec"),
+		filepath.Join(packagePath, "lib"),
+		filepath.Join(packagePath, "icon.png"), // Serilog has an icon
+	}
+
+	for _, path := range expectedPaths {
+		if _, err := os.Stat(path); os.IsNotExist(err) {
+			t.Errorf("expected path does not exist: %s", path)
+		}
+	}
+}
+
+// TestRestorer_Restore_ExtractMultiplePackages verifies multiple packages are extracted correctly.
+func TestRestorer_Restore_ExtractMultiplePackages(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test - requires network")
+	}
+
+	tmpDir := t.TempDir()
+	projPath := filepath.Join(tmpDir, "test.csproj")
+
+	content := `<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.1" />
+    <PackageReference Include="Serilog" Version="4.0.0" />
+  </ItemGroup>
+</Project>`
+
+	if err := os.WriteFile(projPath, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	proj, err := project.LoadProject(projPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	packagesFolder := filepath.Join(tmpDir, "packages")
+	console := &mockConsole{}
+	opts := &Options{
+		PackagesFolder: packagesFolder,
+		Sources:        []string{"https://api.nuget.org/v3/index.json"},
+	}
+
+	restorer := NewRestorer(opts, console)
+	packageRefs := proj.GetPackageReferences()
+
+	result, err := restorer.Restore(context.Background(), proj, packageRefs)
+	if err != nil {
+		t.Fatalf("restore failed: %v", err)
+	}
+
+	if len(result.Packages) != 2 {
+		t.Errorf("expected 2 packages, got %d", len(result.Packages))
+	}
+
+	// Verify both packages were extracted
+	packages := []struct {
+		id      string
+		version string
+	}{
+		{"newtonsoft.json", "13.0.1"},
+		{"serilog", "4.0.0"},
+	}
+
+	for _, pkg := range packages {
+		packagePath := filepath.Join(packagesFolder, pkg.id, pkg.version)
+
+		// Check .nuspec extraction for each package
+		nuspecPath := filepath.Join(packagePath, pkg.id+".nuspec")
+		if _, err := os.Stat(nuspecPath); os.IsNotExist(err) {
+			t.Errorf("package %s .nuspec file was not extracted", pkg.id)
+		}
+
+		// Check lib/ directory for each package
+		libDir := filepath.Join(packagePath, "lib")
+		if _, err := os.Stat(libDir); os.IsNotExist(err) {
+			t.Errorf("package %s lib/ directory was not extracted", pkg.id)
+		}
+	}
+}
+
+// TestRestorer_Restore_V3Protocol verifies that V3 feeds use the correct extraction method.
+func TestRestorer_Restore_V3Protocol(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test - requires network")
+	}
+
+	tmpDir := t.TempDir()
+	projPath := filepath.Join(tmpDir, "test.csproj")
+
+	content := `<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.1" />
+  </ItemGroup>
+</Project>`
+
+	if err := os.WriteFile(projPath, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	proj, err := project.LoadProject(projPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	packagesFolder := filepath.Join(tmpDir, "packages")
+	console := &mockConsole{}
+	opts := &Options{
+		PackagesFolder: packagesFolder,
+		Sources:        []string{"https://api.nuget.org/v3/index.json"},
+	}
+
+	restorer := NewRestorer(opts, console)
+	packageRefs := proj.GetPackageReferences()
+
+	result, err := restorer.Restore(context.Background(), proj, packageRefs)
+	if err != nil {
+		t.Fatalf("restore failed: %v", err)
+	}
+
+	if len(result.Packages) != 1 {
+		t.Errorf("expected 1 package, got %d", len(result.Packages))
+	}
+
+	// Verify V3 layout: lowercase package ID, .nupkg.metadata marker
+	packagePath := filepath.Join(packagesFolder, "newtonsoft.json", "13.0.1")
+
+	// V3 layout creates .nupkg.metadata file
+	metadataPath := filepath.Join(packagePath, ".nupkg.metadata")
+	if _, err := os.Stat(metadataPath); os.IsNotExist(err) {
+		t.Error("V3 layout should create .nupkg.metadata file")
+	}
+
+	// V3 layout creates .nupkg.sha512 file
+	shaPath := filepath.Join(packagePath, "newtonsoft.json.13.0.1.nupkg.sha512")
+	if _, err := os.Stat(shaPath); os.IsNotExist(err) {
+		t.Error("V3 layout should create .nupkg.sha512 file")
+	}
+}
+
+// TestRestorer_Restore_V2Protocol verifies that V2 feeds use the correct extraction method.
+func TestRestorer_Restore_V2Protocol(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test - requires network")
+	}
+
+	tmpDir := t.TempDir()
+	projPath := filepath.Join(tmpDir, "test.csproj")
+
+	content := `<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.1" />
+  </ItemGroup>
+</Project>`
+
+	if err := os.WriteFile(projPath, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	proj, err := project.LoadProject(projPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	packagesFolder := filepath.Join(tmpDir, "packages")
+	console := &mockConsole{}
+	opts := &Options{
+		PackagesFolder: packagesFolder,
+		// Use a V2 feed (nuget.org V2 API)
+		Sources: []string{"https://www.nuget.org/api/v2"},
+	}
+
+	restorer := NewRestorer(opts, console)
+	packageRefs := proj.GetPackageReferences()
+
+	result, err := restorer.Restore(context.Background(), proj, packageRefs)
+	if err != nil {
+		t.Fatalf("restore failed: %v", err)
+	}
+
+	if len(result.Packages) != 1 {
+		t.Errorf("expected 1 package, got %d", len(result.Packages))
+	}
+
+	// Verify V2 layout: package ID with original casing (not lowercased)
+	// V2 uses PackagePathResolver which preserves case
+	packagePath := filepath.Join(packagesFolder, "Newtonsoft.Json.13.0.1")
+
+	// V2 layout does NOT create .nupkg.metadata file
+	metadataPath := filepath.Join(packagePath, ".nupkg.metadata")
+	if _, err := os.Stat(metadataPath); err == nil {
+		t.Error("V2 layout should NOT create .nupkg.metadata file")
+	}
+
+	// Verify package contents were extracted
+	nuspecPath := filepath.Join(packagePath, "Newtonsoft.Json.nuspec")
+	if _, err := os.Stat(nuspecPath); os.IsNotExist(err) {
+		t.Error("V2 layout should extract .nuspec file")
+	}
+
+	libDir := filepath.Join(packagePath, "lib")
+	if _, err := os.Stat(libDir); os.IsNotExist(err) {
+		t.Error("V2 layout should extract lib/ directory")
+	}
+}

@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/willibrandon/gonuget/frameworks"
 )
 
 // Project represents a .NET project file.
@@ -98,68 +100,120 @@ func (p *Project) Save() error {
 }
 
 // AddOrUpdatePackageReference adds a new PackageReference or updates an existing one.
+// Parameters:
+//   - id: Package ID
+//   - version: Package version (can be empty for CPM)
+//   - frameworks: Target frameworks for conditional references (pass nil/empty for unconditional)
+//
+// Behavior matches dotnet CLI:
+//   - If frameworks is empty/nil: Adds unconditional reference
+//   - If frameworks is non-empty: Creates conditional ItemGroup(s) with '$(TargetFramework)' == 'tfm' condition
+//
 // Returns true if an existing reference was updated, false if a new one was added.
 func (p *Project) AddOrUpdatePackageReference(id, version string, frameworks []string) (bool, error) {
-	// M2.1: Only support unconditional references (no framework-specific)
-	if len(frameworks) > 0 {
-		return false, fmt.Errorf("framework-specific references not supported in M2.1 (use M2.2 Chunk 14)")
+	if id == "" {
+		return false, fmt.Errorf("package ID cannot be empty")
 	}
 
-	// Find or create ItemGroup
-	var targetItemGroup *ItemGroup
-	var existingRef *PackageReference
+	// Validate framework TFMs if specified
+	for _, fw := range frameworks {
+		if err := validateFrameworkCompatibility(fw); err != nil {
+			return false, fmt.Errorf("invalid framework %s: %w", fw, err)
+		}
+	}
 
-	// Search for existing reference
+	// If frameworks specified, create conditional ItemGroups (one per framework)
+	if len(frameworks) > 0 {
+		return p.addOrUpdateConditionalPackageReference(id, version, frameworks)
+	}
+
+	// Otherwise, add unconditional reference
+	return p.addOrUpdateUnconditionalPackageReference(id, version)
+}
+
+// addOrUpdateUnconditionalPackageReference adds/updates a package reference without framework conditions.
+func (p *Project) addOrUpdateUnconditionalPackageReference(id, version string) (bool, error) {
+	// Find existing PackageReference in unconditional ItemGroup
 	for i := range p.Root.ItemGroups {
 		ig := &p.Root.ItemGroups[i]
-		// M2.1: Only modify unconditional ItemGroups
+
+		// Skip conditional ItemGroups
 		if ig.Condition != "" {
 			continue
 		}
 
 		for j := range ig.PackageReferences {
-			ref := &ig.PackageReferences[j]
-			if strings.EqualFold(ref.Include, id) {
-				existingRef = ref
-				targetItemGroup = ig
-				break
+			pr := &ig.PackageReferences[j]
+			if strings.EqualFold(pr.Include, id) {
+				// Update existing reference
+				if version != "" {
+					pr.Version = version
+				}
+				p.modified = true
+				return true, nil
 			}
 		}
-		if existingRef != nil {
-			break
-		}
-
-		// Remember first unconditional ItemGroup for adding new references
-		if targetItemGroup == nil && ig.Condition == "" {
-			targetItemGroup = ig
-		}
 	}
 
-	// Update existing reference
-	if existingRef != nil {
-		existingRef.Version = version
-		p.modified = true
-		return true, nil
-	}
-
-	// Add new reference
-	newRef := PackageReference{
+	// Not found, add new PackageReference to unconditional ItemGroup
+	itemGroup := p.findOrCreateItemGroup("")
+	itemGroup.PackageReferences = append(itemGroup.PackageReferences, PackageReference{
 		Include: id,
 		Version: version,
-	}
-
-	if targetItemGroup != nil {
-		// Add to existing ItemGroup
-		targetItemGroup.PackageReferences = append(targetItemGroup.PackageReferences, newRef)
-	} else {
-		// Create new ItemGroup
-		p.Root.ItemGroups = append(p.Root.ItemGroups, ItemGroup{
-			PackageReferences: []PackageReference{newRef},
-		})
-	}
+	})
 
 	p.modified = true
 	return false, nil
+}
+
+// addOrUpdateConditionalPackageReference adds/updates conditional package references (one per framework).
+func (p *Project) addOrUpdateConditionalPackageReference(id, version string, frameworks []string) (bool, error) {
+	updated := false
+
+	for _, fw := range frameworks {
+		condition := buildFrameworkCondition([]string{fw})
+		normalizedCondition := normalizeCondition(condition)
+
+		// Find existing PackageReference in matching conditional ItemGroup
+		found := false
+		for i := range p.Root.ItemGroups {
+			ig := &p.Root.ItemGroups[i]
+
+			// Match condition
+			if normalizeCondition(ig.Condition) != normalizedCondition {
+				continue
+			}
+
+			for j := range ig.PackageReferences {
+				pr := &ig.PackageReferences[j]
+				if strings.EqualFold(pr.Include, id) {
+					// Update existing reference
+					if version != "" {
+						pr.Version = version
+					}
+					p.modified = true
+					updated = true
+					found = true
+					break
+				}
+			}
+			if found {
+				break
+			}
+		}
+
+		if !found {
+			// Not found, add new PackageReference to conditional ItemGroup
+			itemGroup := p.findOrCreateItemGroup(condition)
+			itemGroup.PackageReferences = append(itemGroup.PackageReferences, PackageReference{
+				Include: id,
+				Version: version,
+			})
+			p.modified = true
+		}
+	}
+
+	return updated, nil
 }
 
 // RemovePackageReference removes a PackageReference by package ID.
@@ -271,4 +325,115 @@ func FindProjectFile(dir string) (string, error) {
 	}
 
 	return allMatches[0], nil
+}
+
+// GetTargetFrameworks returns the list of target frameworks for the project.
+// Returns single framework from TargetFramework or multiple from TargetFrameworks.
+func (p *Project) GetTargetFrameworks() []string {
+	// Check cached fields first
+	if len(p.TargetFrameworks) > 0 {
+		return p.TargetFrameworks
+	}
+	if p.TargetFramework != "" {
+		return []string{p.TargetFramework}
+	}
+
+	// Parse from PropertyGroup (fallback if fields not populated during load)
+	for _, pg := range p.Root.PropertyGroup {
+		// TargetFrameworks (plural) - multiple frameworks
+		if pg.TargetFrameworks != "" {
+			return strings.Split(pg.TargetFrameworks, ";")
+		}
+
+		// TargetFramework (singular) - single framework
+		if pg.TargetFramework != "" {
+			return []string{pg.TargetFramework}
+		}
+	}
+	return []string{}
+}
+
+// IsMultiTargeting returns true if the project targets multiple frameworks.
+func (p *Project) IsMultiTargeting() bool {
+	return len(p.GetTargetFrameworks()) > 1
+}
+
+// buildFrameworkCondition builds an MSBuild condition string for framework filtering.
+// Returns empty string if frameworks is empty (unconditional).
+// Returns "'$(TargetFramework)' == 'net8.0'" for single framework.
+// Returns "'$(TargetFramework)' == 'net8.0' OR '$(TargetFramework)' == 'net48'" for multiple frameworks.
+func buildFrameworkCondition(frameworks []string) string {
+	if len(frameworks) == 0 {
+		return ""
+	}
+
+	if len(frameworks) == 1 {
+		return fmt.Sprintf("'$(TargetFramework)' == '%s'", frameworks[0])
+	}
+
+	// Multiple frameworks: OR conditions
+	conditions := make([]string, len(frameworks))
+	for i, fw := range frameworks {
+		conditions[i] = fmt.Sprintf("'$(TargetFramework)' == '%s'", fw)
+	}
+	return strings.Join(conditions, " OR ")
+}
+
+// normalizeCondition normalizes an MSBuild condition for comparison.
+// Handles whitespace variations and case insensitivity.
+func normalizeCondition(condition string) string {
+	// Trim and convert to lowercase
+	normalized := strings.TrimSpace(strings.ToLower(condition))
+
+	// Normalize whitespace: collapse multiple spaces to single space
+	normalized = strings.Join(strings.Fields(normalized), " ")
+
+	// Normalize quotes (both single and double quotes)
+	normalized = strings.ReplaceAll(normalized, "\"", "'")
+
+	return normalized
+}
+
+// validateFrameworkCompatibility validates a target framework moniker.
+// Full package-to-framework compatibility is validated during restore.
+func validateFrameworkCompatibility(framework string) error {
+	// Parse and validate the target framework moniker
+	_, err := frameworks.ParseFramework(framework)
+	if err != nil {
+		return fmt.Errorf("invalid target framework '%s': %w", framework, err)
+	}
+
+	// Design Note: Package-to-framework compatibility validation is intentionally deferred
+	// to the restore phase. This matches dotnet behavior (see sdk/src/Cli/dotnet/Commands/Package/Add/PackageAddCommand.cs).
+	//
+	// Rationale:
+	// 1. The restore.Restorer already downloads packages and parses nuspecs
+	// 2. Restore uses frameworks.FrameworkReducer for compatibility checks
+	// 3. Restore provides detailed error messages when incompatible
+	// 4. Pre-validation would duplicate work and slow down add command
+	// 5. Users get immediate feedback since restore runs by default (unless --no-restore)
+	//
+	// If --no-restore is used, users won't see compatibility errors until they run restore.
+	// This is acceptable and matches dotnet behavior.
+	return nil
+}
+
+// findOrCreateItemGroup finds an ItemGroup with the given condition or creates a new one.
+func (p *Project) findOrCreateItemGroup(condition string) *ItemGroup {
+	// Find existing ItemGroup with matching condition
+	normalizedCondition := normalizeCondition(condition)
+	for i := range p.Root.ItemGroups {
+		ig := &p.Root.ItemGroups[i]
+		if normalizeCondition(ig.Condition) == normalizedCondition {
+			return ig
+		}
+	}
+
+	// Create new ItemGroup with condition
+	itemGroup := ItemGroup{
+		Condition:         condition,
+		PackageReferences: []PackageReference{},
+	}
+	p.Root.ItemGroups = append(p.Root.ItemGroups, itemGroup)
+	return &p.Root.ItemGroups[len(p.Root.ItemGroups)-1]
 }

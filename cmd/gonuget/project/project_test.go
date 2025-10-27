@@ -225,17 +225,91 @@ func TestAddOrUpdatePackageReference_CaseInsensitive(t *testing.T) {
 	assert.Equal(t, "13.0.3", refs[0].Version)
 }
 
-func TestAddOrUpdatePackageReference_WithFrameworks_M21Error(t *testing.T) {
+func TestAddOrUpdatePackageReference_WithFramework(t *testing.T) {
+	proj := &Project{
+		Root: &RootElement{
+			Sdk: "Microsoft.NET.Sdk",
+			PropertyGroup: []PropertyGroup{
+				{TargetFrameworks: "net8.0;net48"},
+			},
+		},
+		TargetFrameworks: []string{"net8.0", "net48"},
+	}
+
+	// Add package for specific framework
+	updated, err := proj.AddOrUpdatePackageReference("System.Drawing.Common", "8.0.0", []string{"net48"})
+	require.NoError(t, err)
+	assert.False(t, updated) // New addition
+
+	// Verify conditional ItemGroup was created
+	require.Len(t, proj.Root.ItemGroups, 1)
+	assert.Equal(t, "'$(TargetFramework)' == 'net48'", proj.Root.ItemGroups[0].Condition)
+	require.Len(t, proj.Root.ItemGroups[0].PackageReferences, 1)
+	assert.Equal(t, "System.Drawing.Common", proj.Root.ItemGroups[0].PackageReferences[0].Include)
+	assert.Equal(t, "8.0.0", proj.Root.ItemGroups[0].PackageReferences[0].Version)
+
+	// Add another package for multiple frameworks
+	// Matching dotnet behavior: Creates SEPARATE conditional ItemGroups (one per framework)
+	// But reuses existing ItemGroup if condition matches
+	updated, err = proj.AddOrUpdatePackageReference("Newtonsoft.Json", "13.0.3", []string{"net8.0", "net48"})
+	require.NoError(t, err)
+	assert.False(t, updated)
+
+	// Verify ItemGroups: net48 (System.Drawing.Common + Newtonsoft.Json), net8.0 (Newtonsoft.Json)
+	require.Len(t, proj.Root.ItemGroups, 2)
+
+	// First ItemGroup: net48 with both packages
+	assert.Equal(t, "'$(TargetFramework)' == 'net48'", proj.Root.ItemGroups[0].Condition)
+	require.Len(t, proj.Root.ItemGroups[0].PackageReferences, 2)
+	assert.Equal(t, "System.Drawing.Common", proj.Root.ItemGroups[0].PackageReferences[0].Include)
+	assert.Equal(t, "Newtonsoft.Json", proj.Root.ItemGroups[0].PackageReferences[1].Include)
+
+	// Second ItemGroup: net8.0 with Newtonsoft.Json
+	assert.Equal(t, "'$(TargetFramework)' == 'net8.0'", proj.Root.ItemGroups[1].Condition)
+	require.Len(t, proj.Root.ItemGroups[1].PackageReferences, 1)
+	assert.Equal(t, "Newtonsoft.Json", proj.Root.ItemGroups[1].PackageReferences[0].Include)
+}
+
+func TestAddOrUpdatePackageReference_WithFramework_UpdateExisting(t *testing.T) {
+	proj := &Project{
+		Root: &RootElement{
+			Sdk: "Microsoft.NET.Sdk",
+			PropertyGroup: []PropertyGroup{
+				{TargetFrameworks: "net8.0;net48"},
+			},
+			ItemGroups: []ItemGroup{
+				{
+					Condition: "'$(TargetFramework)' == 'net48'",
+					PackageReferences: []PackageReference{
+						{Include: "System.Drawing.Common", Version: "7.0.0"},
+					},
+				},
+			},
+		},
+		TargetFrameworks: []string{"net8.0", "net48"},
+	}
+
+	// Update existing framework-specific package
+	updated, err := proj.AddOrUpdatePackageReference("System.Drawing.Common", "8.0.0", []string{"net48"})
+	require.NoError(t, err)
+	assert.True(t, updated) // This is an update
+
+	// Verify version was updated
+	require.Len(t, proj.Root.ItemGroups, 1)
+	assert.Equal(t, "8.0.0", proj.Root.ItemGroups[0].PackageReferences[0].Version)
+}
+
+func TestAddOrUpdatePackageReference_WithFramework_InvalidFramework(t *testing.T) {
 	proj := &Project{
 		Root: &RootElement{
 			Sdk: "Microsoft.NET.Sdk",
 		},
 	}
 
-	// M2.1: Framework-specific references should error
-	_, err := proj.AddOrUpdatePackageReference("Newtonsoft.Json", "13.0.3", []string{"net8.0"})
+	// Invalid framework should error
+	_, err := proj.AddOrUpdatePackageReference("Newtonsoft.Json", "13.0.3", []string{"invalid-tfm"})
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "framework-specific references not supported in M2.1")
+	assert.Contains(t, err.Error(), "invalid target framework")
 }
 
 func TestAddOrUpdatePackageReference_AddToExistingItemGroup(t *testing.T) {
@@ -547,6 +621,191 @@ func TestGetDirectoryPackagesPropsPath(t *testing.T) {
 					assert.Equal(t, projectDir, filepath.Dir(got), "Props should be in project directory")
 				}
 			}
+		})
+	}
+}
+
+// Chunk 14: Framework-specific reference helper tests
+
+func TestBuildFrameworkCondition(t *testing.T) {
+	tests := []struct {
+		name       string
+		frameworks []string
+		expected   string
+	}{
+		{
+			name:       "Empty frameworks",
+			frameworks: []string{},
+			expected:   "",
+		},
+		{
+			name:       "Single framework",
+			frameworks: []string{"net8.0"},
+			expected:   "'$(TargetFramework)' == 'net8.0'",
+		},
+		{
+			name:       "Multiple frameworks",
+			frameworks: []string{"net8.0", "net48"},
+			expected:   "'$(TargetFramework)' == 'net8.0' OR '$(TargetFramework)' == 'net48'",
+		},
+		{
+			name:       "Three frameworks",
+			frameworks: []string{"net6.0", "net7.0", "net8.0"},
+			expected:   "'$(TargetFramework)' == 'net6.0' OR '$(TargetFramework)' == 'net7.0' OR '$(TargetFramework)' == 'net8.0'",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := buildFrameworkCondition(tt.frameworks)
+			assert.Equal(t, tt.expected, got)
+		})
+	}
+}
+
+func TestNormalizeCondition(t *testing.T) {
+	tests := []struct {
+		name      string
+		condition string
+		expected  string
+	}{
+		{
+			name:      "Empty condition",
+			condition: "",
+			expected:  "",
+		},
+		{
+			name:      "Single quotes",
+			condition: "'$(TargetFramework)' == 'net8.0'",
+			expected:  "'$(targetframework)' == 'net8.0'",
+		},
+		{
+			name:      "Double quotes",
+			condition: `"$(TargetFramework)" == "net8.0"`,
+			expected:  "'$(targetframework)' == 'net8.0'",
+		},
+		{
+			name:      "Extra whitespace",
+			condition: "  '$(TargetFramework)'   ==   'net8.0'  ",
+			expected:  "'$(targetframework)' == 'net8.0'",
+		},
+		{
+			name:      "Mixed case",
+			condition: "'$(TARGETFRAMEWORK)' == 'NET8.0'",
+			expected:  "'$(targetframework)' == 'net8.0'",
+		},
+		{
+			name:      "OR condition",
+			condition: "'$(TargetFramework)' == 'net8.0' OR '$(TargetFramework)' == 'net48'",
+			expected:  "'$(targetframework)' == 'net8.0' or '$(targetframework)' == 'net48'",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := normalizeCondition(tt.condition)
+			assert.Equal(t, tt.expected, got)
+		})
+	}
+}
+
+func TestGetTargetFrameworks_Single(t *testing.T) {
+	proj := &Project{
+		Root: &RootElement{
+			Sdk: "Microsoft.NET.Sdk",
+			PropertyGroup: []PropertyGroup{
+				{TargetFramework: "net8.0"},
+			},
+		},
+		TargetFramework: "net8.0",
+	}
+
+	frameworks := proj.GetTargetFrameworks()
+	assert.Equal(t, []string{"net8.0"}, frameworks)
+}
+
+func TestGetTargetFrameworks_Multiple(t *testing.T) {
+	proj := &Project{
+		Root: &RootElement{
+			Sdk: "Microsoft.NET.Sdk",
+			PropertyGroup: []PropertyGroup{
+				{TargetFrameworks: "net6.0;net7.0;net8.0"},
+			},
+		},
+		TargetFrameworks: []string{"net6.0", "net7.0", "net8.0"},
+	}
+
+	frameworks := proj.GetTargetFrameworks()
+	assert.Equal(t, []string{"net6.0", "net7.0", "net8.0"}, frameworks)
+}
+
+func TestGetTargetFrameworks_None(t *testing.T) {
+	proj := &Project{
+		Root: &RootElement{
+			Sdk: "Microsoft.NET.Sdk",
+		},
+	}
+
+	frameworks := proj.GetTargetFrameworks()
+	assert.Empty(t, frameworks)
+}
+
+func TestGetTargetFrameworks_FallbackFromPropertyGroup(t *testing.T) {
+	// Test fallback when cached fields are not populated
+	proj := &Project{
+		Root: &RootElement{
+			Sdk: "Microsoft.NET.Sdk",
+			PropertyGroup: []PropertyGroup{
+				{TargetFramework: "net8.0"},
+			},
+		},
+		// Note: TargetFramework field not set (simulates load without cache)
+	}
+
+	frameworks := proj.GetTargetFrameworks()
+	assert.Equal(t, []string{"net8.0"}, frameworks)
+}
+
+func TestIsMultiTargeting(t *testing.T) {
+	tests := []struct {
+		name             string
+		targetFramework  string
+		targetFrameworks []string
+		expected         bool
+	}{
+		{
+			name:            "Single framework",
+			targetFramework: "net8.0",
+			expected:        false,
+		},
+		{
+			name:             "Multiple frameworks",
+			targetFrameworks: []string{"net6.0", "net7.0", "net8.0"},
+			expected:         true,
+		},
+		{
+			name:             "Two frameworks",
+			targetFrameworks: []string{"net8.0", "net48"},
+			expected:         true,
+		},
+		{
+			name:     "No frameworks",
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			proj := &Project{
+				Root: &RootElement{
+					Sdk: "Microsoft.NET.Sdk",
+				},
+				TargetFramework:  tt.targetFramework,
+				TargetFrameworks: tt.targetFrameworks,
+			}
+
+			got := proj.IsMultiTargeting()
+			assert.Equal(t, tt.expected, got)
 		})
 	}
 }

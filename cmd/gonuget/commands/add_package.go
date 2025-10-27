@@ -106,14 +106,23 @@ func runAddPackage(ctx context.Context, packageID string, opts *AddPackageOption
 		return fmt.Errorf("invalid package version '%s': %w", packageVersion, err)
 	}
 
-	// 6. Determine target frameworks
-	var frameworks []string
-	if opts.Framework != "" {
-		frameworks = []string{opts.Framework}
+	// 6. Determine whether to add conditionally or unconditionally
+	var targetFrameworks []string
+
+	if opts.NoRestore {
+		// With --no-restore, ALWAYS add unconditionally (matching dotnet behavior)
+		// The --framework flag is ignored with a warning (shown BEFORE adding)
+		targetFrameworks = nil
+	} else if opts.Framework != "" {
+		// With restore enabled: Run compatibility check FIRST, then decide
+		// For M2.2 Chunk 14: We add the infrastructure for conditional references,
+		// but the actual compatibility checking will be enhanced in future chunks.
+		// For now, if --framework is specified, we honor it for testing purposes.
+		targetFrameworks = []string{opts.Framework}
 	}
 
 	// 7. Add or update the package reference
-	updated, err := proj.AddOrUpdatePackageReference(packageID, packageVersion, frameworks)
+	updated, err := proj.AddOrUpdatePackageReference(packageID, packageVersion, targetFrameworks)
 	if err != nil {
 		return fmt.Errorf("failed to add package reference: %w", err)
 	}
@@ -123,11 +132,16 @@ func runAddPackage(ctx context.Context, packageID string, opts *AddPackageOption
 		return fmt.Errorf("failed to save project file: %w", err)
 	}
 
-	// 9. Report success
+	// 9. Show warning if --framework is used with --no-restore (after save, before success message)
+	if opts.NoRestore && opts.Framework != "" {
+		fmt.Fprintf(os.Stderr, "warn  : --no-restore|-n flag was used. No compatibility check will be done and the added package reference will be unconditional.\n")
+	}
+
+	// 10. Report success
 	if updated {
-		fmt.Printf("Updated package '%s' version '%s' in project '%s'\n", packageID, packageVersion, projectPath)
+		fmt.Printf("info : Updated package '%s' version '%s' in project '%s'\n", packageID, packageVersion, projectPath)
 	} else {
-		fmt.Printf("Added package '%s' version '%s' to project '%s'\n", packageID, packageVersion, projectPath)
+		fmt.Printf("info : Added package '%s' version '%s' to project '%s'\n", packageID, packageVersion, projectPath)
 	}
 
 	// 10. Perform restore if needed
