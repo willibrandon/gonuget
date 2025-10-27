@@ -507,9 +507,8 @@ type ResolvedPackage struct {
 	Depth int `json:"depth"`
 }
 
-// AnalyzeCyclesRequest analyzes dependency graph for circular dependencies (M5.5).
 // InMemoryPackage represents a package definition for testing (M5.5).
-// Allows sharing test package graphs across the CLI bridge.
+// It allows sharing test package graphs across the CLI bridge.
 type InMemoryPackage struct {
 	// ID is the package identifier.
 	ID string `json:"id"`
@@ -530,6 +529,7 @@ type PackageDependencyRef struct {
 	VersionRange string `json:"versionRange"`
 }
 
+// AnalyzeCyclesRequest represents a request to analyze dependency cycles.
 type AnalyzeCyclesRequest struct {
 	// PackageID is the package identifier (e.g., "Newtonsoft.Json").
 	PackageID string `json:"packageId"`

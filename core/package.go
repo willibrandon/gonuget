@@ -45,7 +45,7 @@ type PackageDependency struct {
 	ID string
 
 	// VersionRange is the accepted version range
-	VersionRange *version.VersionRange
+	VersionRange *version.Range
 
 	// Include specifies which assets to include (e.g., "All", "Runtime")
 	Include []string

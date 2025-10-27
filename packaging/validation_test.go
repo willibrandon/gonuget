@@ -158,7 +158,7 @@ func TestValidateDependencies(t *testing.T) {
 					Dependencies: []PackageDependency{
 						{
 							ID: "Dep1",
-							VersionRange: &version.VersionRange{
+							VersionRange: &version.Range{
 								MinVersion:   version.MustParse("2.0.0"),
 								MaxVersion:   version.MustParse("1.0.0"),
 								MinInclusive: true,
@@ -180,7 +180,7 @@ func TestValidateDependencies(t *testing.T) {
 					Dependencies: []PackageDependency{
 						{
 							ID: "Dep1",
-							VersionRange: &version.VersionRange{
+							VersionRange: &version.Range{
 								MinVersion:   version.MustParse("1.0.0"),
 								MaxVersion:   version.MustParse("1.0.0"),
 								MinInclusive: false,
@@ -216,7 +216,7 @@ func TestValidateDependencies(t *testing.T) {
 					Dependencies: []PackageDependency{
 						{
 							ID: "Dep1",
-							VersionRange: &version.VersionRange{
+							VersionRange: &version.Range{
 								MinVersion:   version.MustParse("1.0.0"),
 								MinInclusive: true,
 							},
@@ -236,7 +236,7 @@ func TestValidateDependencies(t *testing.T) {
 					Dependencies: []PackageDependency{
 						{
 							ID: "Dep1",
-							VersionRange: &version.VersionRange{
+							VersionRange: &version.Range{
 								MaxVersion:   version.MustParse("2.0.0"),
 								MaxInclusive: true,
 							},
@@ -256,7 +256,7 @@ func TestValidateDependencies(t *testing.T) {
 					Dependencies: []PackageDependency{
 						{
 							ID: "Dep1",
-							VersionRange: &version.VersionRange{
+							VersionRange: &version.Range{
 								MinVersion:   version.MustParse("1.0.0"),
 								MaxVersion:   version.MustParse("1.0.0"),
 								MinInclusive: true,

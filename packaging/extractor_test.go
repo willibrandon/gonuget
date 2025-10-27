@@ -255,7 +255,7 @@ func TestXMLDocIdentification(t *testing.T) {
 	tests := []struct {
 		name       string
 		file       string
-		isXmlDoc   bool
+		isXMLDoc   bool
 		shouldSkip bool
 	}{
 		{"Newtonsoft.Json.xml is doc", "lib/net45/Newtonsoft.Json.xml", true, false},
@@ -267,8 +267,8 @@ func TestXMLDocIdentification(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := extractor.xmlDocFiles[tt.file]; got != tt.isXmlDoc {
-				t.Errorf("xmlDocFiles[%q] = %v, want %v", tt.file, got, tt.isXmlDoc)
+			if got := extractor.xmlDocFiles[tt.file]; got != tt.isXMLDoc {
+				t.Errorf("xmlDocFiles[%q] = %v, want %v", tt.file, got, tt.isXMLDoc)
 			}
 		})
 	}

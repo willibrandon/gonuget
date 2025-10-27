@@ -294,7 +294,7 @@ func (g *ParsedDependencyGroup) ToPackageDependencyGroup() PackageDependencyGrou
 // ParsedDependency represents a dependency with parsed version range.
 type ParsedDependency struct {
 	ID           string
-	VersionRange *version.VersionRange
+	VersionRange *version.Range
 	Include      []string // Asset include patterns
 	Exclude      []string // Asset exclude patterns
 }
@@ -313,7 +313,7 @@ func parseDependencies(deps []Dependency) ([]ParsedDependency, error) {
 	var parsed []ParsedDependency
 
 	for _, dep := range deps {
-		var versionRange *version.VersionRange
+		var versionRange *version.Range
 
 		if dep.Version != "" {
 			vr, err := version.ParseVersionRange(dep.Version)

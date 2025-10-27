@@ -12,8 +12,10 @@ import (
 // This validates that gonuget's hash algorithm matches NuGet.Client's CachingUtility.ComputeHash().
 type ComputeCacheHashHandler struct{}
 
+// ErrorCode returns the error code for this handler.
 func (h *ComputeCacheHashHandler) ErrorCode() string { return "CACHE_HASH_001" }
 
+// Handle processes the request.
 func (h *ComputeCacheHashHandler) Handle(data json.RawMessage) (interface{}, error) {
 	var req ComputeCacheHashRequest
 	if err := json.Unmarshal(data, &req); err != nil {
@@ -37,8 +39,10 @@ func (h *ComputeCacheHashHandler) Handle(data json.RawMessage) (interface{}, err
 // This validates that gonuget matches NuGet.Client's CachingUtility.RemoveInvalidFileNameChars().
 type SanitizeCacheFilenameHandler struct{}
 
+// ErrorCode returns the error code for this handler.
 func (h *SanitizeCacheFilenameHandler) ErrorCode() string { return "CACHE_SANITIZE_001" }
 
+// Handle processes the request.
 func (h *SanitizeCacheFilenameHandler) Handle(data json.RawMessage) (interface{}, error) {
 	var req SanitizeCacheFilenameRequest
 	if err := json.Unmarshal(data, &req); err != nil {
@@ -62,8 +66,10 @@ func (h *SanitizeCacheFilenameHandler) Handle(data json.RawMessage) (interface{}
 // This validates that gonuget matches NuGet.Client's HttpCacheUtility.InitializeHttpCacheResult().
 type GenerateCachePathsHandler struct{}
 
+// ErrorCode returns the error code for this handler.
 func (h *GenerateCachePathsHandler) ErrorCode() string { return "CACHE_PATHS_001" }
 
+// Handle processes the request.
 func (h *GenerateCachePathsHandler) Handle(data json.RawMessage) (interface{}, error) {
 	var req GenerateCachePathsRequest
 	if err := json.Unmarshal(data, &req); err != nil {
@@ -104,8 +110,10 @@ func (h *GenerateCachePathsHandler) Handle(data json.RawMessage) (interface{}, e
 // This validates that gonuget matches NuGet.Client's CachingUtility.ReadCacheFile() TTL behavior.
 type ValidateCacheFileHandler struct{}
 
+// ErrorCode returns the error code for this handler.
 func (h *ValidateCacheFileHandler) ErrorCode() string { return "CACHE_VALIDATE_001" }
 
+// Handle processes the request.
 func (h *ValidateCacheFileHandler) Handle(data json.RawMessage) (interface{}, error) {
 	var req ValidateCacheFileRequest
 	if err := json.Unmarshal(data, &req); err != nil {

@@ -68,8 +68,11 @@ type Timestamp struct {
 type HashAlgorithmName string
 
 const (
+	// HashAlgorithmSHA256 represents the SHA-256 hash algorithm.
 	HashAlgorithmSHA256 HashAlgorithmName = "SHA256"
+	// HashAlgorithmSHA384 represents the SHA-384 hash algorithm.
 	HashAlgorithmSHA384 HashAlgorithmName = "SHA384"
+	// HashAlgorithmSHA512 represents the SHA-512 hash algorithm.
 	HashAlgorithmSHA512 HashAlgorithmName = "SHA512"
 )
 

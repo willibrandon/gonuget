@@ -9,8 +9,10 @@ import (
 // ExecuteVersionHandler handles version command
 type ExecuteVersionHandler struct{}
 
+// ErrorCode returns the error code for this handler.
 func (h *ExecuteVersionHandler) ErrorCode() string { return "CLI_VER_001" }
 
+// Handle processes the request.
 func (h *ExecuteVersionHandler) Handle(data json.RawMessage) (any, error) {
 	var req ExecuteVersionRequest
 	if err := json.Unmarshal(data, &req); err != nil {

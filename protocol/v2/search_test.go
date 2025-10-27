@@ -118,15 +118,15 @@ func TestSearchClient_Search(t *testing.T) {
 	}
 }
 
-func TestSearchClient_FindPackagesById(t *testing.T) {
+func TestSearchClient_FindPackagesByID(t *testing.T) {
 	server, client := setupV2SearchServer(t)
 	defer server.Close()
 
 	ctx := context.Background()
 
-	results, err := client.FindPackagesById(ctx, server.URL, "Newtonsoft.Json")
+	results, err := client.FindPackagesByID(ctx, server.URL, "Newtonsoft.Json")
 	if err != nil {
-		t.Fatalf("FindPackagesById() error = %v", err)
+		t.Fatalf("FindPackagesByID() error = %v", err)
 	}
 
 	if len(results) != 1 {

@@ -10,9 +10,12 @@ import (
 type CircuitState int
 
 const (
-	StateClosed   CircuitState = iota // Normal operation
-	StateOpen                         // Failing, reject requests
-	StateHalfOpen                     // Testing if service recovered
+	// StateClosed indicates normal operation.
+	StateClosed CircuitState = iota
+	// StateOpen indicates the circuit is open and rejecting requests.
+	StateOpen
+	// StateHalfOpen indicates the circuit is testing if the service has recovered.
+	StateHalfOpen
 )
 
 func (s CircuitState) String() string {

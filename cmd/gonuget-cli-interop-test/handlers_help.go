@@ -9,8 +9,10 @@ import (
 // ExecuteHelpHandler handles help command execution
 type ExecuteHelpHandler struct{}
 
+// ErrorCode returns the error code for this handler.
 func (h *ExecuteHelpHandler) ErrorCode() string { return "CLI_HELP_001" }
 
+// Handle processes the request.
 func (h *ExecuteHelpHandler) Handle(data json.RawMessage) (any, error) {
 	var req ExecuteHelpRequest
 	if err := json.Unmarshal(data, &req); err != nil {

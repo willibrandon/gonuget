@@ -12,15 +12,19 @@ import (
 type PackageSaveMode int
 
 const (
-	PackageSaveModeNone   PackageSaveMode = 0
-	PackageSaveModeNuspec PackageSaveMode = 1 << 0 // Extract .nuspec
-	PackageSaveModeNupkg  PackageSaveMode = 1 << 1 // Save .nupkg
-	PackageSaveModeFiles  PackageSaveMode = 1 << 2 // Extract package files
+	// PackageSaveModeNone indicates no save mode.
+	PackageSaveModeNone PackageSaveMode = 0
+	// PackageSaveModeNuspec extracts .nuspec files.
+	PackageSaveModeNuspec PackageSaveMode = 1 << 0
+	// PackageSaveModeNupkg saves .nupkg files.
+	PackageSaveModeNupkg PackageSaveMode = 1 << 1
+	// PackageSaveModeFiles extracts package files.
+	PackageSaveModeFiles PackageSaveMode = 1 << 2
 
-	// PackageSaveModeDefaultV2 is the default for packages.config projects (V2)
+	// PackageSaveModeDefaultV2 is the default for packages.config projects (V2).
 	PackageSaveModeDefaultV2 = PackageSaveModeNupkg | PackageSaveModeFiles
 
-	// PackageSaveModeDefaultV3 is the default for PackageReference projects (V3)
+	// PackageSaveModeDefaultV3 is the default for PackageReference projects (V3).
 	PackageSaveModeDefaultV3 = PackageSaveModeNuspec | PackageSaveModeNupkg | PackageSaveModeFiles
 )
 
@@ -34,9 +38,12 @@ func (m PackageSaveMode) HasFlag(flag PackageSaveMode) bool {
 type XMLDocFileSaveMode int
 
 const (
-	XMLDocFileSaveModeNone     XMLDocFileSaveMode = 0 // Extract normally
-	XMLDocFileSaveModeSkip     XMLDocFileSaveMode = 1 // Don't extract XML docs
-	XMLDocFileSaveModeCompress XMLDocFileSaveMode = 2 // Compress as .xml.zip
+	// XMLDocFileSaveModeNone extracts XML documentation files normally.
+	XMLDocFileSaveModeNone XMLDocFileSaveMode = 0
+	// XMLDocFileSaveModeSkip skips extracting XML documentation files.
+	XMLDocFileSaveModeSkip XMLDocFileSaveMode = 1
+	// XMLDocFileSaveModeCompress compresses XML documentation files as .xml.zip.
+	XMLDocFileSaveModeCompress XMLDocFileSaveMode = 2
 )
 
 // PackageExtractionContext configures extraction behavior.

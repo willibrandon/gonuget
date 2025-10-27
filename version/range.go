@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-// VersionRange represents a range of acceptable versions.
+// Range represents a range of acceptable versions.
 //
 // Syntax:
 //
@@ -15,7 +15,7 @@ import (
 //	[1.0, )      - x ≥ 1.0 (open upper)
 //	(, 2.0]      - x ≤ 2.0 (open lower)
 //	1.0          - x ≥ 1.0 (implicit minimum)
-type VersionRange struct {
+type Range struct {
 	MinVersion   *NuGetVersion
 	MaxVersion   *NuGetVersion
 	MinInclusive bool
@@ -23,7 +23,7 @@ type VersionRange struct {
 }
 
 // ParseVersionRange parses a version range string.
-func ParseVersionRange(s string) (*VersionRange, error) {
+func ParseVersionRange(s string) (*Range, error) {
 	s = strings.TrimSpace(s)
 	if s == "" {
 		return nil, fmt.Errorf("version range cannot be empty")
@@ -40,7 +40,7 @@ func ParseVersionRange(s string) (*VersionRange, error) {
 		return nil, fmt.Errorf("invalid version range: %w", err)
 	}
 
-	return &VersionRange{
+	return &Range{
 		MinVersion:   v,
 		MinInclusive: true,
 		MaxVersion:   nil,
@@ -50,7 +50,7 @@ func ParseVersionRange(s string) (*VersionRange, error) {
 
 // MustParseRange parses a version range string and panics on error.
 // Use this only when you know the range string is valid.
-func MustParseRange(s string) *VersionRange {
+func MustParseRange(s string) *Range {
 	r, err := ParseVersionRange(s)
 	if err != nil {
 		panic(err)
@@ -59,7 +59,7 @@ func MustParseRange(s string) *VersionRange {
 }
 
 // parseRangeSyntax parses bracket range syntax like [1.0, 2.0).
-func parseRangeSyntax(s string) (*VersionRange, error) {
+func parseRangeSyntax(s string) (*Range, error) {
 	// Determine inclusive/exclusive from brackets
 	if !strings.HasPrefix(s, "[") && !strings.HasPrefix(s, "(") {
 		return nil, fmt.Errorf("range must start with [ or (")
@@ -109,7 +109,7 @@ func parseRangeSyntax(s string) (*VersionRange, error) {
 		}
 	}
 
-	return &VersionRange{
+	return &Range{
 		MinVersion:   minVersion,
 		MaxVersion:   maxVersion,
 		MinInclusive: minInclusive,
@@ -118,7 +118,7 @@ func parseRangeSyntax(s string) (*VersionRange, error) {
 }
 
 // Satisfies returns true if the version satisfies this range.
-func (r *VersionRange) Satisfies(version *NuGetVersion) bool {
+func (r *Range) Satisfies(version *NuGetVersion) bool {
 	if version == nil {
 		return false
 	}
@@ -157,7 +157,7 @@ func (r *VersionRange) Satisfies(version *NuGetVersion) bool {
 // FindBestMatch finds the highest version that satisfies this range.
 //
 // Returns nil if no version satisfies the range.
-func (r *VersionRange) FindBestMatch(versions []*NuGetVersion) *NuGetVersion {
+func (r *Range) FindBestMatch(versions []*NuGetVersion) *NuGetVersion {
 	var best *NuGetVersion
 
 	for _, v := range versions {
@@ -172,7 +172,7 @@ func (r *VersionRange) FindBestMatch(versions []*NuGetVersion) *NuGetVersion {
 }
 
 // String returns the string representation of the range.
-func (r *VersionRange) String() string {
+func (r *Range) String() string {
 	minBracket := "("
 	if r.MinInclusive {
 		minBracket = "["

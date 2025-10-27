@@ -444,8 +444,8 @@ func TestWriteNuGetConfig_ComplexConfig(t *testing.T) {
 				{Key: "source1", Value: "key1"},
 			},
 		},
-		Config: &ConfigSection{
-			Add: []ConfigItem{
+		Config: &Section{
+			Add: []Item{
 				{Key: "key1", Value: "value1"},
 				{Key: "key2", Value: "value2"},
 			},

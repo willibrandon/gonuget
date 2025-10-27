@@ -10,8 +10,10 @@ import (
 // CheckFrameworkCompatHandler checks if a package framework is compatible with a project framework.
 type CheckFrameworkCompatHandler struct{}
 
+// ErrorCode returns the error code for framework compatibility check failures.
 func (h *CheckFrameworkCompatHandler) ErrorCode() string { return "FW_COMPAT_001" }
 
+// Handle processes the framework compatibility check request.
 func (h *CheckFrameworkCompatHandler) Handle(data json.RawMessage) (interface{}, error) {
 	var req CheckFrameworkCompatRequest
 	if err := json.Unmarshal(data, &req); err != nil {
@@ -57,8 +59,10 @@ func (h *CheckFrameworkCompatHandler) Handle(data json.RawMessage) (interface{},
 // ParseFrameworkHandler parses a framework identifier into components.
 type ParseFrameworkHandler struct{}
 
+// ErrorCode returns the error code for framework parsing failures.
 func (h *ParseFrameworkHandler) ErrorCode() string { return "FW_PARSE_001" }
 
+// Handle processes the framework parsing request.
 func (h *ParseFrameworkHandler) Handle(data json.RawMessage) (interface{}, error) {
 	var req ParseFrameworkRequest
 	if err := json.Unmarshal(data, &req); err != nil {
@@ -92,8 +96,10 @@ func (h *ParseFrameworkHandler) Handle(data json.RawMessage) (interface{}, error
 // FormatFrameworkHandler formats a framework to its short folder name representation.
 type FormatFrameworkHandler struct{}
 
+// ErrorCode returns the error code for framework formatting failures.
 func (h *FormatFrameworkHandler) ErrorCode() string { return "FW_FORMAT_001" }
 
+// Handle processes the framework formatting request.
 func (h *FormatFrameworkHandler) Handle(data json.RawMessage) (interface{}, error) {
 	var req FormatFrameworkRequest
 	if err := json.Unmarshal(data, &req); err != nil {

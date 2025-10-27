@@ -92,19 +92,19 @@ func addOrUpdateCredential(cfg *config.NuGetConfig, sourceName string, username,
 	}
 
 	// Create credential items
-	var items []config.ConfigItem
+	var items []config.Item
 	if username != "" {
-		items = append(items, config.ConfigItem{Key: "Username", Value: username})
+		items = append(items, config.Item{Key: "Username", Value: username})
 	}
 	if password != "" {
 		if clearText {
-			items = append(items, config.ConfigItem{Key: "ClearTextPassword", Value: password})
+			items = append(items, config.Item{Key: "ClearTextPassword", Value: password})
 		} else {
-			items = append(items, config.ConfigItem{Key: "Password", Value: encodePassword(password)})
+			items = append(items, config.Item{Key: "Password", Value: encodePassword(password)})
 		}
 	}
 	if authTypes != "" {
-		items = append(items, config.ConfigItem{Key: "ValidAuthenticationTypes", Value: authTypes})
+		items = append(items, config.Item{Key: "ValidAuthenticationTypes", Value: authTypes})
 	}
 
 	// Find or create credential entry

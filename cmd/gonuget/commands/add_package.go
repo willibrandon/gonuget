@@ -8,7 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/willibrandon/gonuget/cmd/gonuget/project"
-	"github.com/willibrandon/gonuget/core"
+	"github.com/willibrandon/gonuget/restore"
 	"github.com/willibrandon/gonuget/version"
 )
 
@@ -143,70 +143,9 @@ func resolveLatestVersion(ctx context.Context, packageID string, opts *AddPackag
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
-	// Use default source if not specified
-	source := opts.Source
-	if source == "" {
-		source = "https://api.nuget.org/v3/index.json"
-	}
-
-	// Create repository manager and add the source
-	repoManager := core.NewRepositoryManager()
-	repo := core.NewSourceRepository(core.RepositoryConfig{
-		Name:      "default",
-		SourceURL: source,
+	// Call library function
+	return restore.ResolveLatestVersion(ctx, packageID, &restore.ResolveLatestVersionOptions{
+		Source:     opts.Source,
+		Prerelease: opts.Prerelease,
 	})
-
-	if err := repoManager.AddRepository(repo); err != nil {
-		return "", fmt.Errorf("failed to add repository %s: %w", source, err)
-	}
-
-	// List all versions
-	versions, err := repo.ListVersions(ctx, nil, packageID)
-	if err != nil {
-		return "", fmt.Errorf("failed to list versions: %w", err)
-	}
-
-	if len(versions) == 0 {
-		return "", fmt.Errorf("package '%s' not found in source %s", packageID, source)
-	}
-
-	// Filter and find latest version
-	var latestStable *version.NuGetVersion
-	var latestPrerelease *version.NuGetVersion
-
-	for _, v := range versions {
-		parsed, err := version.Parse(v)
-		if err != nil {
-			// Skip invalid versions
-			continue
-		}
-
-		if parsed.IsPrerelease() {
-			if latestPrerelease == nil || parsed.Compare(latestPrerelease) > 0 {
-				latestPrerelease = parsed
-			}
-		} else {
-			if latestStable == nil || parsed.Compare(latestStable) > 0 {
-				latestStable = parsed
-			}
-		}
-	}
-
-	// Return latest stable or prerelease based on --prerelease flag
-	if opts.Prerelease {
-		if latestPrerelease != nil {
-			return latestPrerelease.String(), nil
-		}
-		if latestStable != nil {
-			return latestStable.String(), nil
-		}
-	} else {
-		if latestStable != nil {
-			return latestStable.String(), nil
-		}
-		// If no stable version exists, return error
-		return "", fmt.Errorf("no stable version found for package '%s'. Use --prerelease to include prerelease versions", packageID)
-	}
-
-	return "", fmt.Errorf("no versions found for package '%s'", packageID)
 }

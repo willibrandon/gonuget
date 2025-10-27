@@ -107,10 +107,10 @@ func (e *PackageFileExtractor) ExtractPackageFile(
 	normalizedSource := strings.ReplaceAll(source, "\\", "/")
 
 	// Check if this is an XML doc file
-	isXmlDoc := e.xmlDocFiles[normalizedSource]
+	isXMLDoc := e.xmlDocFiles[normalizedSource]
 
 	// Handle XML doc save modes
-	if isXmlDoc {
+	if isXMLDoc {
 		switch e.xmlDocFileSaveMode {
 		case XMLDocFileSaveModeSkip:
 			// Skip extraction
@@ -118,7 +118,7 @@ func (e *PackageFileExtractor) ExtractPackageFile(
 
 		case XMLDocFileSaveModeCompress:
 			// Compress to .xml.zip
-			return e.compressXmlDoc(target, stream)
+			return e.compressXMLDoc(target, stream)
 		}
 	}
 
@@ -126,8 +126,8 @@ func (e *PackageFileExtractor) ExtractPackageFile(
 	return CopyToFile(stream, target)
 }
 
-// compressXmlDoc compresses XML file to .xml.zip.
-func (e *PackageFileExtractor) compressXmlDoc(target string, stream io.Reader) (string, error) {
+// compressXMLDoc compresses XML file to .xml.zip.
+func (e *PackageFileExtractor) compressXMLDoc(target string, stream io.Reader) (string, error) {
 	// Change extension to .xml.zip
 	zipTarget := target + ".zip"
 

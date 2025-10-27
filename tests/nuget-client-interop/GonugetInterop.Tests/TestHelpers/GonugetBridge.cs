@@ -726,6 +726,68 @@ public static class GonugetBridge
         return Execute<ResolveWithWorkerLimitResponse>(request);
     }
 
+    /// <summary>
+    /// Resolves the latest version of a package.
+    /// </summary>
+    public static ResolveLatestVersionResponse ResolveLatestVersion(
+        string packageId,
+        string source = "https://api.nuget.org/v3/index.json",
+        bool prerelease = false)
+    {
+        var request = new
+        {
+            action = "resolve_latest_version",
+            data = new
+            {
+                packageId,
+                source,
+                prerelease
+            }
+        };
+
+        return Execute<ResolveLatestVersionResponse>(request);
+    }
+
+    /// <summary>
+    /// Parses a project.assets.json lock file.
+    /// </summary>
+    public static ParseLockFileResponse ParseLockFile(string lockFilePath)
+    {
+        var request = new
+        {
+            action = "parse_lock_file",
+            data = new { lockFilePath }
+        };
+
+        return Execute<ParseLockFileResponse>(request);
+    }
+
+    /// <summary>
+    /// Restores direct dependencies for a project.
+    /// </summary>
+    public static RestoreDirectDependenciesResponse RestoreDirectDependencies(
+        string projectPath,
+        string packagesFolder,
+        string[] sources,
+        bool noCache = false,
+        bool force = false)
+    {
+        var request = new
+        {
+            action = "restore_direct_dependencies",
+            data = new
+            {
+                projectPath,
+                packagesFolder,
+                sources,
+                noCache,
+                force
+            }
+        };
+
+        return Execute<RestoreDirectDependenciesResponse>(request);
+    }
+
     // Internal response envelope types
     private sealed class ResponseEnvelope
     {

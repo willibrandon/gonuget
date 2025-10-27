@@ -14,11 +14,16 @@ import (
 )
 
 const (
-	DefaultMaxRetries     = 3
+	// DefaultMaxRetries is the default maximum number of retry attempts.
+	DefaultMaxRetries = 3
+	// DefaultInitialBackoff is the default initial backoff duration.
 	DefaultInitialBackoff = 1 * time.Second
-	DefaultMaxBackoff     = 30 * time.Second
-	DefaultBackoffFactor  = 2.0
-	DefaultJitterFactor   = 0.1
+	// DefaultMaxBackoff is the default maximum backoff duration.
+	DefaultMaxBackoff = 30 * time.Second
+	// DefaultBackoffFactor is the default backoff multiplier.
+	DefaultBackoffFactor = 2.0
+	// DefaultJitterFactor is the default jitter factor for randomization.
+	DefaultJitterFactor = 0.1
 )
 
 // RetryConfig holds retry behavior configuration

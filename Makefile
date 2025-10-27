@@ -112,11 +112,22 @@ fmt: ## Format Go code
 	@gofmt -w .
 
 # Run linter
-lint: ## Run golangci-lint and modernize checks
+lint: ## Run golangci-lint, golint, and modernize checks
 	@echo "Running linter..."
 	@golangci-lint run ./...
+	@echo "Checking documentation comments..."
+	@go run golang.org/x/lint/golint@latest -set_exit_status ./...
 	@echo "Running modernize checks..."
 	@go run golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@latest ./...
+
+# Run linter with auto-fix
+lint-fix: ## Run golangci-lint --fix and modernize -fix to auto-fix issues
+	@echo "Running linter with auto-fix..."
+	@golangci-lint run --fix ./...
+	@echo "Running modernize with auto-fix..."
+	@go run golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@latest -fix ./...
+	@echo "Formatting fixed code..."
+	@gofmt -w .
 
 # Help target
 help: ## Show this help message

@@ -12,8 +12,10 @@ import (
 // ExecuteSourceListHandler handles list source command
 type ExecuteSourceListHandler struct{}
 
+// ErrorCode returns the error code for this handler.
 func (h *ExecuteSourceListHandler) ErrorCode() string { return "CLI_SRC_LIST_001" }
 
+// Handle processes the request.
 func (h *ExecuteSourceListHandler) Handle(data json.RawMessage) (any, error) {
 	var req ExecuteSourceListRequest
 	if err := json.Unmarshal(data, &req); err != nil {
@@ -61,8 +63,10 @@ func (h *ExecuteSourceListHandler) Handle(data json.RawMessage) (any, error) {
 // ExecuteSourceAddHandler handles add source command
 type ExecuteSourceAddHandler struct{}
 
+// ErrorCode returns the error code for this handler.
 func (h *ExecuteSourceAddHandler) ErrorCode() string { return "CLI_SRC_ADD_001" }
 
+// Handle processes the request.
 func (h *ExecuteSourceAddHandler) Handle(data json.RawMessage) (any, error) {
 	var req ExecuteSourceAddRequest
 	if err := json.Unmarshal(data, &req); err != nil {
@@ -149,8 +153,10 @@ func (h *ExecuteSourceAddHandler) Handle(data json.RawMessage) (any, error) {
 // ExecuteSourceRemoveHandler handles remove source command
 type ExecuteSourceRemoveHandler struct{}
 
+// ErrorCode returns the error code for this handler.
 func (h *ExecuteSourceRemoveHandler) ErrorCode() string { return "CLI_SRC_REM_001" }
 
+// Handle processes the request.
 func (h *ExecuteSourceRemoveHandler) Handle(data json.RawMessage) (any, error) {
 	var req ExecuteSourceRemoveRequest
 	if err := json.Unmarshal(data, &req); err != nil {
@@ -201,8 +207,10 @@ func (h *ExecuteSourceRemoveHandler) Handle(data json.RawMessage) (any, error) {
 // ExecuteSourceEnableHandler handles enable source command
 type ExecuteSourceEnableHandler struct{}
 
+// ErrorCode returns the error code for this handler.
 func (h *ExecuteSourceEnableHandler) ErrorCode() string { return "CLI_SRC_EN_001" }
 
+// Handle processes the request.
 func (h *ExecuteSourceEnableHandler) Handle(data json.RawMessage) (any, error) {
 	var req ExecuteSourceEnableRequest
 	if err := json.Unmarshal(data, &req); err != nil {
@@ -243,8 +251,10 @@ func (h *ExecuteSourceEnableHandler) Handle(data json.RawMessage) (any, error) {
 // ExecuteSourceDisableHandler handles disable source command
 type ExecuteSourceDisableHandler struct{}
 
+// ErrorCode returns the error code for this handler.
 func (h *ExecuteSourceDisableHandler) ErrorCode() string { return "CLI_SRC_DIS_001" }
 
+// Handle processes the request.
 func (h *ExecuteSourceDisableHandler) Handle(data json.RawMessage) (any, error) {
 	var req ExecuteSourceDisableRequest
 	if err := json.Unmarshal(data, &req); err != nil {
@@ -285,8 +295,10 @@ func (h *ExecuteSourceDisableHandler) Handle(data json.RawMessage) (any, error) 
 // ExecuteSourceUpdateHandler handles update source command
 type ExecuteSourceUpdateHandler struct{}
 
+// ErrorCode returns the error code for this handler.
 func (h *ExecuteSourceUpdateHandler) ErrorCode() string { return "CLI_SRC_UPD_001" }
 
+// Handle processes the request.
 func (h *ExecuteSourceUpdateHandler) Handle(data json.RawMessage) (any, error) {
 	var req ExecuteSourceUpdateRequest
 	if err := json.Unmarshal(data, &req); err != nil {

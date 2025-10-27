@@ -126,6 +126,14 @@ func main() {
 	case "resolve_with_worker_limit":
 		handler = &ResolveWithWorkerLimitHandler{}
 
+	// Restore operations
+	case "resolve_latest_version":
+		handler = &ResolveLatestVersionHandler{}
+	case "parse_lock_file":
+		handler = &ParseLockFileHandler{}
+	case "restore_direct_dependencies":
+		handler = &RestoreDirectDependenciesHandler{}
+
 	default:
 		sendError("ACT_001", "Unknown action", fmt.Sprintf("action=%s", req.Action))
 		os.Exit(1)

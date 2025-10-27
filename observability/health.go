@@ -13,8 +13,11 @@ import (
 type HealthStatus string
 
 const (
-	HealthStatusHealthy   HealthStatus = "healthy"
-	HealthStatusDegraded  HealthStatus = "degraded"
+	// HealthStatusHealthy indicates the service is healthy.
+	HealthStatusHealthy HealthStatus = "healthy"
+	// HealthStatusDegraded indicates the service is degraded.
+	HealthStatusDegraded HealthStatus = "degraded"
+	// HealthStatusUnhealthy indicates the service is unhealthy.
 	HealthStatusUnhealthy HealthStatus = "unhealthy"
 )
 
@@ -139,6 +142,7 @@ func (hc *HealthChecker) OverallStatus(ctx context.Context) HealthStatus {
 	if hasDegraded {
 		return HealthStatusDegraded
 	}
+	// HealthStatusHealthy indicates the service is healthy.
 	return HealthStatusHealthy
 }
 
@@ -158,6 +162,7 @@ func (hc *HealthChecker) Handler() http.HandlerFunc {
 
 		// Set status code based on health
 		switch overall {
+		// HealthStatusHealthy indicates the service is healthy.
 		case HealthStatusHealthy:
 			w.WriteHeader(http.StatusOK)
 		case HealthStatusDegraded:
@@ -211,6 +216,7 @@ func HTTPSourceHealthCheck(name, url string, timeout time.Duration) HealthCheck 
 			}
 
 			return HealthCheckResult{
+				// HealthStatusHealthy indicates the service is healthy.
 				Status:  HealthStatusHealthy,
 				Message: "source reachable",
 			}
@@ -237,6 +243,7 @@ func CacheHealthCheck(name string, sizeBytes int64, maxSizeBytes int64) HealthCh
 			}
 
 			return HealthCheckResult{
+				// HealthStatusHealthy indicates the service is healthy.
 				Status:  HealthStatusHealthy,
 				Message: "cache operational",
 			}

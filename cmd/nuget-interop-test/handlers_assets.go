@@ -13,8 +13,10 @@ import (
 // If targetFramework is empty, uses pattern matching (all matches).
 type FindRuntimeAssembliesHandler struct{}
 
+// ErrorCode returns the error code for this handler.
 func (h *FindRuntimeAssembliesHandler) ErrorCode() string { return "ASSET_RT_001" }
 
+// Handle processes the request.
 func (h *FindRuntimeAssembliesHandler) Handle(data json.RawMessage) (interface{}, error) {
 	var req FindAssembliesRequest
 	if err := json.Unmarshal(data, &req); err != nil {
@@ -63,8 +65,10 @@ func (h *FindRuntimeAssembliesHandler) Handle(data json.RawMessage) (interface{}
 // If targetFramework is empty, uses pattern matching (all matches from both ref/ and lib/).
 type FindCompileAssembliesHandler struct{}
 
+// ErrorCode returns the error code for this handler.
 func (h *FindCompileAssembliesHandler) ErrorCode() string { return "ASSET_CP_001" }
 
+// Handle processes the request.
 func (h *FindCompileAssembliesHandler) Handle(data json.RawMessage) (interface{}, error) {
 	var req FindAssembliesRequest
 	if err := json.Unmarshal(data, &req); err != nil {
@@ -124,8 +128,10 @@ func (h *FindCompileAssembliesHandler) Handle(data json.RawMessage) (interface{}
 // ParseAssetPathHandler parses a single asset path and extracts properties.
 type ParseAssetPathHandler struct{}
 
+// ErrorCode returns the error code for this handler.
 func (h *ParseAssetPathHandler) ErrorCode() string { return "ASSET_PARSE_001" }
 
+// Handle processes the request.
 func (h *ParseAssetPathHandler) Handle(data json.RawMessage) (interface{}, error) {
 	var req ParseAssetPathRequest
 	if err := json.Unmarshal(data, &req); err != nil {
@@ -211,8 +217,10 @@ func contentItemToData(item *assets.ContentItem) ContentItemData {
 // ExpandRuntimeHandler expands a runtime identifier to all compatible RIDs.
 type ExpandRuntimeHandler struct{}
 
+// ErrorCode returns the error code for this handler.
 func (h *ExpandRuntimeHandler) ErrorCode() string { return "RID_EXP_001" }
 
+// Handle processes the request.
 func (h *ExpandRuntimeHandler) Handle(data json.RawMessage) (interface{}, error) {
 	var req ExpandRuntimeRequest
 	if err := json.Unmarshal(data, &req); err != nil {
@@ -238,8 +246,10 @@ func (h *ExpandRuntimeHandler) Handle(data json.RawMessage) (interface{}, error)
 // AreRuntimesCompatibleHandler checks if two runtime identifiers are compatible.
 type AreRuntimesCompatibleHandler struct{}
 
+// ErrorCode returns the error code for this handler.
 func (h *AreRuntimesCompatibleHandler) ErrorCode() string { return "RID_COMPAT_001" }
 
+// Handle processes the request.
 func (h *AreRuntimesCompatibleHandler) Handle(data json.RawMessage) (interface{}, error) {
 	var req AreRuntimesCompatibleRequest
 	if err := json.Unmarshal(data, &req); err != nil {

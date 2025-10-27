@@ -218,7 +218,7 @@ func (b *PackageBuilder) AddDependencyGroup(group PackageDependencyGroup) *Packa
 }
 
 // AddDependency adds a dependency to a specific framework (or nil for "any").
-func (b *PackageBuilder) AddDependency(fw *frameworks.NuGetFramework, id string, versionRange *version.VersionRange) *PackageBuilder {
+func (b *PackageBuilder) AddDependency(fw *frameworks.NuGetFramework, id string, versionRange *version.Range) *PackageBuilder {
 	// Find existing group for this framework
 	for i := range b.metadata.DependencyGroups {
 		if frameworksEqual(b.metadata.DependencyGroups[i].TargetFramework, fw) {

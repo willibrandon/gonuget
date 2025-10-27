@@ -309,17 +309,17 @@ func TestCompressXmlDoc(t *testing.T) {
 			}
 
 			stream := bytes.NewReader([]byte(tt.xmlContent))
-			resultPath, err := extractor.compressXmlDoc(targetPath, stream)
+			resultPath, err := extractor.compressXMLDoc(targetPath, stream)
 
 			if (err != nil) != tt.wantErr {
-				t.Errorf("compressXmlDoc() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("compressXMLDoc() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
 
 			if err == nil {
 				expectedZipPath := targetPath + ".zip"
 				if resultPath != expectedZipPath {
-					t.Errorf("compressXmlDoc() path = %v, want %v", resultPath, expectedZipPath)
+					t.Errorf("compressXMLDoc() path = %v, want %v", resultPath, expectedZipPath)
 				}
 
 				// Verify ZIP file exists
@@ -346,9 +346,9 @@ func TestCompressXmlDoc_DirectoryCreation(t *testing.T) {
 	xmlContent := "<doc>Test</doc>"
 	stream := bytes.NewReader([]byte(xmlContent))
 
-	resultPath, err := extractor.compressXmlDoc(targetPath, stream)
+	resultPath, err := extractor.compressXMLDoc(targetPath, stream)
 	if err != nil {
-		t.Fatalf("compressXmlDoc() error = %v", err)
+		t.Fatalf("compressXMLDoc() error = %v", err)
 	}
 
 	// Verify all directories were created
@@ -358,7 +358,7 @@ func TestCompressXmlDoc_DirectoryCreation(t *testing.T) {
 	}
 
 	if resultPath != expectedZipPath {
-		t.Errorf("compressXmlDoc() path = %v, want %v", resultPath, expectedZipPath)
+		t.Errorf("compressXMLDoc() path = %v, want %v", resultPath, expectedZipPath)
 	}
 }
 
@@ -478,9 +478,9 @@ func TestCompressXmlDoc_ZipStructure(t *testing.T) {
 	xmlContent := "<doc>Test content</doc>"
 	stream := bytes.NewReader([]byte(xmlContent))
 
-	resultPath, err := extractor.compressXmlDoc(targetPath, stream)
+	resultPath, err := extractor.compressXMLDoc(targetPath, stream)
 	if err != nil {
-		t.Fatalf("compressXmlDoc() error = %v", err)
+		t.Fatalf("compressXMLDoc() error = %v", err)
 	}
 
 	// Open ZIP and verify structure
@@ -566,9 +566,9 @@ func BenchmarkCompressXmlDoc(b *testing.B) {
 	for i := range b.N {
 		targetPath := filepath.Join(tempDir, fmt.Sprintf("MyLib%d.xml", i))
 		stream := bytes.NewReader(xmlContent)
-		_, err := extractor.compressXmlDoc(targetPath, stream)
+		_, err := extractor.compressXMLDoc(targetPath, stream)
 		if err != nil {
-			b.Fatalf("compressXmlDoc() error = %v", err)
+			b.Fatalf("compressXMLDoc() error = %v", err)
 		}
 	}
 }

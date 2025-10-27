@@ -17,9 +17,12 @@ import (
 )
 
 const (
-	DefaultTimeout     = 30 * time.Second
+	// DefaultTimeout is the default HTTP request timeout.
+	DefaultTimeout = 30 * time.Second
+	// DefaultDialTimeout is the default TCP connection timeout.
 	DefaultDialTimeout = 10 * time.Second
-	DefaultUserAgent   = "gonuget/0.1.0"
+	// DefaultUserAgent is the default User-Agent header value.
+	DefaultUserAgent = "gonuget/0.1.0"
 )
 
 // Client wraps http.Client with NuGet-specific configuration

@@ -2,8 +2,8 @@ package project
 
 import "encoding/xml"
 
-// ProjectRootElement represents the root <Project> element of a .csproj file.
-type ProjectRootElement struct {
+// RootElement represents the root <Project> element of a .csproj file.
+type RootElement struct {
 	XMLName       xml.Name        `xml:"Project"`
 	Sdk           string          `xml:"Sdk,attr,omitempty"`
 	PropertyGroup []PropertyGroup `xml:"PropertyGroup"`
@@ -23,10 +23,10 @@ type PropertyGroup struct {
 
 // ItemGroup represents an <ItemGroup> element containing package references or other items.
 type ItemGroup struct {
-	Condition         string             `xml:"Condition,attr,omitempty"`
-	PackageReferences []PackageReference `xml:"PackageReference,omitempty"`
-	ProjectReferences []ProjectReference `xml:"ProjectReference,omitempty"`
-	References        []Reference        `xml:"Reference,omitempty"`
+	Condition         string              `xml:"Condition,attr,omitempty"`
+	PackageReferences []PackageReference  `xml:"PackageReference,omitempty"`
+	ProjectReferences []Reference         `xml:"ProjectReference,omitempty"`
+	References        []AssemblyReference `xml:"Reference,omitempty"`
 }
 
 // PackageReference represents a <PackageReference> element.
@@ -40,12 +40,14 @@ type PackageReference struct {
 	GeneratePathProperty string `xml:"GeneratePathProperty,attr,omitempty"`
 }
 
-// ProjectReference represents a <ProjectReference> element.
-type ProjectReference struct {
+// Reference represents a <ProjectReference> element (references to other projects).
+// Named Reference rather than ProjectReference to avoid package name stuttering.
+type Reference struct {
 	Include string `xml:"Include,attr"`
 }
 
-// Reference represents a <Reference> element (legacy .NET Framework).
-type Reference struct {
+// AssemblyReference represents a <Reference> element (legacy .NET Framework assembly references).
+// Named AssemblyReference to distinguish from Reference (project references) and avoid conflicts.
+type AssemblyReference struct {
 	Include string `xml:"Include,attr"`
 }

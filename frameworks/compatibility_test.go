@@ -5,7 +5,7 @@ import "testing"
 func TestIsCompatible(t *testing.T) {
 	tests := []struct {
 		name       string
-		package_   string
+		packageFw  string
 		target     string
 		compatible bool
 	}{
@@ -33,7 +33,7 @@ func TestIsCompatible(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			pkg := MustParseFramework(tt.package_)
+			pkg := MustParseFramework(tt.packageFw)
 			target := MustParseFramework(tt.target)
 
 			got := pkg.IsCompatible(target)

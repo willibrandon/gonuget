@@ -1,4 +1,4 @@
-// cmd/gonuget/config/nuget_config.go
+// Package config implements NuGet configuration management and parsing.
 package config
 
 import (
@@ -15,7 +15,7 @@ type NuGetConfig struct {
 	PackageSources           *PackageSources           `xml:"packageSources"`
 	DisabledPackageSources   *DisabledPackageSources   `xml:"disabledPackageSources,omitempty"`
 	APIKeys                  *APIKeys                  `xml:"apikeys"`
-	Config                   *ConfigSection            `xml:"config"`
+	Config                   *Section                  `xml:"config"`
 	TrustedSigners           *TrustedSigners           `xml:"trustedSigners"`
 	PackageSourceCredentials *PackageSourceCredentials `xml:"packageSourceCredentials"`
 }
@@ -57,14 +57,14 @@ type APIKey struct {
 	Value string `xml:"value,attr"`
 }
 
-// ConfigSection contains configuration settings
-type ConfigSection struct {
-	Clear bool         `xml:"clear"`
-	Add   []ConfigItem `xml:"add"`
+// Section contains configuration settings
+type Section struct {
+	Clear bool   `xml:"clear"`
+	Add   []Item `xml:"add"`
 }
 
-// ConfigItem represents a configuration key-value pair
-type ConfigItem struct {
+// Item represents a configuration key-value pair
+type Item struct {
 	Key   string `xml:"key,attr"`
 	Value string `xml:"value,attr"`
 }
@@ -89,7 +89,7 @@ type PackageSourceCredentials struct {
 // SourceCredential represents credentials for a source
 type SourceCredential struct {
 	XMLName xml.Name
-	Add     []ConfigItem `xml:"add"`
+	Add     []Item `xml:"add"`
 }
 
 // LoadNuGetConfig loads a NuGet.config file
@@ -220,7 +220,7 @@ func (c *NuGetConfig) GetConfigValue(key string) string {
 // SetConfigValue sets a configuration value
 func (c *NuGetConfig) SetConfigValue(key, value string) {
 	if c.Config == nil {
-		c.Config = &ConfigSection{}
+		c.Config = &Section{}
 	}
 
 	// Check if exists
@@ -232,7 +232,7 @@ func (c *NuGetConfig) SetConfigValue(key, value string) {
 	}
 
 	// Add new
-	c.Config.Add = append(c.Config.Add, ConfigItem{Key: key, Value: value})
+	c.Config.Add = append(c.Config.Add, Item{Key: key, Value: value})
 }
 
 // DeleteConfigValue removes a configuration value by key
@@ -241,7 +241,7 @@ func (c *NuGetConfig) DeleteConfigValue(key string) {
 		return
 	}
 
-	var filtered []ConfigItem
+	var filtered []Item
 	for _, item := range c.Config.Add {
 		if item.Key != key {
 			filtered = append(filtered, item)

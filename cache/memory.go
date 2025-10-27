@@ -144,11 +144,11 @@ func (mc *MemoryCache) Clear() {
 }
 
 // Stats returns cache statistics.
-func (mc *MemoryCache) Stats() CacheStats {
+func (mc *MemoryCache) Stats() Stats {
 	mc.mu.RLock()
 	defer mc.mu.RUnlock()
 
-	return CacheStats{
+	return Stats{
 		Entries:   len(mc.entries),
 		SizeBytes: mc.totalSize,
 	}
@@ -181,8 +181,8 @@ func (mc *MemoryCache) evictIfNeeded() {
 	}
 }
 
-// CacheStats holds cache statistics.
-type CacheStats struct {
+// Stats holds cache statistics.
+type Stats struct {
 	Entries   int
 	SizeBytes int64
 }

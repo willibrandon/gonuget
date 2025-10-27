@@ -1,4 +1,4 @@
-// cmd/gonuget/output/colors.go
+// Package output provides console output formatting and colorization.
 package output
 
 import (

@@ -32,6 +32,6 @@ func (a *BasicAuthenticator) Authenticate(req *http.Request) error {
 }
 
 // Type returns the authentication type.
-func (a *BasicAuthenticator) Type() AuthType {
+func (a *BasicAuthenticator) Type() Type {
 	return AuthTypeBasic
 }

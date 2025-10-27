@@ -98,13 +98,13 @@ func TestCalculateCompatibilityScore_EdgeCases(t *testing.T) {
 func TestIsCompatible_NonNetStandard(t *testing.T) {
 	tests := []struct {
 		name       string
-		package_fw *NuGetFramework
+		packageFw  *NuGetFramework
 		target     *NuGetFramework
 		compatible bool
 	}{
 		{
 			name: ".NET Framework 4.8 → .NET Framework 4.8",
-			package_fw: &NuGetFramework{
+			packageFw: &NuGetFramework{
 				Framework: ".NETFramework",
 				Version:   FrameworkVersion{Major: 4, Minor: 8},
 			},
@@ -116,7 +116,7 @@ func TestIsCompatible_NonNetStandard(t *testing.T) {
 		},
 		{
 			name: ".NET Framework 4.8 → .NET Framework 4.5 (incompatible)",
-			package_fw: &NuGetFramework{
+			packageFw: &NuGetFramework{
 				Framework: ".NETFramework",
 				Version:   FrameworkVersion{Major: 4, Minor: 8},
 			},
@@ -128,7 +128,7 @@ func TestIsCompatible_NonNetStandard(t *testing.T) {
 		},
 		{
 			name: ".NET Core 3.1 → .NET Core 3.1",
-			package_fw: &NuGetFramework{
+			packageFw: &NuGetFramework{
 				Framework: ".NETCoreApp",
 				Version:   FrameworkVersion{Major: 3, Minor: 1},
 			},
@@ -140,7 +140,7 @@ func TestIsCompatible_NonNetStandard(t *testing.T) {
 		},
 		{
 			name: ".NET Core 3.1 → .NET 5.0",
-			package_fw: &NuGetFramework{
+			packageFw: &NuGetFramework{
 				Framework: ".NETCoreApp",
 				Version:   FrameworkVersion{Major: 3, Minor: 1},
 			},
@@ -154,7 +154,7 @@ func TestIsCompatible_NonNetStandard(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := tt.package_fw.IsCompatible(tt.target)
+			got := tt.packageFw.IsCompatible(tt.target)
 			if got != tt.compatible {
 				t.Errorf("IsCompatible() = %v, want %v", got, tt.compatible)
 			}

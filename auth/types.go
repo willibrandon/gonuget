@@ -11,12 +11,16 @@ type Authenticator interface {
 	Authenticate(req *http.Request) error
 }
 
-// AuthType represents the type of authentication.
-type AuthType string
+// Type represents the type of authentication.
+type Type string
 
 const (
-	AuthTypeNone   AuthType = "none"
-	AuthTypeAPIKey AuthType = "apikey"
-	AuthTypeBearer AuthType = "bearer"
-	AuthTypeBasic  AuthType = "basic"
+	// AuthTypeNone indicates no authentication is required.
+	AuthTypeNone Type = "none"
+	// AuthTypeAPIKey indicates API key authentication.
+	AuthTypeAPIKey Type = "apikey"
+	// AuthTypeBearer indicates bearer token authentication.
+	AuthTypeBearer Type = "bearer"
+	// AuthTypeBasic indicates HTTP basic authentication.
+	AuthTypeBasic Type = "basic"
 )

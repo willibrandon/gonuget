@@ -26,6 +26,6 @@ func (a *BearerAuthenticator) Authenticate(req *http.Request) error {
 }
 
 // Type returns the authentication type.
-func (a *BearerAuthenticator) Type() AuthType {
+func (a *BearerAuthenticator) Type() Type {
 	return AuthTypeBearer
 }

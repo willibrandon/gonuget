@@ -1,4 +1,4 @@
-// cmd/gonuget/cli/app.go
+// Package cli provides the gonuget CLI application framework.
 package cli
 
 import (

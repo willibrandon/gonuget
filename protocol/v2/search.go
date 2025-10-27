@@ -177,8 +177,8 @@ func (c *SearchClient) buildSearchURL(feedURL string, opts SearchOptions) (strin
 	return searchURL, nil
 }
 
-// FindPackagesById searches for all versions of a specific package ID.
-func (c *SearchClient) FindPackagesById(ctx context.Context, feedURL, packageID string) ([]SearchResult, error) {
+// FindPackagesByID searches for all versions of a specific package ID.
+func (c *SearchClient) FindPackagesByID(ctx context.Context, feedURL, packageID string) ([]SearchResult, error) {
 	return c.Search(ctx, feedURL, SearchOptions{
 		Filter:            fmt.Sprintf("Id eq '%s'", packageID),
 		OrderBy:           "Version desc",

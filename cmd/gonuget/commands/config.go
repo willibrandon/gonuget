@@ -1,4 +1,4 @@
-// cmd/gonuget/commands/config.go
+// Package commands implements the gonuget CLI commands.
 package commands
 
 import (
@@ -330,7 +330,7 @@ func listAllConfigFromHierarchy(console *output.Console, workingDirectory string
 func mergeConfigs(paths []string) *config.NuGetConfig {
 	merged := &config.NuGetConfig{}
 	packageSourceMap := make(map[string]config.PackageSource)
-	configItemMap := make(map[string]config.ConfigItem)
+	configItemMap := make(map[string]config.Item)
 	apiKeyMap := make(map[string]config.APIKey)
 
 	// Load and merge all configs (later files override earlier)
@@ -372,7 +372,7 @@ func mergeConfigs(paths []string) *config.NuGetConfig {
 	}
 
 	if len(configItemMap) > 0 {
-		merged.Config = &config.ConfigSection{}
+		merged.Config = &config.Section{}
 		for _, item := range configItemMap {
 			merged.Config.Add = append(merged.Config.Add, item)
 		}

@@ -530,8 +530,8 @@ func TestListAllConfig_EmptyItems(t *testing.T) {
 	console := output.NewConsole(&out, &out, output.VerbosityNormal)
 
 	cfg := &config.NuGetConfig{
-		Config: &config.ConfigSection{
-			Add: []config.ConfigItem{},
+		Config: &config.Section{
+			Add: []config.Item{},
 		},
 	}
 

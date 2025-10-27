@@ -25,6 +25,6 @@ func (a *APIKeyAuthenticator) Authenticate(req *http.Request) error {
 }
 
 // Type returns the authentication type.
-func (a *APIKeyAuthenticator) Type() AuthType {
+func (a *APIKeyAuthenticator) Type() Type {
 	return AuthTypeAPIKey
 }

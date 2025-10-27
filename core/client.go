@@ -165,7 +165,7 @@ func (c *Client) ListVersions(ctx context.Context, packageID string) ([]string, 
 }
 
 // FindBestVersion finds the best matching version for a version range
-func (c *Client) FindBestVersion(ctx context.Context, packageID string, versionRange *version.VersionRange) (*version.NuGetVersion, error) {
+func (c *Client) FindBestVersion(ctx context.Context, packageID string, versionRange *version.Range) (*version.NuGetVersion, error) {
 	// Get all versions
 	versionStrings, err := c.ListVersions(ctx, packageID)
 	if err != nil {

@@ -8,8 +8,10 @@ import (
 // ExecuteCommandPairHandler executes both dotnet nuget and gonuget commands
 type ExecuteCommandPairHandler struct{}
 
+// ErrorCode returns the error code for this handler.
 func (h *ExecuteCommandPairHandler) ErrorCode() string { return "CLI_EXEC_001" }
 
+// Handle processes the request.
 func (h *ExecuteCommandPairHandler) Handle(data json.RawMessage) (any, error) {
 	var req ExecuteCommandPairRequest
 	if err := json.Unmarshal(data, &req); err != nil {
@@ -50,8 +52,10 @@ func (h *ExecuteCommandPairHandler) Handle(data json.RawMessage) (any, error) {
 // ExecuteConfigGetHandler handles config get command
 type ExecuteConfigGetHandler struct{}
 
+// ErrorCode returns the error code for this handler.
 func (h *ExecuteConfigGetHandler) ErrorCode() string { return "CLI_CFG_GET_001" }
 
+// Handle processes the request.
 func (h *ExecuteConfigGetHandler) Handle(data json.RawMessage) (any, error) {
 	var req ExecuteConfigGetRequest
 	if err := json.Unmarshal(data, &req); err != nil {
@@ -106,8 +110,10 @@ func (h *ExecuteConfigGetHandler) Handle(data json.RawMessage) (any, error) {
 // ExecuteConfigSetHandler handles config set command
 type ExecuteConfigSetHandler struct{}
 
+// ErrorCode returns the error code for this handler.
 func (h *ExecuteConfigSetHandler) ErrorCode() string { return "CLI_CFG_SET_001" }
 
+// Handle processes the request.
 func (h *ExecuteConfigSetHandler) Handle(data json.RawMessage) (any, error) {
 	var req ExecuteConfigSetRequest
 	if err := json.Unmarshal(data, &req); err != nil {
@@ -148,8 +154,10 @@ func (h *ExecuteConfigSetHandler) Handle(data json.RawMessage) (any, error) {
 // ExecuteConfigUnsetHandler handles config unset command
 type ExecuteConfigUnsetHandler struct{}
 
+// ErrorCode returns the error code for this handler.
 func (h *ExecuteConfigUnsetHandler) ErrorCode() string { return "CLI_CFG_UNSET_001" }
 
+// Handle processes the request.
 func (h *ExecuteConfigUnsetHandler) Handle(data json.RawMessage) (any, error) {
 	var req ExecuteConfigUnsetRequest
 	if err := json.Unmarshal(data, &req); err != nil {
@@ -190,8 +198,10 @@ func (h *ExecuteConfigUnsetHandler) Handle(data json.RawMessage) (any, error) {
 // ExecuteConfigPathsHandler handles config paths command
 type ExecuteConfigPathsHandler struct{}
 
+// ErrorCode returns the error code for this handler.
 func (h *ExecuteConfigPathsHandler) ErrorCode() string { return "CLI_CFG_PATHS_001" }
 
+// Handle processes the request.
 func (h *ExecuteConfigPathsHandler) Handle(data json.RawMessage) (any, error) {
 	var req ExecuteConfigPathsRequest
 	if err := json.Unmarshal(data, &req); err != nil {

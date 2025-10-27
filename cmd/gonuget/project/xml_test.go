@@ -9,7 +9,7 @@ import (
 )
 
 func TestProjectRootElement_Marshal_SDKStyle(t *testing.T) {
-	root := ProjectRootElement{
+	root := RootElement{
 		Sdk: "Microsoft.NET.Sdk",
 		PropertyGroup: []PropertyGroup{
 			{TargetFramework: "net8.0"},
@@ -29,7 +29,7 @@ func TestProjectRootElement_Marshal_SDKStyle(t *testing.T) {
 }
 
 func TestProjectRootElement_Marshal_WithPackageReferences(t *testing.T) {
-	root := ProjectRootElement{
+	root := RootElement{
 		Sdk: "Microsoft.NET.Sdk",
 		PropertyGroup: []PropertyGroup{
 			{TargetFramework: "net8.0"},
@@ -65,7 +65,7 @@ func TestProjectRootElement_Unmarshal_SDKStyle(t *testing.T) {
   </PropertyGroup>
 </Project>`
 
-	var root ProjectRootElement
+	var root RootElement
 	err := xml.Unmarshal([]byte(xmlData), &root)
 	require.NoError(t, err)
 
@@ -85,7 +85,7 @@ func TestProjectRootElement_Unmarshal_WithPackageReferences(t *testing.T) {
   </ItemGroup>
 </Project>`
 
-	var root ProjectRootElement
+	var root RootElement
 	err := xml.Unmarshal([]byte(xmlData), &root)
 	require.NoError(t, err)
 
@@ -104,7 +104,7 @@ func TestProjectRootElement_Unmarshal_MultiTFM(t *testing.T) {
   </PropertyGroup>
 </Project>`
 
-	var root ProjectRootElement
+	var root RootElement
 	err := xml.Unmarshal([]byte(xmlData), &root)
 	require.NoError(t, err)
 
@@ -122,7 +122,7 @@ func TestProjectRootElement_Unmarshal_ConditionalItemGroup(t *testing.T) {
   </ItemGroup>
 </Project>`
 
-	var root ProjectRootElement
+	var root RootElement
 	err := xml.Unmarshal([]byte(xmlData), &root)
 	require.NoError(t, err)
 
@@ -163,7 +163,7 @@ func TestPackageReference_Unmarshal_AllAttributes(t *testing.T) {
 }
 
 func TestPropertyGroup_Marshal_Multiple(t *testing.T) {
-	root := ProjectRootElement{
+	root := RootElement{
 		Sdk: "Microsoft.NET.Sdk",
 		PropertyGroup: []PropertyGroup{
 			{TargetFramework: "net8.0", OutputType: "Exe"},
@@ -185,7 +185,7 @@ func TestItemGroup_Marshal_Mixed(t *testing.T) {
 		PackageReferences: []PackageReference{
 			{Include: "Newtonsoft.Json", Version: "13.0.3"},
 		},
-		ProjectReferences: []ProjectReference{
+		ProjectReferences: []Reference{
 			{Include: "../OtherProject/OtherProject.csproj"},
 		},
 	}
@@ -207,7 +207,7 @@ func TestProjectRootElement_Unmarshal_Legacy(t *testing.T) {
   </ItemGroup>
 </Project>`
 
-	var root ProjectRootElement
+	var root RootElement
 	err := xml.Unmarshal([]byte(xmlData), &root)
 	require.NoError(t, err)
 

@@ -10,8 +10,10 @@ import (
 // CompareVersionsHandler compares two NuGet version strings.
 type CompareVersionsHandler struct{}
 
+// ErrorCode returns the error code for version comparison failures.
 func (h *CompareVersionsHandler) ErrorCode() string { return "VER_CMP_001" }
 
+// Handle processes the version comparison request.
 func (h *CompareVersionsHandler) Handle(data json.RawMessage) (interface{}, error) {
 	var req CompareVersionsRequest
 	if err := json.Unmarshal(data, &req); err != nil {
@@ -49,8 +51,10 @@ func (h *CompareVersionsHandler) Handle(data json.RawMessage) (interface{}, erro
 // ParseVersionHandler parses a NuGet version string into its components.
 type ParseVersionHandler struct{}
 
+// ErrorCode returns the error code for version parsing failures.
 func (h *ParseVersionHandler) ErrorCode() string { return "VER_PARSE_001" }
 
+// Handle processes the version parsing request.
 func (h *ParseVersionHandler) Handle(data json.RawMessage) (interface{}, error) {
 	var req ParseVersionRequest
 	if err := json.Unmarshal(data, &req); err != nil {

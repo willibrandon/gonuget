@@ -53,7 +53,7 @@ type PackageDependencyGroup struct {
 // PackageDependency represents a single package dependency.
 type PackageDependency struct {
 	ID           string
-	VersionRange *version.VersionRange
+	VersionRange *version.Range
 	Include      []string // Asset include filters
 	Exclude      []string // Asset exclude filters
 }

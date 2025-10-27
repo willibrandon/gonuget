@@ -15,8 +15,10 @@ import (
 // ReadPackageHandler reads package metadata from a .nupkg file.
 type ReadPackageHandler struct{}
 
+// ErrorCode returns the error code for this handler.
 func (h *ReadPackageHandler) ErrorCode() string { return "PKG_READ_001" }
 
+// Handle processes the request.
 func (h *ReadPackageHandler) Handle(data json.RawMessage) (interface{}, error) {
 	var req ReadPackageRequest
 	if err := json.Unmarshal(data, &req); err != nil {
@@ -78,8 +80,10 @@ func (h *ReadPackageHandler) Handle(data json.RawMessage) (interface{}, error) {
 // BuildPackageHandler creates a minimal .nupkg package.
 type BuildPackageHandler struct{}
 
+// ErrorCode returns the error code for this handler.
 func (h *BuildPackageHandler) ErrorCode() string { return "PKG_BUILD_001" }
 
+// Handle processes the request.
 func (h *BuildPackageHandler) Handle(data json.RawMessage) (interface{}, error) {
 	var req BuildPackageRequest
 	if err := json.Unmarshal(data, &req); err != nil {
@@ -133,8 +137,10 @@ func (h *BuildPackageHandler) Handle(data json.RawMessage) (interface{}, error) 
 // ExtractPackageV2Handler extracts a package using V2 (packages.config) layout.
 type ExtractPackageV2Handler struct{}
 
+// ErrorCode returns the error code for this handler.
 func (h *ExtractPackageV2Handler) ErrorCode() string { return "PKG_EXTRACT_V2_001" }
 
+// Handle processes the request.
 func (h *ExtractPackageV2Handler) Handle(data json.RawMessage) (interface{}, error) {
 	var req ExtractPackageV2Request
 	if err := json.Unmarshal(data, &req); err != nil {
@@ -182,8 +188,10 @@ func (h *ExtractPackageV2Handler) Handle(data json.RawMessage) (interface{}, err
 // InstallFromSourceV3Handler installs a package using V3 (PackageReference) layout.
 type InstallFromSourceV3Handler struct{}
 
+// ErrorCode returns the error code for this handler.
 func (h *InstallFromSourceV3Handler) ErrorCode() string { return "PKG_INSTALL_V3_001" }
 
+// Handle processes the request.
 func (h *InstallFromSourceV3Handler) Handle(data json.RawMessage) (interface{}, error) {
 	var req InstallFromSourceV3Request
 	if err := json.Unmarshal(data, &req); err != nil {

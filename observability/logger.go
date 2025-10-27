@@ -163,11 +163,17 @@ func (a *mtlogAdapter) WithProperty(key string, value any) Logger {
 type LogLevel int
 
 const (
+	// VerboseLevel is the most detailed logging level.
 	VerboseLevel LogLevel = iota
+	// DebugLevel is for debug messages.
 	DebugLevel
+	// InfoLevel is for informational messages.
 	InfoLevel
+	// WarnLevel is for warning messages.
 	WarnLevel
+	// ErrorLevel is for error messages.
 	ErrorLevel
+	// FatalLevel is for fatal error messages.
 	FatalLevel
 )
 

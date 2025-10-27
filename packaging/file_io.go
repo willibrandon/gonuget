@@ -110,14 +110,14 @@ func UpdateFileTimeFromEntry(fileFullPath string, modTime time.Time, logger Logg
 
 	var lastErr error
 	for retry := 0; retry <= maxRetries; retry++ {
-		if err := os.Chtimes(fileFullPath, modTime, modTime); err == nil {
+		err := os.Chtimes(fileFullPath, modTime, modTime)
+		if err == nil {
 			return nil
-		} else {
-			lastErr = err
-			if retry < maxRetries {
-				// Exponential backoff: 1ms, 2ms, 4ms, 8ms, ...
-				time.Sleep(time.Duration(1<<uint(retry)) * time.Millisecond)
-			}
+		}
+		lastErr = err
+		if retry < maxRetries {
+			// Exponential backoff: 1ms, 2ms, 4ms, 8ms, ...
+			time.Sleep(time.Duration(1<<uint(retry)) * time.Millisecond)
 		}
 	}
 

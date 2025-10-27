@@ -12,7 +12,7 @@ import (
 // Project represents a .NET project file.
 type Project struct {
 	Path             string
-	Root             *ProjectRootElement
+	Root             *RootElement
 	modified         bool
 	TargetFramework  string   // Single target framework (e.g., "net8.0")
 	TargetFrameworks []string // Multiple target frameworks (e.g., ["net6.0", "net7.0", "net8.0"])
@@ -27,7 +27,7 @@ func LoadProject(path string) (*Project, error) {
 	}
 
 	// Parse XML
-	var root ProjectRootElement
+	var root RootElement
 	if err := xml.Unmarshal(data, &root); err != nil {
 		return nil, fmt.Errorf("failed to parse project XML: %w", err)
 	}

@@ -1,4 +1,4 @@
-// cmd/gonuget/commands/version.go
+// Package commands implements the gonuget CLI commands.
 package commands
 
 import (

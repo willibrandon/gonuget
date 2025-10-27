@@ -110,7 +110,7 @@ func TestSave_CreatesValidXML(t *testing.T) {
 	// Create initial project
 	proj := &Project{
 		Path: projectPath,
-		Root: &ProjectRootElement{
+		Root: &RootElement{
 			Sdk: "Microsoft.NET.Sdk",
 			PropertyGroup: []PropertyGroup{
 				{TargetFramework: "net8.0"},
@@ -142,7 +142,7 @@ func TestSave_SkipsIfNotModified(t *testing.T) {
 
 	proj := &Project{
 		Path: projectPath,
-		Root: &ProjectRootElement{
+		Root: &RootElement{
 			Sdk: "Microsoft.NET.Sdk",
 		},
 		modified: false,
@@ -158,7 +158,7 @@ func TestSave_SkipsIfNotModified(t *testing.T) {
 
 func TestAddOrUpdatePackageReference_AddNew(t *testing.T) {
 	proj := &Project{
-		Root: &ProjectRootElement{
+		Root: &RootElement{
 			Sdk: "Microsoft.NET.Sdk",
 		},
 		modified: false,
@@ -177,7 +177,7 @@ func TestAddOrUpdatePackageReference_AddNew(t *testing.T) {
 
 func TestAddOrUpdatePackageReference_UpdateExisting(t *testing.T) {
 	proj := &Project{
-		Root: &ProjectRootElement{
+		Root: &RootElement{
 			Sdk: "Microsoft.NET.Sdk",
 			ItemGroups: []ItemGroup{
 				{
@@ -203,7 +203,7 @@ func TestAddOrUpdatePackageReference_UpdateExisting(t *testing.T) {
 
 func TestAddOrUpdatePackageReference_CaseInsensitive(t *testing.T) {
 	proj := &Project{
-		Root: &ProjectRootElement{
+		Root: &RootElement{
 			Sdk: "Microsoft.NET.Sdk",
 			ItemGroups: []ItemGroup{
 				{
@@ -227,7 +227,7 @@ func TestAddOrUpdatePackageReference_CaseInsensitive(t *testing.T) {
 
 func TestAddOrUpdatePackageReference_WithFrameworks_M21Error(t *testing.T) {
 	proj := &Project{
-		Root: &ProjectRootElement{
+		Root: &RootElement{
 			Sdk: "Microsoft.NET.Sdk",
 		},
 	}
@@ -240,7 +240,7 @@ func TestAddOrUpdatePackageReference_WithFrameworks_M21Error(t *testing.T) {
 
 func TestAddOrUpdatePackageReference_AddToExistingItemGroup(t *testing.T) {
 	proj := &Project{
-		Root: &ProjectRootElement{
+		Root: &RootElement{
 			Sdk: "Microsoft.NET.Sdk",
 			ItemGroups: []ItemGroup{
 				{
@@ -263,7 +263,7 @@ func TestAddOrUpdatePackageReference_AddToExistingItemGroup(t *testing.T) {
 
 func TestRemovePackageReference_Found(t *testing.T) {
 	proj := &Project{
-		Root: &ProjectRootElement{
+		Root: &RootElement{
 			Sdk: "Microsoft.NET.Sdk",
 			ItemGroups: []ItemGroup{
 				{
@@ -287,7 +287,7 @@ func TestRemovePackageReference_Found(t *testing.T) {
 
 func TestRemovePackageReference_NotFound(t *testing.T) {
 	proj := &Project{
-		Root: &ProjectRootElement{
+		Root: &RootElement{
 			Sdk: "Microsoft.NET.Sdk",
 			ItemGroups: []ItemGroup{
 				{
@@ -316,7 +316,7 @@ func TestIsCentralPackageManagementEnabled_Detected(t *testing.T) {
 
 	proj := &Project{
 		Path: projectPath,
-		Root: &ProjectRootElement{},
+		Root: &RootElement{},
 	}
 
 	assert.True(t, proj.IsCentralPackageManagementEnabled())
@@ -328,7 +328,7 @@ func TestIsCentralPackageManagementEnabled_NotDetected(t *testing.T) {
 
 	proj := &Project{
 		Path: projectPath,
-		Root: &ProjectRootElement{},
+		Root: &RootElement{},
 	}
 
 	assert.False(t, proj.IsCentralPackageManagementEnabled())
@@ -405,7 +405,7 @@ func TestIsSDKStyle(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			proj := &Project{
-				Root: &ProjectRootElement{
+				Root: &RootElement{
 					Sdk: tt.sdk,
 				},
 			}

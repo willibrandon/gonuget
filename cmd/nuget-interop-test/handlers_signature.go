@@ -14,8 +14,10 @@ import (
 // SignPackageHandler creates a package signature using gonuget.
 type SignPackageHandler struct{}
 
+// ErrorCode returns the error code for this handler.
 func (h *SignPackageHandler) ErrorCode() string { return "SIGN_001" }
 
+// Handle processes the request.
 func (h *SignPackageHandler) Handle(data json.RawMessage) (interface{}, error) {
 	var req SignPackageRequest
 	if err := json.Unmarshal(data, &req); err != nil {
@@ -107,8 +109,10 @@ func (h *SignPackageHandler) Handle(data json.RawMessage) (interface{}, error) {
 // ParseSignatureHandler parses a signature and extracts metadata.
 type ParseSignatureHandler struct{}
 
+// ErrorCode returns the error code for this handler.
 func (h *ParseSignatureHandler) ErrorCode() string { return "PARSE_001" }
 
+// Handle processes the request.
 func (h *ParseSignatureHandler) Handle(data json.RawMessage) (interface{}, error) {
 	var req ParseSignatureRequest
 	if err := json.Unmarshal(data, &req); err != nil {
@@ -185,8 +189,10 @@ func (h *ParseSignatureHandler) Handle(data json.RawMessage) (interface{}, error
 // VerifySignatureHandler validates a signature.
 type VerifySignatureHandler struct{}
 
+// ErrorCode returns the error code for this handler.
 func (h *VerifySignatureHandler) ErrorCode() string { return "VERIFY_001" }
 
+// Handle processes the request.
 func (h *VerifySignatureHandler) Handle(data json.RawMessage) (interface{}, error) {
 	var req VerifySignatureRequest
 	if err := json.Unmarshal(data, &req); err != nil {

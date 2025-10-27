@@ -1,4 +1,4 @@
-// cmd/gonuget/cli/version.go
+// Package cli provides the gonuget CLI application framework.
 package cli
 
 // Version information (set by main)

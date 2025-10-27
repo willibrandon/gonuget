@@ -1,4 +1,4 @@
-// cmd/gonuget/config/defaults.go
+// Package config implements NuGet configuration management and parsing.
 package config
 
 import (
@@ -85,7 +85,7 @@ func NewDefaultConfig() *NuGetConfig {
 		PackageSources: &PackageSources{
 			Add: DefaultPackageSources(),
 		},
-		Config: &ConfigSection{},
+		Config: &Section{},
 	}
 
 	return config

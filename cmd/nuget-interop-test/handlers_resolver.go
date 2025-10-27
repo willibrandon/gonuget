@@ -16,8 +16,10 @@ import (
 // WalkGraphHandler walks the dependency graph for a package.
 type WalkGraphHandler struct{}
 
+// ErrorCode returns the error code for this handler.
 func (h *WalkGraphHandler) ErrorCode() string { return "WALK_001" }
 
+// Handle processes the request.
 func (h *WalkGraphHandler) Handle(data json.RawMessage) (interface{}, error) {
 	var req WalkGraphRequest
 	if err := json.Unmarshal(data, &req); err != nil {
@@ -96,8 +98,10 @@ func (h *WalkGraphHandler) Handle(data json.RawMessage) (interface{}, error) {
 // ResolveConflictsHandler resolves version conflicts in a dependency set.
 type ResolveConflictsHandler struct{}
 
+// ErrorCode returns the error code for this handler.
 func (h *ResolveConflictsHandler) ErrorCode() string { return "RESOLVE_001" }
 
+// Handle processes the request.
 func (h *ResolveConflictsHandler) Handle(data json.RawMessage) (interface{}, error) {
 	var req ResolveConflictsRequest
 	if err := json.Unmarshal(data, &req); err != nil {
@@ -298,8 +302,10 @@ func normalizeFramework(fw string) string {
 // AnalyzeCyclesHandler analyzes dependency graph for cycles (M5.5).
 type AnalyzeCyclesHandler struct{}
 
+// ErrorCode returns the error code for this handler.
 func (h *AnalyzeCyclesHandler) ErrorCode() string { return "CYCLES_001" }
 
+// Handle processes the request.
 func (h *AnalyzeCyclesHandler) Handle(data json.RawMessage) (interface{}, error) {
 	var req AnalyzeCyclesRequest
 	if err := json.Unmarshal(data, &req); err != nil {
@@ -376,8 +382,10 @@ func (h *AnalyzeCyclesHandler) Handle(data json.RawMessage) (interface{}, error)
 // ResolveTransitiveHandler resolves transitive dependencies (M5.6).
 type ResolveTransitiveHandler struct{}
 
+// ErrorCode returns the error code for this handler.
 func (h *ResolveTransitiveHandler) ErrorCode() string { return "TRANSITIVE_001" }
 
+// Handle processes the request.
 func (h *ResolveTransitiveHandler) Handle(data json.RawMessage) (interface{}, error) {
 	var req ResolveTransitiveRequest
 	if err := json.Unmarshal(data, &req); err != nil {
@@ -467,8 +475,10 @@ func (h *ResolveTransitiveHandler) Handle(data json.RawMessage) (interface{}, er
 // BenchmarkCacheHandler benchmarks cache deduplication (M5.7).
 type BenchmarkCacheHandler struct{}
 
+// ErrorCode returns the error code for this handler.
 func (h *BenchmarkCacheHandler) ErrorCode() string { return "CACHE_001" }
 
+// Handle processes the request.
 func (h *BenchmarkCacheHandler) Handle(data json.RawMessage) (interface{}, error) {
 	var req BenchmarkCacheRequest
 	if err := json.Unmarshal(data, &req); err != nil {
@@ -529,8 +539,10 @@ func (h *BenchmarkCacheHandler) Handle(data json.RawMessage) (interface{}, error
 // ResolveWithTTLHandler resolves package with cache TTL (M5.7).
 type ResolveWithTTLHandler struct{}
 
+// ErrorCode returns the error code for this handler.
 func (h *ResolveWithTTLHandler) ErrorCode() string { return "TTL_001" }
 
+// Handle processes the request.
 func (h *ResolveWithTTLHandler) Handle(data json.RawMessage) (interface{}, error) {
 	var req ResolveWithTTLRequest
 	if err := json.Unmarshal(data, &req); err != nil {
@@ -586,8 +598,10 @@ func (h *ResolveWithTTLHandler) Handle(data json.RawMessage) (interface{}, error
 // BenchmarkParallelHandler benchmarks parallel resolution (M5.8).
 type BenchmarkParallelHandler struct{}
 
+// ErrorCode returns the error code for this handler.
 func (h *BenchmarkParallelHandler) ErrorCode() string { return "PARALLEL_001" }
 
+// Handle processes the request.
 func (h *BenchmarkParallelHandler) Handle(data json.RawMessage) (interface{}, error) {
 	var req BenchmarkParallelRequest
 	if err := json.Unmarshal(data, &req); err != nil {
@@ -697,8 +711,10 @@ func (h *BenchmarkParallelHandler) Handle(data json.RawMessage) (interface{}, er
 // ResolveWithWorkerLimitHandler resolves packages with worker pool limit (M5.8).
 type ResolveWithWorkerLimitHandler struct{}
 
+// ErrorCode returns the error code for this handler.
 func (h *ResolveWithWorkerLimitHandler) ErrorCode() string { return "WORKER_001" }
 
+// Handle processes the request.
 func (h *ResolveWithWorkerLimitHandler) Handle(data json.RawMessage) (interface{}, error) {
 	var req ResolveWithWorkerLimitRequest
 	if err := json.Unmarshal(data, &req); err != nil {

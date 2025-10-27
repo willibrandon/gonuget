@@ -44,6 +44,9 @@ func main() {
 	cli.AddCommand(commands.NewDisableCommand(cli.Console))
 	cli.AddCommand(commands.NewUpdateCommand(cli.Console))
 
+	// Register restore command
+	cli.AddCommand(commands.NewRestoreCommand(cli.Console))
+
 	// Handle signals for graceful shutdown
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)

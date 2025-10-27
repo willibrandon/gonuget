@@ -86,7 +86,7 @@ func showCommandHelp(rootCmd *cobra.Command, commandName string) error {
 	return cmd.Help()
 }
 
-// customizeRootHelp customizes the root command help template to match dotnet nuget
+// CustomizeRootHelp customizes the root command help template to match dotnet nuget.
 func CustomizeRootHelp(rootCmd *cobra.Command) {
 	rootCmd.SetHelpTemplate(getRootHelpTemplate())
 	rootCmd.SetUsageTemplate(getRootUsageTemplate())
@@ -125,7 +125,7 @@ Use "{{.CommandPath}} [command] --help" for more information about a command.{{e
 `
 }
 
-// customizeCommandHelp customizes command help to match dotnet nuget format
+// CustomizeCommandHelp customizes command help to match dotnet nuget format.
 func CustomizeCommandHelp(cmd *cobra.Command) {
 	// Set custom help function
 	originalHelpFunc := cmd.HelpFunc()
