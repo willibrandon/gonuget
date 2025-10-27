@@ -88,6 +88,9 @@ func main() {
 	case "execute_add_package":
 		handler = &ExecuteAddPackageHandler{}
 
+	case "execute_restore":
+		handler = &ExecuteRestoreHandler{}
+
 	default:
 		sendError("ACT_001", "Unknown action", fmt.Sprintf("action=%s", req.Action))
 		os.Exit(1)

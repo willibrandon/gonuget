@@ -429,6 +429,41 @@ public class GonugetCliBridge
     }
 
     /// <summary>
+    /// Executes the 'restore' command on both dotnet restore and gonuget restore.
+    /// </summary>
+    /// <param name="projectPath">Path to the project file.</param>
+    /// <param name="workingDir">The working directory for command execution.</param>
+    /// <param name="source">Optional package source URL.</param>
+    /// <param name="packages">Optional custom global packages folder.</param>
+    /// <param name="force">Force re-download even if packages exist.</param>
+    /// <param name="noCache">Don't use HTTP cache.</param>
+    /// <returns>Response containing exit codes and output from both commands.</returns>
+    public ExecuteRestoreResponse ExecuteRestore(
+        string projectPath,
+        string workingDir,
+        string? source = null,
+        string? packages = null,
+        bool force = false,
+        bool noCache = false)
+    {
+        var request = new
+        {
+            action = "execute_restore",
+            data = new
+            {
+                projectPath,
+                workingDir,
+                source,
+                packages,
+                force,
+                noCache
+            }
+        };
+
+        return Execute<ExecuteRestoreResponse>(request);
+    }
+
+    /// <summary>
     /// Executes a JSON-RPC request by piping it to the gonuget-cli-interop-test process.
     /// </summary>
     /// <typeparam name="T">The expected response data type.</typeparam>

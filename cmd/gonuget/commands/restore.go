@@ -1,7 +1,11 @@
 package commands
 
 import (
+	"os"
+	"path/filepath"
+
 	"github.com/spf13/cobra"
+	"github.com/willibrandon/gonuget/cmd/gonuget/config"
 	"github.com/willibrandon/gonuget/cmd/gonuget/output"
 	"github.com/willibrandon/gonuget/restore"
 )
@@ -24,6 +28,27 @@ Examples:
   gonuget restore --force`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// Load sources from NuGet.config if not provided via --source flag
+			if len(opts.Sources) == 0 {
+				// Determine directory to search for config
+				var searchDir string
+				if len(args) > 0 {
+					searchDir = filepath.Dir(args[0])
+				} else {
+					var err error
+					searchDir, err = os.Getwd()
+					if err != nil {
+						searchDir = "."
+					}
+				}
+
+				// Load sources from config with fallback to defaults
+				sources := config.GetEnabledSourcesOrDefault(searchDir)
+				for _, source := range sources {
+					opts.Sources = append(opts.Sources, source.Value)
+				}
+			}
+
 			// CLI just calls library function
 			return restore.Run(cmd.Context(), args, opts, console)
 		},

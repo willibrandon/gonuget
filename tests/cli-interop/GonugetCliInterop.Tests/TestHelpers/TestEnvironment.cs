@@ -132,6 +132,51 @@ public class TestEnvironment : IDisposable
     }
 
     /// <summary>
+    /// Adds a PackageReference to an existing project file.
+    /// </summary>
+    /// <param name="projectPath">Path to the project file.</param>
+    /// <param name="packageId">Package ID to add.</param>
+    /// <param name="version">Package version.</param>
+    public void AddPackageReference(string projectPath, string packageId, string version)
+    {
+        if (!File.Exists(projectPath))
+            throw new FileNotFoundException($"Project file not found: {projectPath}");
+
+        // Verify project is within test directory (safety check)
+        var normalizedProjectPath = Path.GetFullPath(projectPath);
+        var normalizedTestDir = Path.GetFullPath(TestDirectory);
+        if (!normalizedProjectPath.StartsWith(normalizedTestDir))
+        {
+            throw new InvalidOperationException($"Project file must be within test directory. Project: {normalizedProjectPath}, TestDir: {normalizedTestDir}");
+        }
+
+        var content = File.ReadAllText(projectPath);
+
+        // Check if ItemGroup already exists
+        if (content.Contains("<ItemGroup>"))
+        {
+            // Insert before closing ItemGroup tag
+            var insertIndex = content.IndexOf("</ItemGroup>");
+            var packageRef = $"    <PackageReference Include=\"{packageId}\" Version=\"{version}\" />\n  ";
+            content = content.Insert(insertIndex, packageRef);
+        }
+        else
+        {
+            // Create new ItemGroup before closing Project tag
+            var insertIndex = content.IndexOf("</Project>");
+            var itemGroup = $@"
+
+  <ItemGroup>
+    <PackageReference Include=""{packageId}"" Version=""{version}"" />
+  </ItemGroup>
+";
+            content = content.Insert(insertIndex, itemGroup);
+        }
+
+        File.WriteAllText(projectPath, content);
+    }
+
+    /// <summary>
     /// Disposes the test environment by deleting the temporary test directory and all its contents.
     /// </summary>
     public void Dispose()

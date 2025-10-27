@@ -267,3 +267,13 @@ type ExecuteAddPackageResponse struct {
 	GonugetStdOut   string `json:"gonugetStdOut"`
 	GonugetStdErr   string `json:"gonugetStdErr"`
 }
+
+// ExecuteRestoreResponse contains restore command results
+type ExecuteRestoreResponse struct {
+	DotnetExitCode  int    `json:"dotnetExitCode"`
+	DotnetStdOut    string `json:"dotnetStdOut"`
+	DotnetStdErr    string `json:"dotnetStdErr"`
+	GonugetExitCode int    `json:"gonugetExitCode"`
+	GonugetStdOut   string `json:"gonugetStdOut"`
+	GonugetStdErr   string `json:"gonugetStdErr"`
+}
