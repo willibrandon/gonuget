@@ -8,6 +8,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/willibrandon/gonuget/cmd/gonuget/project"
 )
 
 func TestNewAddPackageCmd(t *testing.T) {
@@ -92,14 +93,18 @@ func TestRunAddPackage_CPMEnabled(t *testing.T) {
 
 	opts := &AddPackageOptions{
 		ProjectPath: projectPath,
-		Version:     "1.0.0",
+		Version:     "2.0.0",
 		NoRestore:   true, // Skip restore for unit test
 	}
 
-	// For now, CPM detection works but doesn't prevent adding packages
-	// Full CPM support (Chunks 12-13) will add version to Directory.Packages.props
+	// CPM support is now fully implemented (Chunks 12-13)
 	err = runAddPackage(context.Background(), "TestPackage", opts)
-	assert.NoError(t, err, "CPM projects should allow adding packages (version goes to Directory.Packages.props in Chunks 12-13)")
+	assert.NoError(t, err, "CPM projects should allow adding packages")
+
+	// Verify version was updated in Directory.Packages.props
+	dppData, err := os.ReadFile(dppPath)
+	require.NoError(t, err)
+	assert.Contains(t, string(dppData), "2.0.0")
 }
 
 func TestRunAddPackage_WithExplicitVersion(t *testing.T) {
@@ -424,4 +429,259 @@ func TestResolveLatestVersion_PrereleaseWithOnlyStable(t *testing.T) {
 	version, err := resolveLatestVersion(context.Background(), "Newtonsoft.Json", opts)
 	assert.NoError(t, err)
 	assert.NotEmpty(t, version)
+}
+
+// CPM Integration Tests (Chunk 13)
+
+func TestRunAddPackage_CPM_AddNew(t *testing.T) {
+	tmpDir := t.TempDir()
+	projectPath := filepath.Join(tmpDir, "test.csproj")
+	dppPath := filepath.Join(tmpDir, "Directory.Packages.props")
+
+	// Create Directory.Packages.props
+	dppContent := `<?xml version="1.0" encoding="utf-8"?>
+<Project>
+  <ItemGroup>
+  </ItemGroup>
+</Project>`
+	err := os.WriteFile(dppPath, []byte(dppContent), 0644)
+	require.NoError(t, err)
+
+	// Project file with CPM enabled
+	projectContent := `<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+</Project>`
+	err = os.WriteFile(projectPath, []byte(projectContent), 0644)
+	require.NoError(t, err)
+
+	opts := &AddPackageOptions{
+		ProjectPath: projectPath,
+		Version:     "13.0.3",
+		NoRestore:   true,
+	}
+
+	err = runAddPackage(context.Background(), "Newtonsoft.Json", opts)
+	assert.NoError(t, err)
+
+	// Verify Directory.Packages.props was updated
+	dppData, err := os.ReadFile(dppPath)
+	require.NoError(t, err)
+	assert.Contains(t, string(dppData), "Newtonsoft.Json")
+	assert.Contains(t, string(dppData), "13.0.3")
+
+	// Verify .csproj has PackageReference WITHOUT version
+	projData, err := os.ReadFile(projectPath)
+	require.NoError(t, err)
+	assert.Contains(t, string(projData), "Newtonsoft.Json")
+	// Ensure NO Version attribute in PackageReference
+	assert.NotContains(t, string(projData), `Version="13.0.3"`)
+}
+
+func TestRunAddPackage_CPM_UpdateExisting(t *testing.T) {
+	tmpDir := t.TempDir()
+	projectPath := filepath.Join(tmpDir, "test.csproj")
+	dppPath := filepath.Join(tmpDir, "Directory.Packages.props")
+
+	// Create Directory.Packages.props with existing package
+	dppContent := `<?xml version="1.0" encoding="utf-8"?>
+<Project>
+  <ItemGroup>
+    <PackageVersion Include="Newtonsoft.Json" Version="12.0.0" />
+  </ItemGroup>
+</Project>`
+	err := os.WriteFile(dppPath, []byte(dppContent), 0644)
+	require.NoError(t, err)
+
+	// Project file with CPM enabled
+	projectContent := `<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+</Project>`
+	err = os.WriteFile(projectPath, []byte(projectContent), 0644)
+	require.NoError(t, err)
+
+	opts := &AddPackageOptions{
+		ProjectPath: projectPath,
+		Version:     "13.0.3",
+		NoRestore:   true,
+	}
+
+	err = runAddPackage(context.Background(), "Newtonsoft.Json", opts)
+	assert.NoError(t, err)
+
+	// Verify Directory.Packages.props was updated to new version
+	dppData, err := os.ReadFile(dppPath)
+	require.NoError(t, err)
+	assert.Contains(t, string(dppData), "13.0.3")
+	assert.NotContains(t, string(dppData), "12.0.0")
+}
+
+func TestRunAddPackage_CPM_MissingPropsFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	projectPath := filepath.Join(tmpDir, "test.csproj")
+
+	// Project file with CPM enabled but NO Directory.Packages.props
+	projectContent := `<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+</Project>`
+	err := os.WriteFile(projectPath, []byte(projectContent), 0644)
+	require.NoError(t, err)
+
+	opts := &AddPackageOptions{
+		ProjectPath: projectPath,
+		Version:     "13.0.3",
+		NoRestore:   true,
+	}
+
+	err = runAddPackage(context.Background(), "Newtonsoft.Json", opts)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "Directory.Packages.props not found")
+}
+
+func TestRunAddPackage_CPM_NoRestore(t *testing.T) {
+	tmpDir := t.TempDir()
+	projectPath := filepath.Join(tmpDir, "test.csproj")
+	dppPath := filepath.Join(tmpDir, "Directory.Packages.props")
+
+	// Create Directory.Packages.props
+	dppContent := `<?xml version="1.0" encoding="utf-8"?>
+<Project>
+  <ItemGroup>
+  </ItemGroup>
+</Project>`
+	err := os.WriteFile(dppPath, []byte(dppContent), 0644)
+	require.NoError(t, err)
+
+	// Project file with CPM enabled
+	projectContent := `<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+</Project>`
+	err = os.WriteFile(projectPath, []byte(projectContent), 0644)
+	require.NoError(t, err)
+
+	opts := &AddPackageOptions{
+		ProjectPath: projectPath,
+		Version:     "13.0.3",
+		NoRestore:   true, // Test --no-restore flag
+	}
+
+	err = runAddPackage(context.Background(), "Newtonsoft.Json", opts)
+	assert.NoError(t, err)
+
+	// Verify package was added but NOT restored
+	dppData, err := os.ReadFile(dppPath)
+	require.NoError(t, err)
+	assert.Contains(t, string(dppData), "Newtonsoft.Json")
+
+	// Verify no obj directory was created (restore didn't run)
+	objDir := filepath.Join(tmpDir, "obj")
+	_, err = os.Stat(objDir)
+	assert.True(t, os.IsNotExist(err), "obj directory should not exist when --no-restore is used")
+}
+
+func TestRunAddPackage_CPM_UseExistingVersion(t *testing.T) {
+	tmpDir := t.TempDir()
+	projectPath := filepath.Join(tmpDir, "test.csproj")
+	dppPath := filepath.Join(tmpDir, "Directory.Packages.props")
+
+	// Create Directory.Packages.props with existing version
+	dppContent := `<?xml version="1.0" encoding="utf-8"?>
+<Project>
+  <ItemGroup>
+    <PackageVersion Include="Serilog" Version="3.1.1" />
+  </ItemGroup>
+</Project>`
+	err := os.WriteFile(dppPath, []byte(dppContent), 0644)
+	require.NoError(t, err)
+
+	// Project file with CPM enabled
+	projectContent := `<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+</Project>`
+	err = os.WriteFile(projectPath, []byte(projectContent), 0644)
+	require.NoError(t, err)
+
+	opts := &AddPackageOptions{
+		ProjectPath: projectPath,
+		// No version specified - should use existing version from Directory.Packages.props
+		NoRestore: true,
+	}
+
+	err = runAddPackage(context.Background(), "Serilog", opts)
+	assert.NoError(t, err)
+
+	// Verify version in Directory.Packages.props wasn't changed
+	dppData, err := os.ReadFile(dppPath)
+	require.NoError(t, err)
+	assert.Contains(t, string(dppData), "3.1.1")
+
+	// Verify PackageReference was added to project
+	projData, err := os.ReadFile(projectPath)
+	require.NoError(t, err)
+	assert.Contains(t, string(projData), "Serilog")
+}
+
+func TestRunAddPackage_CPM_VerifyNoVersionInCsproj(t *testing.T) {
+	tmpDir := t.TempDir()
+	projectPath := filepath.Join(tmpDir, "test.csproj")
+	dppPath := filepath.Join(tmpDir, "Directory.Packages.props")
+
+	// Create Directory.Packages.props
+	dppContent := `<?xml version="1.0" encoding="utf-8"?>
+<Project>
+  <ItemGroup>
+  </ItemGroup>
+</Project>`
+	err := os.WriteFile(dppPath, []byte(dppContent), 0644)
+	require.NoError(t, err)
+
+	// Project file with CPM enabled
+	projectContent := `<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+</Project>`
+	err = os.WriteFile(projectPath, []byte(projectContent), 0644)
+	require.NoError(t, err)
+
+	opts := &AddPackageOptions{
+		ProjectPath: projectPath,
+		Version:     "13.0.3",
+		NoRestore:   true,
+	}
+
+	err = runAddPackage(context.Background(), "Newtonsoft.Json", opts)
+	assert.NoError(t, err)
+
+	// Read and parse the project file
+	proj, err := project.LoadProject(projectPath)
+	require.NoError(t, err)
+
+	// Find the PackageReference
+	refs := proj.GetPackageReferences()
+	var found bool
+	for _, ref := range refs {
+		if ref.Include == "Newtonsoft.Json" {
+			found = true
+			// Version should be empty in CPM mode
+			assert.Empty(t, ref.Version, "PackageReference should NOT have Version attribute in CPM mode")
+			break
+		}
+	}
+	assert.True(t, found, "PackageReference for Newtonsoft.Json should exist")
 }

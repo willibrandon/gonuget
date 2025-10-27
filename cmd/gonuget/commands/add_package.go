@@ -86,13 +86,9 @@ func runAddPackage(ctx context.Context, packageID string, opts *AddPackageOption
 	}
 
 	// 3. Check for Central Package Management (CPM)
-	// Note: CPM support will be fully implemented in Chunks 12-13.
-	// For now, we just detect it but don't handle it specially.
-	// In the future, this will:
-	// - Add PackageReference WITHOUT version to project file
-	// - Add/update PackageVersion in Directory.Packages.props
-	cpmEnabled := proj.IsCentralPackageManagementEnabled()
-	_ = cpmEnabled // Will be used in Chunks 12-13
+	if proj.IsCentralPackageManagementEnabled() {
+		return addPackageWithCPM(ctx, proj, packageID, opts)
+	}
 
 	// 4. Resolve version if not specified
 	packageVersion := opts.Version
@@ -188,6 +184,124 @@ func (c *cliConsole) Error(format string, args ...any) {
 
 func (c *cliConsole) Warning(format string, args ...any) {
 	fmt.Fprintf(os.Stderr, "warn  : "+format, args...)
+}
+
+// addPackageWithCPM handles adding a package to a CPM-enabled project.
+func addPackageWithCPM(ctx context.Context, proj *project.Project, packageID string, opts *AddPackageOptions) error {
+	projectPath := proj.Path
+
+	// 1. Validate Directory.Packages.props exists
+	propsPath := proj.GetDirectoryPackagesPropsPath()
+	if _, err := os.Stat(propsPath); os.IsNotExist(err) {
+		return fmt.Errorf("Directory.Packages.props not found at %s (required for Central Package Management)", propsPath)
+	}
+
+	// 2. Load Directory.Packages.props
+	props, err := project.LoadDirectoryPackagesProps(propsPath)
+	if err != nil {
+		return fmt.Errorf("failed to load Directory.Packages.props: %w", err)
+	}
+
+	// 3. Resolve version if not specified
+	packageVersion := opts.Version
+	if packageVersion == "" {
+		// Check if version already exists in Directory.Packages.props
+		existingVersion := props.GetPackageVersion(packageID)
+		if existingVersion != "" {
+			// Package already has a version in Directory.Packages.props, use it
+			packageVersion = existingVersion
+			fmt.Printf("info : Package '%s' version '%s' already defined in Directory.Packages.props\n", packageID, packageVersion)
+		} else {
+			// Resolve latest version
+			resolvedVersion, err := resolveLatestVersion(ctx, packageID, opts)
+			if err != nil {
+				return fmt.Errorf("failed to resolve latest version for %s: %w", packageID, err)
+			}
+			packageVersion = resolvedVersion
+			fmt.Printf("info : Resolved version: %s\n", packageVersion)
+		}
+	}
+
+	// 4. Validate version format
+	if _, err := version.Parse(packageVersion); err != nil {
+		return fmt.Errorf("invalid package version '%s': %w", packageVersion, err)
+	}
+
+	// 5. Add/update PackageVersion in Directory.Packages.props
+	updated, err := props.AddOrUpdatePackageVersion(packageID, packageVersion)
+	if err != nil {
+		return fmt.Errorf("failed to add package version: %w", err)
+	}
+
+	if err := props.Save(); err != nil {
+		return fmt.Errorf("failed to save Directory.Packages.props: %w", err)
+	}
+
+	// 6. Determine target frameworks
+	var frameworks []string
+	if opts.Framework != "" {
+		frameworks = []string{opts.Framework}
+	}
+
+	// 7. Add PackageReference WITHOUT version to .csproj
+	// In CPM mode, version comes from Directory.Packages.props
+	_, err = proj.AddOrUpdatePackageReference(packageID, "", frameworks)
+	if err != nil {
+		return fmt.Errorf("failed to add package reference: %w", err)
+	}
+
+	if err := proj.Save(); err != nil {
+		return fmt.Errorf("failed to save project file: %w", err)
+	}
+
+	// 8. Report success
+	if updated {
+		fmt.Printf("info : Updated package '%s' to version '%s' in Directory.Packages.props\n", packageID, packageVersion)
+	} else {
+		fmt.Printf("info : Added package '%s' version '%s' to Directory.Packages.props\n", packageID, packageVersion)
+	}
+	fmt.Printf("info : Added PackageReference for '%s' to project '%s'\n", packageID, projectPath)
+
+	// 9. Perform restore if needed
+	if !opts.NoRestore {
+		restoreOpts := &restore.Options{
+			PackagesFolder: opts.PackageDirectory,
+			Sources:        []string{},
+		}
+
+		if opts.Source != "" {
+			// Explicit --source flag takes precedence
+			restoreOpts.Sources = []string{opts.Source}
+		} else {
+			// Load sources from NuGet.Config hierarchy with fallback to defaults
+			projectDir := filepath.Dir(projectPath)
+			sources := config.GetEnabledSourcesOrDefault(projectDir)
+			for _, source := range sources {
+				restoreOpts.Sources = append(restoreOpts.Sources, source.Value)
+			}
+		}
+
+		console := &cliConsole{}
+		restorer := restore.NewRestorer(restoreOpts, console)
+
+		packageRefs := proj.GetPackageReferences()
+		result, err := restorer.Restore(ctx, proj, packageRefs)
+		if err != nil {
+			return fmt.Errorf("restore failed: %w", err)
+		}
+
+		// Generate project.assets.json
+		lockFile := restore.NewLockFileBuilder().Build(proj, result)
+		objDir := filepath.Join(filepath.Dir(projectPath), "obj")
+		assetsPath := filepath.Join(objDir, "project.assets.json")
+		if err := lockFile.Save(assetsPath); err != nil {
+			return fmt.Errorf("failed to save project.assets.json: %w", err)
+		}
+
+		fmt.Println("info : Package added successfully")
+	}
+
+	return nil
 }
 
 // resolveLatestVersion resolves the latest version of a package from the package source.
