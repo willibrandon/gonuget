@@ -42,7 +42,7 @@ func TestLockFileBuilder_Build(t *testing.T) {
 				return proj
 			},
 			result: &Result{
-				Packages: []PackageInfo{
+				DirectPackages: []PackageInfo{
 					{
 						ID:      "Newtonsoft.Json",
 						Version: "13.0.3",
@@ -102,7 +102,7 @@ func TestLockFileBuilder_Build(t *testing.T) {
 				return proj
 			},
 			result: &Result{
-				Packages: []PackageInfo{
+				DirectPackages: []PackageInfo{
 					{
 						ID:      "Newtonsoft.Json",
 						Version: "13.0.3",
@@ -153,7 +153,7 @@ func TestLockFileBuilder_Build(t *testing.T) {
 				return proj
 			},
 			result: &Result{
-				Packages: []PackageInfo{},
+				DirectPackages: []PackageInfo{},
 			},
 			validateResult: func(t *testing.T, lf *LockFile) {
 				if len(lf.Libraries) != 0 {
@@ -188,7 +188,7 @@ func TestLockFileBuilder_Build(t *testing.T) {
 				return proj
 			},
 			result: &Result{
-				Packages: []PackageInfo{
+				DirectPackages: []PackageInfo{
 					{
 						ID:      "Newtonsoft.Json",
 						Version: "13.0.3",

@@ -80,8 +80,10 @@ func (b *LockFileBuilder) Build(proj *project.Project, result *Result) *LockFile
 	lf.ProjectFileDependencyGroups[tfm] = dependencies
 	lf.ProjectFileDependencyGroups[""] = dependencies
 
-	// Add libraries
-	for _, pkg := range result.Packages {
+	// Add libraries (direct + transitive)
+	// Matches NuGet.Client BuildAssetsFile line 265
+	allPackages := result.AllPackages()
+	for _, pkg := range allPackages {
 		key := pkg.ID + "/" + pkg.Version
 		lf.Libraries[key] = Library{
 			Type:  "package",

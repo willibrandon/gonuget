@@ -117,7 +117,14 @@ func NewRestorer(opts *Options, console Console) *Restorer {
 
 // Result holds restore results.
 type Result struct {
-	Packages []PackageInfo
+	// DirectPackages contains packages explicitly listed in project file
+	DirectPackages []PackageInfo
+
+	// TransitivePackages contains packages pulled in as dependencies
+	TransitivePackages []PackageInfo
+
+	// Graph contains full dependency graph (optional, for debugging)
+	Graph any // *resolver.GraphNode, but avoid import cycle
 }
 
 // PackageInfo holds package information.
@@ -125,12 +132,28 @@ type PackageInfo struct {
 	ID      string
 	Version string
 	Path    string
+
+	// IsDirect indicates if this is a direct dependency
+	IsDirect bool
+
+	// Parents lists packages that depend on this (for transitive deps)
+	Parents []string
+}
+
+// AllPackages returns all packages (direct + transitive).
+// Matches NuGet.Client's flattened package list from RestoreTargetGraph.
+func (r *Result) AllPackages() []PackageInfo {
+	all := make([]PackageInfo, 0, len(r.DirectPackages)+len(r.TransitivePackages))
+	all = append(all, r.DirectPackages...)
+	all = append(all, r.TransitivePackages...)
+	return all
 }
 
 // Restore executes the restore operation for direct dependencies only (Chunk 5 - simplified).
 func (r *Restorer) Restore(ctx context.Context, proj *project.Project, packageRefs []project.PackageReference) (*Result, error) {
 	result := &Result{
-		Packages: make([]PackageInfo, 0, len(packageRefs)),
+		DirectPackages:     make([]PackageInfo, 0, len(packageRefs)),
+		TransitivePackages: make([]PackageInfo, 0),
 	}
 
 	// Get global packages folder
@@ -161,10 +184,12 @@ func (r *Restorer) Restore(ctx context.Context, proj *project.Project, packageRe
 		if !r.opts.Force {
 			if _, err := os.Stat(packagePath); err == nil {
 				r.console.Printf("    Package already cached at %s\n", packagePath)
-				result.Packages = append(result.Packages, PackageInfo{
-					ID:      pkgRef.Include,
-					Version: pkgRef.Version,
-					Path:    packagePath,
+				result.DirectPackages = append(result.DirectPackages, PackageInfo{
+					ID:       pkgRef.Include,
+					Version:  pkgRef.Version,
+					Path:     packagePath,
+					IsDirect: true,
+					Parents:  []string{},
 				})
 				continue
 			}
@@ -175,10 +200,12 @@ func (r *Restorer) Restore(ctx context.Context, proj *project.Project, packageRe
 			return nil, fmt.Errorf("failed to download package %s %s: %w", pkgRef.Include, pkgRef.Version, err)
 		}
 
-		result.Packages = append(result.Packages, PackageInfo{
-			ID:      pkgRef.Include,
-			Version: pkgRef.Version,
-			Path:    packagePath,
+		result.DirectPackages = append(result.DirectPackages, PackageInfo{
+			ID:       pkgRef.Include,
+			Version:  pkgRef.Version,
+			Path:     packagePath,
+			IsDirect: true,
+			Parents:  []string{},
 		})
 	}
 

@@ -216,8 +216,8 @@ func TestRestorer_Restore_NoPackages(t *testing.T) {
 		t.Errorf("unexpected error: %v", err)
 	}
 
-	if len(result.Packages) != 0 {
-		t.Errorf("expected 0 packages, got %d", len(result.Packages))
+	if len(result.DirectPackages) != 0 {
+		t.Errorf("expected 0 packages, got %d", len(result.DirectPackages))
 	}
 }
 
@@ -263,8 +263,8 @@ func TestRestorer_Restore_WithForce(t *testing.T) {
 		t.Errorf("unexpected error: %v", err)
 	}
 
-	if len(result.Packages) != 1 {
-		t.Errorf("expected 1 package, got %d", len(result.Packages))
+	if len(result.DirectPackages) != 1 {
+		t.Errorf("expected 1 package, got %d", len(result.DirectPackages))
 	}
 
 	// Verify package was downloaded
@@ -327,8 +327,8 @@ func TestRestorer_Restore_PackageAlreadyCached(t *testing.T) {
 		t.Errorf("unexpected error: %v", err)
 	}
 
-	if len(result.Packages) != 1 {
-		t.Errorf("expected 1 package, got %d", len(result.Packages))
+	if len(result.DirectPackages) != 1 {
+		t.Errorf("expected 1 package, got %d", len(result.DirectPackages))
 	}
 
 	// Check console output for "already cached" message
@@ -589,8 +589,8 @@ func TestRestorer_Restore_DefaultPackagesFolder(t *testing.T) {
 		t.Errorf("unexpected error: %v", err)
 	}
 
-	if len(result.Packages) != 0 {
-		t.Errorf("expected 0 packages, got %d", len(result.Packages))
+	if len(result.DirectPackages) != 0 {
+		t.Errorf("expected 0 packages, got %d", len(result.DirectPackages))
 	}
 }
 
@@ -648,8 +648,8 @@ func TestRestorer_Restore_PackageExtraction(t *testing.T) {
 		t.Fatalf("restore failed: %v", err)
 	}
 
-	if len(result.Packages) != 1 {
-		t.Errorf("expected 1 package, got %d", len(result.Packages))
+	if len(result.DirectPackages) != 1 {
+		t.Errorf("expected 1 package, got %d", len(result.DirectPackages))
 	}
 
 	// Verify package extraction (matching dotnet restore behavior)
@@ -813,8 +813,8 @@ func TestRestorer_Restore_ExtractMultiplePackages(t *testing.T) {
 		t.Fatalf("restore failed: %v", err)
 	}
 
-	if len(result.Packages) != 2 {
-		t.Errorf("expected 2 packages, got %d", len(result.Packages))
+	if len(result.DirectPackages) != 2 {
+		t.Errorf("expected 2 packages, got %d", len(result.DirectPackages))
 	}
 
 	// Verify both packages were extracted
@@ -885,8 +885,8 @@ func TestRestorer_Restore_V3Protocol(t *testing.T) {
 		t.Fatalf("restore failed: %v", err)
 	}
 
-	if len(result.Packages) != 1 {
-		t.Errorf("expected 1 package, got %d", len(result.Packages))
+	if len(result.DirectPackages) != 1 {
+		t.Errorf("expected 1 package, got %d", len(result.DirectPackages))
 	}
 
 	// Verify V3 layout: lowercase package ID, .nupkg.metadata marker
@@ -948,8 +948,8 @@ func TestRestorer_Restore_V2Protocol(t *testing.T) {
 		t.Fatalf("restore failed: %v", err)
 	}
 
-	if len(result.Packages) != 1 {
-		t.Errorf("expected 1 package, got %d", len(result.Packages))
+	if len(result.DirectPackages) != 1 {
+		t.Errorf("expected 1 package, got %d", len(result.DirectPackages))
 	}
 
 	// Verify V2 layout: package ID with original casing (not lowercased)
