@@ -15,11 +15,11 @@ gonuget's restore implements core transitive dependency resolution:
 ✅ **Direct vs Transitive Categorization** - COMPLETE
 ✅ **Enhanced Diagnostics** - COMPLETE (NU1101/NU1102/NU1103)
 ✅ **Performance Optimizations** - COMPLETE (1.5-2x faster than dotnet)
+✅ **Lock File Format** - COMPLETE (ProjectFileDependencyGroups verified with dotnet parity)
 
-**Blocking Items** (3):
+**Blocking Items** (2):
 ❌ CLI output formatting (show direct vs transitive)
 ❌ C# interop tests for transitive resolution
-❌ Lock file format verification (ProjectFileDependencyGroups)
 
 **Implemented**: Oct 27, 2025 (commits 17ab816, 566b21c)
 
@@ -426,9 +426,12 @@ gonuget restore
 - ✅ Test coverage via TestResolver_EnhancedDiagnostics_NU1103
 - **Implementation**: Added `areAllVersionsPrerelease()` and `isRequestingStableVersion()` helpers
 
-**4. Lock File Enhancements** (`restore/lock_file_builder.go`)
-- ❌ Add ProjectFileDependencyGroups with only direct deps
-- ❌ Verify Libraries map format matches dotnet exactly
+**4. Lock File Enhancements** - ✅ COMPLETE (`restore/lock_file_builder.go`, `restore/lock_file_builder_test.go:232-394`)
+- ✅ ProjectFileDependencyGroups contains only direct dependencies (verified via test)
+- ✅ Libraries map contains all packages (direct + transitive) with lowercase paths (verified via test)
+- ✅ Test coverage: `TestLockFileBuilder_ProjectFileDependencyGroups_OnlyDirectDeps` validates direct-only behavior
+- ✅ Test coverage: `TestLockFileBuilder_Libraries_LowercasePaths` validates lowercase package ID paths
+- **Implementation**: Current code already correct, added comprehensive tests to verify dotnet parity
 - **Rationale**: project.assets.json must be 100% compatible with dotnet for build to work
 
 ### Future Enhancements (Post-Production)
