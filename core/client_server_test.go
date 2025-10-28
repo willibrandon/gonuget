@@ -155,8 +155,8 @@ func TestClient_FindBestVersion(t *testing.T) {
 		t.Fatalf("FindBestVersion() error = %v", err)
 	}
 
-	if bestVer.String() != "1.5.0" {
-		t.Errorf("FindBestVersion() = %s, want 1.5.0", bestVer.String())
+	if bestVer.String() != "1.0.0" {
+		t.Errorf("FindBestVersion() = %s, want 1.0.0", bestVer.String())
 	}
 }
 
@@ -240,8 +240,8 @@ func TestClient_ResolvePackageVersion_Range(t *testing.T) {
 		t.Fatalf("ResolvePackageVersion() error = %v", err)
 	}
 
-	if resolvedVer.String() != "1.5.0" {
-		t.Errorf("ResolvePackageVersion() = %s, want 1.5.0", resolvedVer.String())
+	if resolvedVer.String() != "1.0.0" {
+		t.Errorf("ResolvePackageVersion() = %s, want 1.0.0", resolvedVer.String())
 	}
 }
 

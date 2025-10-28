@@ -94,7 +94,7 @@ func (p *LocalDependencyProvider) GetDependencies(
 		// File doesn't exist or can't be opened - not cached
 		return nil, "", nil
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	// Parse nuspec
 	nuspec, err := packaging.ParseNuspec(file)

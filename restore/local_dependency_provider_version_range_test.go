@@ -20,11 +20,11 @@ func TestLocalDependencyProvider_VersionRangeResolution(t *testing.T) {
 	for _, verStr := range versions {
 		ver, _ := version.Parse(verStr)
 		installPath := provider.resolver.GetInstallPath(packageID, ver)
-		os.MkdirAll(installPath, 0755)
+		_ = os.MkdirAll(installPath, 0755)
 
 		// Create completion marker
 		metadataPath := provider.resolver.GetNupkgMetadataPath(packageID, ver)
-		os.WriteFile(metadataPath, []byte(`{"version":2}`), 0644)
+		_ = os.WriteFile(metadataPath, []byte(`{"version":2}`), 0644)
 
 		// Create nuspec
 		nuspecPath := provider.resolver.GetManifestFilePath(packageID, ver)
@@ -40,52 +40,52 @@ func TestLocalDependencyProvider_VersionRangeResolution(t *testing.T) {
     </dependencies>
   </metadata>
 </package>`
-		os.WriteFile(nuspecPath, []byte(nuspecContent), 0644)
+		_ = os.WriteFile(nuspecPath, []byte(nuspecContent), 0644)
 	}
 
 	ctx := context.Background()
 
 	tests := []struct {
-		name           string
-		versionRange   string
+		name            string
+		versionRange    string
 		expectedVersion string
-		shouldFind     bool
+		shouldFind      bool
 	}{
 		{
-			name:           "open range from 2.0.0",
-			versionRange:   "[2.0.0, )",
+			name:            "open range from 2.0.0",
+			versionRange:    "[2.0.0, )",
 			expectedVersion: "2.0.0", // Favor lower: minimum satisfying version
-			shouldFind:     true,
+			shouldFind:      true,
 		},
 		{
-			name:           "closed range",
-			versionRange:   "[1.0.0, 2.5.0]",
+			name:            "closed range",
+			versionRange:    "[1.0.0, 2.5.0]",
 			expectedVersion: "1.0.0", // Favor lower: minimum satisfying version
-			shouldFind:     true,
+			shouldFind:      true,
 		},
 		{
-			name:           "exclusive lower bound",
-			versionRange:   "(2.0.0, 3.0.0]",
+			name:            "exclusive lower bound",
+			versionRange:    "(2.0.0, 3.0.0]",
 			expectedVersion: "2.5.0", // Favor lower: 2.0.0 excluded, so 2.5.0 is minimum
-			shouldFind:     true,
+			shouldFind:      true,
 		},
 		{
-			name:           "minimum version only",
-			versionRange:   "2.5.0",
+			name:            "minimum version only",
+			versionRange:    "2.5.0",
 			expectedVersion: "2.5.0", // Favor lower: 2.5.0 is minimum satisfying >= 2.5.0
-			shouldFind:     true,
+			shouldFind:      true,
 		},
 		{
-			name:           "range with no match",
-			versionRange:   "[5.0.0, )",
+			name:            "range with no match",
+			versionRange:    "[5.0.0, )",
 			expectedVersion: "",
-			shouldFind:     false,
+			shouldFind:      false,
 		},
 		{
-			name:           "range excluding all stable versions",
-			versionRange:   "[4.0.0, )",
+			name:            "range excluding all stable versions",
+			versionRange:    "[4.0.0, )",
 			expectedVersion: "", // 4.0.0-beta doesn't satisfy ">= 4.0.0" (prerelease < release)
-			shouldFind:     false,
+			shouldFind:      false,
 		},
 	}
 
@@ -132,10 +132,10 @@ func TestLocalDependencyProvider_ExactVersionHandling(t *testing.T) {
 
 	// Create package
 	installPath := provider.resolver.GetInstallPath(packageID, ver)
-	os.MkdirAll(installPath, 0755)
+	_ = os.MkdirAll(installPath, 0755)
 
 	metadataPath := provider.resolver.GetNupkgMetadataPath(packageID, ver)
-	os.WriteFile(metadataPath, []byte(`{"version":2}`), 0644)
+	_ = os.WriteFile(metadataPath, []byte(`{"version":2}`), 0644)
 
 	nuspecPath := provider.resolver.GetManifestFilePath(packageID, ver)
 	nuspecContent := `<?xml version="1.0" encoding="utf-8"?>
@@ -147,7 +147,7 @@ func TestLocalDependencyProvider_ExactVersionHandling(t *testing.T) {
     <authors>Test</authors>
   </metadata>
 </package>`
-	os.WriteFile(nuspecPath, []byte(nuspecContent), 0644)
+	_ = os.WriteFile(nuspecPath, []byte(nuspecContent), 0644)
 
 	ctx := context.Background()
 

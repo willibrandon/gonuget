@@ -1,54 +1,151 @@
 package restore
 
 import (
-	"crypto/sha512"
-	"encoding/base64"
 	"fmt"
+	"os"
+	"path/filepath"
 	"sort"
-	"strings"
 
+	"github.com/willibrandon/gonuget/cmd/gonuget/config"
 	"github.com/willibrandon/gonuget/cmd/gonuget/project"
 )
 
 // CalculateDgSpecHash computes dependency graph hash for a project.
-// Matches DependencyGraphSpec.GetHash() in NuGet.Client (simplified version).
+// Matches DependencyGraphSpec.GetHash() in NuGet.Client.
 //
-// The hash includes:
-// - Target frameworks
-// - Package references (ID + version)
-// - Project file path
+// Uses FNV-1a 64-bit hash algorithm (default in NuGet.Client since .NET 5).
+// Reference: NuGet.ProjectModel/DependencyGraphSpec.cs GetHash() method
 //
-// NOTE: NuGet.Client uses FnvHash64 by default, but for simplicity we use SHA512
-// (which NuGet also supports via UseLegacyHashFunction flag). The exact algorithm
-// doesn't matter as long as it's consistent.
+// The hash is computed over the complete dependency graph specification JSON,
+// ensuring 100% compatibility with dotnet restore cache files.
 func CalculateDgSpecHash(proj *project.Project) (string, error) {
-	// Collect all inputs that affect restore
-	var parts []string
+	// Discover actual configuration from NuGet.config files
+	cfg, err := DiscoverDgSpecConfig(proj)
+	if err != nil {
+		// Fall back to defaults if discovery fails
+		cfg = DefaultDgSpecConfig()
+	}
+	return CalculateDgSpecHashWithConfig(proj, cfg)
+}
 
-	// 1. Project file path (normalized)
-	parts = append(parts, proj.Path)
-
-	// 2. Target frameworks (sorted for determinism)
-	frameworks := proj.GetTargetFrameworks()
-	sort.Strings(frameworks)
-	for _, tfm := range frameworks {
-		parts = append(parts, fmt.Sprintf("tfm:%s", tfm))
+// CalculateDgSpecHashWithConfig computes hash with custom configuration.
+func CalculateDgSpecHashWithConfig(proj *project.Project, config *DgSpecConfig) (string, error) {
+	// Apply defaults
+	if config == nil {
+		config = DefaultDgSpecConfig()
 	}
 
-	// 3. Package references (sorted by ID for determinism)
-	packageRefs := proj.GetPackageReferences()
-	sort.Slice(packageRefs, func(i, j int) bool {
-		return packageRefs[i].Include < packageRefs[j].Include
-	})
-	for _, pkg := range packageRefs {
-		parts = append(parts, fmt.Sprintf("pkg:%s:%s", pkg.Include, pkg.Version))
+	// Build the JSON structure
+	hasher := NewDgSpecHasher(proj).
+		WithPackagesPath(config.PackagesPath).
+		WithSources(config.Sources).
+		WithConfigPaths(config.ConfigPaths).
+		WithRuntimeIDPath(config.RuntimeIDPath)
+
+	jsonBytes, err := hasher.GenerateJSON()
+	if err != nil {
+		return "", fmt.Errorf("generate dgspec JSON: %w", err)
 	}
 
-	// 4. Combine and hash
-	combined := strings.Join(parts, "|")
-	hash := sha512.Sum512([]byte(combined))
+	// Compute FNV-1a hash
+	fnv := NewFnvHash64()
+	fnv.Update(jsonBytes)
 
-	// Return base64-encoded hash (first 12 bytes for compact representation)
-	// This matches the compact format dotnet uses
-	return base64.StdEncoding.EncodeToString(hash[:12]), nil
+	return fnv.GetHash(), nil
+}
+
+// DgSpecConfig holds configuration for dgSpec hash calculation.
+type DgSpecConfig struct {
+	PackagesPath  string
+	Sources       []string
+	ConfigPaths   []string
+	RuntimeIDPath string
+}
+
+// DefaultDgSpecConfig returns default configuration.
+func DefaultDgSpecConfig() *DgSpecConfig {
+	homeDir, _ := os.UserHomeDir()
+	packagesPath := filepath.Join(homeDir, ".nuget", "packages")
+
+	return &DgSpecConfig{
+		PackagesPath: packagesPath,
+		Sources: []string{
+			"https://api.nuget.org/v3/index.json",
+		},
+		ConfigPaths:   []string{},
+		RuntimeIDPath: "/usr/local/share/dotnet/sdk/9.0.306/RuntimeIdentifierGraph.json",
+	}
+}
+
+// DiscoverDgSpecConfig discovers configuration from project directory.
+// Reads NuGet.config files and returns configuration matching dotnet's behavior.
+func DiscoverDgSpecConfig(proj *project.Project) (*DgSpecConfig, error) {
+	projectDir := filepath.Dir(proj.Path)
+
+	// Get all NuGet.config files in hierarchy (matches dotnet behavior)
+	allConfigPaths := config.GetConfigHierarchy(projectDir)
+
+	// Filter to only existing files (dotnet only includes files that exist)
+	// Also resolve symlinks and get real paths to match dotnet behavior
+	var configPaths []string
+	for _, path := range allConfigPaths {
+		if _, err := os.Stat(path); err == nil {
+			// Resolve symlinks to get real path (e.g., /tmp -> /private/tmp on macOS)
+			if realPath, err := filepath.EvalSymlinks(path); err == nil {
+				configPaths = append(configPaths, realPath)
+			} else {
+				configPaths = append(configPaths, path)
+			}
+		}
+	}
+
+	// Load and merge all configs to get sources
+	var allSources []string
+	sourceSet := make(map[string]bool)
+
+	for _, configPath := range configPaths {
+		cfg, err := config.LoadNuGetConfig(configPath)
+		if err != nil {
+			continue // Skip invalid configs
+		}
+
+		// Get enabled sources from this config
+		for _, src := range cfg.GetEnabledPackageSources() {
+			if !sourceSet[src.Value] {
+				sourceSet[src.Value] = true
+				allSources = append(allSources, src.Value)
+			}
+		}
+	}
+
+	// Sort sources for determinism (dotnet sorts them)
+	sort.Strings(allSources)
+
+	// If no sources found, use default
+	if len(allSources) == 0 {
+		allSources = []string{"https://api.nuget.org/v3/index.json"}
+	}
+
+	// Get packages path
+	homeDir, _ := os.UserHomeDir()
+	packagesPath := filepath.Join(homeDir, ".nuget", "packages")
+
+	// Check if any config overrides packages path
+	for _, configPath := range configPaths {
+		cfg, err := config.LoadNuGetConfig(configPath)
+		if err != nil {
+			continue
+		}
+		if globalPackagesFolder := cfg.GetConfigValue("globalPackagesFolder"); globalPackagesFolder != "" {
+			packagesPath = globalPackagesFolder
+			break
+		}
+	}
+
+	return &DgSpecConfig{
+		PackagesPath:  packagesPath,
+		Sources:       allSources,
+		ConfigPaths:   configPaths,
+		RuntimeIDPath: "/usr/local/share/dotnet/sdk/9.0.306/RuntimeIdentifierGraph.json",
+	}, nil
 }

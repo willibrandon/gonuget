@@ -720,7 +720,7 @@ func TestRunAddPackage_OutputParity(t *testing.T) {
 	err = runAddPackage(context.Background(), "Newtonsoft.Json", opts)
 
 	// Restore stdout
-	w.Close()
+	_ = w.Close()
 	os.Stdout = oldStdout
 
 	require.NoError(t, err)
@@ -753,4 +753,3 @@ func TestRunAddPackage_OutputParity(t *testing.T) {
 	assert.NotContains(t, output, "Downloading")
 	assert.NotContains(t, output, "already cached")
 }
-

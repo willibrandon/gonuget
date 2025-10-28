@@ -25,7 +25,13 @@ func TestLoadProject_SDKStyle(t *testing.T) {
 
 	proj, err := LoadProject(projectPath)
 	require.NoError(t, err)
-	assert.Equal(t, projectPath, proj.Path)
+
+	// Path should be resolved (symlinks resolved)
+	expectedPath, _ := filepath.EvalSymlinks(projectPath)
+	if expectedPath == "" {
+		expectedPath = projectPath
+	}
+	assert.Equal(t, expectedPath, proj.Path)
 	assert.True(t, proj.IsSDKStyle())
 	assert.Equal(t, "Microsoft.NET.Sdk", proj.Root.Sdk)
 	assert.Equal(t, "net8.0", proj.TargetFramework)
@@ -615,10 +621,20 @@ func TestGetDirectoryPackagesPropsPath(t *testing.T) {
 
 			// For non-custom paths, verify the path is in expected directory
 			if tt.name != "Custom path specified" {
+				// Resolve expected paths for comparison
+				var expectedDir string
 				if tt.propsInParent {
-					assert.Equal(t, tempDir, filepath.Dir(got), "Props should be in parent directory")
+					expectedDir, _ = filepath.EvalSymlinks(tempDir)
+					if expectedDir == "" {
+						expectedDir = tempDir
+					}
+					assert.Equal(t, expectedDir, filepath.Dir(got), "Props should be in parent directory")
 				} else {
-					assert.Equal(t, projectDir, filepath.Dir(got), "Props should be in project directory")
+					expectedDir, _ = filepath.EvalSymlinks(projectDir)
+					if expectedDir == "" {
+						expectedDir = projectDir
+					}
+					assert.Equal(t, expectedDir, filepath.Dir(got), "Props should be in project directory")
 				}
 			}
 		})

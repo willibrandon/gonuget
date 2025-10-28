@@ -118,10 +118,10 @@ func TestVersionRange_FindBestMatch(t *testing.T) {
 		rangeStr string
 		expected string
 	}{
-		{"range 1.0-2.0", "[1.0, 2.0]", "1.0.0"},         // Favor lower: minimum satisfying version
+		{"range 1.0-2.0", "[1.0, 2.0]", "1.0.0"},           // Favor lower: minimum satisfying version
 		{"range 1.0-2.0 exclusive", "[1.0, 2.0)", "1.0.0"}, // Favor lower: minimum satisfying version
-		{"open upper from 2.0", "[2.0, )", "2.0.0"},      // Favor lower: minimum satisfying version
-		{"open lower to 2.0", "(, 2.0]", "1.0.0"},        // Favor lower: minimum satisfying version (1.0.0 is lowest)
+		{"open upper from 2.0", "[2.0, )", "2.0.0"},        // Favor lower: minimum satisfying version
+		{"open lower to 2.0", "(, 2.0]", "1.0.0"},          // Favor lower: minimum satisfying version (1.0.0 is lowest)
 		{"no match", "[10.0, 20.0]", ""},
 	}
 

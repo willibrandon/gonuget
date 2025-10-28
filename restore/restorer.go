@@ -53,17 +53,24 @@ func Run(ctx context.Context, args []string, opts *Options, console Console) err
 		return fmt.Errorf("restore failed: %w", err)
 	}
 
-	// 6. Generate lock file (project.assets.json)
-	lockFile := NewLockFileBuilder().Build(proj, result)
-	objDir := filepath.Join(filepath.Dir(proj.Path), "obj")
-	assetsPath := filepath.Join(objDir, "project.assets.json")
-	if err := lockFile.Save(assetsPath); err != nil {
-		return fmt.Errorf("failed to save project.assets.json: %w", err)
+	// 6. Generate lock file (project.assets.json) - only if not cache hit
+	if !result.CacheHit {
+		lockFile := NewLockFileBuilder().Build(proj, result)
+		objDir := filepath.Join(filepath.Dir(proj.Path), "obj")
+		assetsPath := filepath.Join(objDir, "project.assets.json")
+		if err := lockFile.Save(assetsPath); err != nil {
+			return fmt.Errorf("failed to save project.assets.json: %w", err)
+		}
 	}
 
 	// 7. Report summary
 	elapsed := time.Since(start)
-	console.Printf("  Restored %s (in %d ms)\n", projectPath, elapsed.Milliseconds())
+	if result.CacheHit {
+		// Match dotnet: "All projects are up-to-date for restore."
+		console.Printf("  All projects are up-to-date for restore.\n")
+	} else {
+		console.Printf("  Restored %s (in %d ms)\n", projectPath, elapsed.Milliseconds())
+	}
 
 	return nil
 }
@@ -183,7 +190,7 @@ func (r *Restorer) Restore(
 			r.console.Warning("Failed to validate cache: %v\n", err)
 		} else if cacheValid && !r.opts.Force {
 			// Cache hit! Return cached result without doing restore
-			r.console.Printf("  Restore skipped (cache valid)\n")
+			// (Message will be printed by Run() function)
 
 			// Get packages folder for path construction
 			packagesFolder := r.opts.PackagesFolder

@@ -37,8 +37,15 @@ func LoadProject(path string) (*Project, error) {
 	// Store raw XML for formatting preservation
 	root.RawXML = data
 
+	// Resolve symlinks to get canonical path (e.g., /tmp -> /private/tmp on macOS)
+	// This matches dotnet's behavior and ensures hash compatibility
+	resolvedPath := path
+	if realPath, err := filepath.EvalSymlinks(path); err == nil {
+		resolvedPath = realPath
+	}
+
 	proj := &Project{
-		Path:     path,
+		Path:     resolvedPath,
 		Root:     &root,
 		modified: false,
 	}

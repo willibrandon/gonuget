@@ -734,3 +734,23 @@ type ResolveResult struct {
 	// Error is any error that occurred (empty if successful).
 	Error string `json:"error,omitempty"`
 }
+
+// GetDgSpecHashRequest asks NuGet.Client to compute dgSpecHash and return the exact JSON used.
+// This is CRITICAL for cache file compatibility - we need to generate identical JSON and hash.
+type GetDgSpecHashRequest struct {
+	// DgSpecPath is the path to a .nuget.dgspec.json file created by dotnet restore.
+	DgSpecPath string `json:"dgSpecPath"`
+}
+
+// GetDgSpecHashResponse contains the hash and the exact JSON used for hashing.
+type GetDgSpecHashResponse struct {
+	// Hash is the computed dgSpecHash (base64-encoded FNV-1a 64-bit hash).
+	Hash string `json:"hash"`
+
+	// HashedJSON is the exact JSON bytes that were hashed (with hashing: true).
+	// This is NOT the same as the dgspec.json file on disk (which uses hashing: false).
+	HashedJSON string `json:"hashedJson"`
+
+	// DgSpecJSON is the dgspec.json file content for comparison (hashing: false).
+	DgSpecJSON string `json:"dgSpecJson"`
+}

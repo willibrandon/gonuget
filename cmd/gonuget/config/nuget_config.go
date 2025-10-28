@@ -288,9 +288,17 @@ func GetConfigHierarchy(workingDirectory string) []string {
 	// Walk up directory tree
 	dir := startDir
 	for {
-		configPath := filepath.Join(dir, "NuGet.config")
+		// Check for both casings (NuGet.Config and NuGet.config)
+		// Prefer the one that actually exists on disk
+		configPath := filepath.Join(dir, "NuGet.Config")
 		if _, err := os.Stat(configPath); err == nil {
 			paths = append(paths, configPath)
+		} else {
+			// Try lowercase if capital C doesn't exist
+			configPath = filepath.Join(dir, "NuGet.config")
+			if _, err := os.Stat(configPath); err == nil {
+				paths = append(paths, configPath)
+			}
 		}
 
 		parent := filepath.Dir(dir)

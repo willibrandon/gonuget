@@ -83,7 +83,7 @@ func (c *CacheFile) Save(path string) error {
 	}
 
 	if err := os.Rename(tmpPath, path); err != nil {
-		os.Remove(tmpPath) // Clean up on failure
+		_ = os.Remove(tmpPath) // Clean up on failure
 		return fmt.Errorf("rename cache file: %w", err)
 	}
 

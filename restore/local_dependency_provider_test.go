@@ -16,11 +16,11 @@ func TestLocalDependencyProvider_PackageExists(t *testing.T) {
 	provider := NewLocalDependencyProvider(tempDir)
 
 	tests := []struct {
-		name            string
-		packageID       string
-		packageVersion  string
-		setupFunc       func(string, string)
-		expectedExists  bool
+		name           string
+		packageID      string
+		packageVersion string
+		setupFunc      func(string, string)
+		expectedExists bool
 	}{
 		{
 			name:           "package with metadata file exists",
@@ -30,8 +30,8 @@ func TestLocalDependencyProvider_PackageExists(t *testing.T) {
 				// Create metadata file (primary completion marker)
 				v, _ := version.Parse(ver)
 				metadataPath := provider.resolver.GetNupkgMetadataPath(id, v)
-				os.MkdirAll(filepath.Dir(metadataPath), 0755)
-				os.WriteFile(metadataPath, []byte(`{"version":2}`), 0644)
+				_ = os.MkdirAll(filepath.Dir(metadataPath), 0755)
+				_ = os.WriteFile(metadataPath, []byte(`{"version":2}`), 0644)
 			},
 			expectedExists: true,
 		},
@@ -43,8 +43,8 @@ func TestLocalDependencyProvider_PackageExists(t *testing.T) {
 				// Create hash file (fallback completion marker)
 				v, _ := version.Parse(ver)
 				hashPath := provider.resolver.GetHashPath(id, v)
-				os.MkdirAll(filepath.Dir(hashPath), 0755)
-				os.WriteFile(hashPath, []byte("hash123"), 0644)
+				_ = os.MkdirAll(filepath.Dir(hashPath), 0755)
+				_ = os.WriteFile(hashPath, []byte("hash123"), 0644)
 			},
 			expectedExists: true,
 		},
@@ -63,7 +63,7 @@ func TestLocalDependencyProvider_PackageExists(t *testing.T) {
 				// Create directory but no completion markers
 				v, _ := version.Parse(ver)
 				installPath := provider.resolver.GetInstallPath(id, v)
-				os.MkdirAll(installPath, 0755)
+				_ = os.MkdirAll(installPath, 0755)
 			},
 			expectedExists: false,
 		},
@@ -123,11 +123,11 @@ func TestLocalDependencyProvider_GetDependencies_Cached(t *testing.T) {
 
 	// Create package structure
 	installPath := provider.resolver.GetInstallPath(packageID, ver)
-	os.MkdirAll(installPath, 0755)
+	_ = os.MkdirAll(installPath, 0755)
 
 	// Create completion marker
 	metadataPath := provider.resolver.GetNupkgMetadataPath(packageID, ver)
-	os.WriteFile(metadataPath, []byte(`{"version":2}`), 0644)
+	_ = os.WriteFile(metadataPath, []byte(`{"version":2}`), 0644)
 
 	// Create .nuspec file
 	nuspecPath := provider.resolver.GetManifestFilePath(packageID, ver)
@@ -145,7 +145,7 @@ func TestLocalDependencyProvider_GetDependencies_Cached(t *testing.T) {
   </metadata>
 </package>`
 
-	os.WriteFile(nuspecPath, []byte(nuspecContent), 0644)
+	_ = os.WriteFile(nuspecPath, []byte(nuspecContent), 0644)
 
 	ctx := context.Background()
 
@@ -198,11 +198,11 @@ func TestLocalDependencyProvider_GetDependencies_NoDependencies(t *testing.T) {
 
 	// Create package structure
 	installPath := provider.resolver.GetInstallPath(packageID, ver)
-	os.MkdirAll(installPath, 0755)
+	_ = os.MkdirAll(installPath, 0755)
 
 	// Create completion marker
 	metadataPath := provider.resolver.GetNupkgMetadataPath(packageID, ver)
-	os.WriteFile(metadataPath, []byte(`{"version":2}`), 0644)
+	_ = os.WriteFile(metadataPath, []byte(`{"version":2}`), 0644)
 
 	// Create .nuspec file with no dependencies
 	nuspecPath := provider.resolver.GetManifestFilePath(packageID, ver)
@@ -214,7 +214,7 @@ func TestLocalDependencyProvider_GetDependencies_NoDependencies(t *testing.T) {
   </metadata>
 </package>`
 
-	os.WriteFile(nuspecPath, []byte(nuspecContent), 0644)
+	_ = os.WriteFile(nuspecPath, []byte(nuspecContent), 0644)
 
 	ctx := context.Background()
 
@@ -246,11 +246,11 @@ func TestLocalDependencyProvider_GetDependencies_FrameworkFallback(t *testing.T)
 
 	// Create package structure
 	installPath := provider.resolver.GetInstallPath(packageID, ver)
-	os.MkdirAll(installPath, 0755)
+	_ = os.MkdirAll(installPath, 0755)
 
 	// Create completion marker
 	metadataPath := provider.resolver.GetNupkgMetadataPath(packageID, ver)
-	os.WriteFile(metadataPath, []byte(`{"version":2}`), 0644)
+	_ = os.WriteFile(metadataPath, []byte(`{"version":2}`), 0644)
 
 	// Create .nuspec with multiple framework groups
 	// Provider should return ALL groups (walker will select best match)
@@ -271,7 +271,7 @@ func TestLocalDependencyProvider_GetDependencies_FrameworkFallback(t *testing.T)
   </metadata>
 </package>`
 
-	os.WriteFile(nuspecPath, []byte(nuspecContent), 0644)
+	_ = os.WriteFile(nuspecPath, []byte(nuspecContent), 0644)
 
 	ctx := context.Background()
 
@@ -326,11 +326,11 @@ func TestLocalDependencyProvider_GetDependencies_AnyFramework(t *testing.T) {
 
 	// Create package structure
 	installPath := provider.resolver.GetInstallPath(packageID, ver)
-	os.MkdirAll(installPath, 0755)
+	_ = os.MkdirAll(installPath, 0755)
 
 	// Create completion marker
 	metadataPath := provider.resolver.GetNupkgMetadataPath(packageID, ver)
-	os.WriteFile(metadataPath, []byte(`{"version":2}`), 0644)
+	_ = os.WriteFile(metadataPath, []byte(`{"version":2}`), 0644)
 
 	// Create .nuspec with "any" framework group (empty targetFramework)
 	nuspecPath := provider.resolver.GetManifestFilePath(packageID, ver)
@@ -347,7 +347,7 @@ func TestLocalDependencyProvider_GetDependencies_AnyFramework(t *testing.T) {
   </metadata>
 </package>`
 
-	os.WriteFile(nuspecPath, []byte(nuspecContent), 0644)
+	_ = os.WriteFile(nuspecPath, []byte(nuspecContent), 0644)
 
 	ctx := context.Background()
 
