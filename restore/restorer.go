@@ -127,6 +127,9 @@ type Result struct {
 
 	// Graph contains full dependency graph (optional, for debugging)
 	Graph any // *resolver.GraphNode, but avoid import cycle
+
+	// CacheHit indicates restore was skipped (cache valid)
+	CacheHit bool
 }
 
 // PackageInfo holds package information.
@@ -163,6 +166,76 @@ func (r *Restorer) Restore(
 		TransitivePackages: make([]PackageInfo, 0),
 	}
 
+	// Phase 0: No-op optimization (cache check)
+	// Matches RestoreCommand.EvaluateNoOpAsync (line 442-501)
+	cachePath := GetCacheFilePath(proj.Path)
+
+	// Calculate current hash
+	currentHash, err := CalculateDgSpecHash(proj)
+	if err != nil {
+		// If we can't calculate hash, just proceed with full restore
+		r.console.Warning("Failed to calculate dgspec hash: %v\n", err)
+	} else {
+		// Check if cache is valid
+		cacheValid, cachedFile, err := IsCacheValid(cachePath, currentHash)
+		if err != nil {
+			r.console.Warning("Failed to validate cache: %v\n", err)
+		} else if cacheValid && !r.opts.Force {
+			// Cache hit! Return cached result without doing restore
+			r.console.Printf("  Restore skipped (cache valid)\n")
+
+			// Get packages folder for path construction
+			packagesFolder := r.opts.PackagesFolder
+			if packagesFolder == "" {
+				home, err := os.UserHomeDir()
+				if err != nil {
+					// Fallback: just proceed with full restore
+					goto fullRestore
+				}
+				packagesFolder = filepath.Join(home, ".nuget", "packages")
+			}
+
+			// Build result from cache
+			// Group packages by direct vs transitive
+			directPackageIDs := make(map[string]bool)
+			for _, pkgRef := range packageRefs {
+				directPackageIDs[strings.ToLower(pkgRef.Include)] = true
+			}
+
+			// Parse package info from cache paths
+			// Expected format: /path/packages/{id}/{version}/{id}.{version}.nupkg.sha512
+			for _, pkgPath := range cachedFile.ExpectedPackageFiles {
+				parts := strings.Split(filepath.ToSlash(pkgPath), "/")
+				if len(parts) < 3 {
+					continue
+				}
+
+				// Extract ID and version from path
+				version := parts[len(parts)-2]
+				id := parts[len(parts)-3]
+
+				info := PackageInfo{
+					ID:       id,
+					Version:  version,
+					Path:     filepath.Join(packagesFolder, strings.ToLower(id), version),
+					IsDirect: directPackageIDs[strings.ToLower(id)],
+					Parents:  []string{},
+				}
+
+				if info.IsDirect {
+					result.DirectPackages = append(result.DirectPackages, info)
+				} else {
+					result.TransitivePackages = append(result.TransitivePackages, info)
+				}
+			}
+
+			result.CacheHit = true
+			return result, nil
+		}
+	}
+
+fullRestore:
+	// Cache miss or invalid - proceed with full restore
 	// Get global packages folder
 	packagesFolder := r.opts.PackagesFolder
 	if packagesFolder == "" {
@@ -279,7 +352,7 @@ func (r *Restorer) Restore(
 
 	// Phase 4: Write cache file for no-op optimization
 	// Matches RestoreCommand.CommitCacheFileAsync (RestoreResult.cs line 296)
-	cachePath := GetCacheFilePath(proj.Path)
+	cachePath = GetCacheFilePath(proj.Path)
 
 	// Calculate hash
 	dgSpecHash, err := CalculateDgSpecHash(proj)
