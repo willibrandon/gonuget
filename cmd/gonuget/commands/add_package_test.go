@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"bytes"
 	"context"
 	"os"
 	"path/filepath"
@@ -685,3 +686,71 @@ func TestRunAddPackage_CPM_VerifyNoVersionInCsproj(t *testing.T) {
 	}
 	assert.True(t, found, "PackageReference for Newtonsoft.Json should exist")
 }
+
+// TestRunAddPackage_OutputParity verifies that gonuget's output matches dotnet's output 100%
+func TestRunAddPackage_OutputParity(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test")
+	}
+
+	// Create temp project
+	tmpDir := t.TempDir()
+	projectPath := filepath.Join(tmpDir, "test.csproj")
+
+	projectContent := `<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+  </PropertyGroup>
+</Project>`
+
+	err := os.WriteFile(projectPath, []byte(projectContent), 0644)
+	require.NoError(t, err)
+
+	// Capture stdout
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	opts := &AddPackageOptions{
+		ProjectPath: projectPath,
+		Version:     "13.0.3",
+		Source:      "https://api.nuget.org/v3/index.json",
+	}
+
+	err = runAddPackage(context.Background(), "Newtonsoft.Json", opts)
+
+	// Restore stdout
+	w.Close()
+	os.Stdout = oldStdout
+
+	require.NoError(t, err)
+
+	// Read captured output
+	var buf bytes.Buffer
+	_, _ = buf.ReadFrom(r)
+	output := buf.String()
+
+	// Verify output format matches dotnet exactly (ignoring timing and paths)
+	// Expected format:
+	// info : Adding PackageReference for package 'Newtonsoft.Json' into project 'PATH'.
+	// info : Restoring packages for PATH...
+	// info : Package 'Newtonsoft.Json' is compatible with all the specified frameworks in project 'PATH'.
+	// info : PackageReference for package 'Newtonsoft.Json' version '13.0.3' added to file 'PATH'.
+	// info : Writing assets file to disk. Path: PATH
+	// log  : Restored PATH (in X ms).
+
+	assert.Contains(t, output, "info : Adding PackageReference for package 'Newtonsoft.Json' into project")
+	assert.Contains(t, output, "info : Restoring packages for")
+	assert.Contains(t, output, "info : Package 'Newtonsoft.Json' is compatible with all the specified frameworks in project")
+	assert.Contains(t, output, "info : PackageReference for package 'Newtonsoft.Json' version '13.0.3' added to file")
+	assert.Contains(t, output, "info : Writing assets file to disk. Path:")
+	assert.Contains(t, output, "log  : Restored")
+	assert.Contains(t, output, "(in")
+	assert.Contains(t, output, "ms)")
+
+	// Verify output does NOT contain gonuget-specific messages
+	assert.NotContains(t, output, "Resolving")
+	assert.NotContains(t, output, "Downloading")
+	assert.NotContains(t, output, "already cached")
+}
+

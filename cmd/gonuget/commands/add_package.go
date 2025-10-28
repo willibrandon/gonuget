@@ -137,15 +137,11 @@ func runAddPackage(ctx context.Context, packageID string, opts *AddPackageOption
 		fmt.Fprintf(os.Stderr, "warn  : --no-restore|-n flag was used. No compatibility check will be done and the added package reference will be unconditional.\n")
 	}
 
-	// 10. Report success
-	if updated {
-		fmt.Printf("info : Updated package '%s' version '%s' in project '%s'\n", packageID, packageVersion, projectPath)
-	} else {
-		fmt.Printf("info : Added package '%s' version '%s' to project '%s'\n", packageID, packageVersion, projectPath)
-	}
-
 	// 10. Perform restore if needed
 	if !opts.NoRestore {
+		// Match dotnet: "Adding PackageReference for package 'X' into project 'PATH'"
+		fmt.Printf("info : Adding PackageReference for package '%s' into project '%s'.\n", packageID, projectPath)
+
 		restoreOpts := &restore.Options{
 			PackagesFolder: opts.PackageDirectory,
 			Sources:        []string{},
@@ -164,21 +160,50 @@ func runAddPackage(ctx context.Context, packageID string, opts *AddPackageOption
 			}
 		}
 
+		// Match dotnet: "Restoring packages for PATH..."
+		fmt.Printf("info : Restoring packages for %s...\n", projectPath)
+
 		console := &cliConsole{}
 		restorer := restore.NewRestorer(restoreOpts, console)
 
+		restoreStart := time.Now()
 		packageRefs := proj.GetPackageReferences()
 		result, err := restorer.Restore(ctx, proj, packageRefs)
+		restoreElapsed := time.Since(restoreStart)
 		if err != nil {
 			return fmt.Errorf("restore failed: %w", err)
+		}
+
+		// Match dotnet: "Package 'X' is compatible with all the specified frameworks in project 'PATH'."
+		fmt.Printf("info : Package '%s' is compatible with all the specified frameworks in project '%s'.\n", packageID, projectPath)
+
+		// Match dotnet: "PackageReference for package 'X' version 'Y' added to file 'PATH'."
+		if updated {
+			fmt.Printf("info : PackageReference for package '%s' version '%s' updated in file '%s'.\n", packageID, packageVersion, projectPath)
+		} else {
+			fmt.Printf("info : PackageReference for package '%s' version '%s' added to file '%s'.\n", packageID, packageVersion, projectPath)
 		}
 
 		// Generate project.assets.json (matches dotnet add package behavior)
 		lockFile := restore.NewLockFileBuilder().Build(proj, result)
 		objDir := filepath.Join(filepath.Dir(projectPath), "obj")
 		assetsPath := filepath.Join(objDir, "project.assets.json")
+
+		// Match dotnet: "Writing assets file to disk. Path: PATH"
+		fmt.Printf("info : Writing assets file to disk. Path: %s\n", assetsPath)
+
 		if err := lockFile.Save(assetsPath); err != nil {
 			return fmt.Errorf("failed to save project.assets.json: %w", err)
+		}
+
+		// Match dotnet: "log  : Restored PATH (in X ms)."
+		fmt.Printf("log  : Restored %s (in %d ms).\n", projectPath, restoreElapsed.Milliseconds())
+	} else {
+		// With --no-restore, just report the add/update
+		if updated {
+			fmt.Printf("info : Updated package '%s' version '%s' in project '%s'\n", packageID, packageVersion, projectPath)
+		} else {
+			fmt.Printf("info : Added package '%s' version '%s' to project '%s'\n", packageID, packageVersion, projectPath)
 		}
 	}
 

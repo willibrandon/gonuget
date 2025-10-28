@@ -197,8 +197,6 @@ func (r *Restorer) Restore(
 	}
 
 	for _, pkgRef := range packageRefs {
-		r.console.Printf("  Resolving %s %s...\n", pkgRef.Include, pkgRef.Version)
-
 		// Convert version to version range format if needed
 		// Plain versions like "13.0.1" need to become "[13.0.1]" (exact range)
 		versionRange := pkgRef.Version
@@ -244,12 +242,9 @@ func (r *Restorer) Restore(
 		// Check if package already exists in cache
 		if !r.opts.Force {
 			if _, err := os.Stat(packagePath); err == nil {
-				r.console.Printf("    Package %s %s already cached\n", pkgInfo.ID, pkgInfo.Version)
 				continue
 			}
 		}
-
-		r.console.Printf("  Downloading %s %s...\n", pkgInfo.ID, pkgInfo.Version)
 
 		// Download package
 		if err := r.downloadPackage(ctx, normalizedID, pkgInfo.Version, packagePath); err != nil {
