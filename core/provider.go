@@ -134,28 +134,11 @@ func (f *ProviderFactory) CreateProvider(ctx context.Context, sourceURL string) 
 	ctx, span := observability.StartProtocolDetectionSpan(ctx, sourceURL)
 	defer span.End()
 
-	// Check disk cache first (eliminates 2 HTTP requests on fresh processes!)
-	if cachedProtocol, found := GetCachedProtocol(sourceURL); found {
-		observability.RecordCacheHit(ctx, true)
-		span.SetAttributes(attribute.String("protocol.cached", cachedProtocol))
-		switch cachedProtocol {
-		case "v3":
-			return NewV3ResourceProvider(sourceURL, f.httpClient, f.cache), nil
-		case "v2":
-			// V2 URLs stored in cache already have /index.json stripped
-			return NewV2ResourceProvider(sourceURL, f.httpClient, f.cache), nil
-		}
-	}
-
-	observability.RecordCacheHit(ctx, false)
-
 	// Fast-path for nuget.org V2 URL -> use V3 protocol (30-40% faster)
 	// nuget.org supports both V2 and V3, but V3 is significantly faster (JSON vs XML)
 	// This eliminates protocol detection overhead (saves ~1200ms on cold start)
 	if strings.Contains(sourceURL, "nuget.org/api/v2") {
 		span.SetAttributes(attribute.String("protocol.fastpath", "nuget.org-v2-to-v3"))
-		// Cache the V3 protocol for the original V2 URL
-		_ = SetCachedProtocol(sourceURL, "v3")
 		// Keep original V2 URL as sourceURL for repository matching
 		// Use V3 service index URL for actual API calls
 		return NewV3ResourceProviderWithServiceIndex(
@@ -188,8 +171,7 @@ func (f *ProviderFactory) CreateProvider(ctx context.Context, sourceURL string) 
 			contentType := resp.Header.Get("Content-Type")
 			// V3 service index should return JSON
 			if strings.Contains(contentType, "json") {
-				// V3 feed detected - cache result
-				_ = SetCachedProtocol(sourceURL, "v3")
+				// V3 feed detected
 				return NewV3ResourceProvider(sourceURL, f.httpClient, f.cache), nil
 			}
 		}
@@ -206,8 +188,7 @@ func (f *ProviderFactory) CreateProvider(ctx context.Context, sourceURL string) 
 			contentType := resp.Header.Get("Content-Type")
 			// V2 feeds typically return XML
 			if strings.Contains(contentType, "xml") || strings.Contains(contentType, "atom") {
-				// V2 feed detected - cache result (store normalized v2URL)
-				_ = SetCachedProtocol(v2URL, "v2")
+				// V2 feed detected
 				return NewV2ResourceProvider(v2URL, f.httpClient, f.cache), nil
 			}
 		}

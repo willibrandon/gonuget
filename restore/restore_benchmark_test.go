@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/willibrandon/gonuget/cmd/gonuget/project"
-	"github.com/willibrandon/gonuget/core"
 )
 
 // BenchmarkRestore_V2_NewtonsoftJson benchmarks V2 restore for Newtonsoft.Json
@@ -104,10 +103,6 @@ func TestCompareRestorePerformance(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping performance comparison in short mode")
 	}
-
-	// Clear protocol cache to ensure clean state
-	// The fast-path optimization requires clearing stale cache entries
-	_ = core.ClearProtocolCache()
 
 	// Clear both gonuget and dotnet HTTP caches for fair comparison
 	// dotnet stores cache at ~/.local/share/NuGet/http-cache on macOS/Linux
