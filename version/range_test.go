@@ -29,6 +29,32 @@ func TestParseVersionRange(t *testing.T) {
 	}
 }
 
+func TestVersionRange_FindBestMatch_FavorLower(t *testing.T) {
+	// Test case from real Serilog dependency resolution
+	// Serilog.Sinks.File 5.0.0 depends on Serilog [2.10.0, )
+	// When both 2.10.0 and 3.0.0 are cached, NuGet picks 2.10.0 (lower)
+	versions := []*NuGetVersion{
+		MustParse("2.10.0"),
+		MustParse("3.0.0"),
+		MustParse("4.0.0-beta"),
+	}
+
+	r, err := ParseVersionRange("[2.10.0, )")
+	if err != nil {
+		t.Fatalf("ParseVersionRange() error = %v", err)
+	}
+
+	best := r.FindBestMatch(versions)
+
+	if best == nil {
+		t.Fatal("FindBestMatch() = nil, want 2.10.0")
+	}
+
+	if best.String() != "2.10.0" {
+		t.Errorf("FindBestMatch() = %v, want 2.10.0 (favors lower version)", best)
+	}
+}
+
 func TestVersionRange_Satisfies(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -92,10 +118,10 @@ func TestVersionRange_FindBestMatch(t *testing.T) {
 		rangeStr string
 		expected string
 	}{
-		{"range 1.0-2.0", "[1.0, 2.0]", "2.0.0"},
-		{"range 1.0-2.0 exclusive", "[1.0, 2.0)", "1.5.0"},
-		{"open upper from 2.0", "[2.0, )", "3.0.0"},
-		{"open lower to 2.0", "(, 2.0]", "2.0.0"},
+		{"range 1.0-2.0", "[1.0, 2.0]", "1.0.0"},         // Favor lower: minimum satisfying version
+		{"range 1.0-2.0 exclusive", "[1.0, 2.0)", "1.0.0"}, // Favor lower: minimum satisfying version
+		{"open upper from 2.0", "[2.0, )", "2.0.0"},      // Favor lower: minimum satisfying version
+		{"open lower to 2.0", "(, 2.0]", "1.0.0"},        // Favor lower: minimum satisfying version (1.0.0 is lowest)
 		{"no match", "[10.0, 20.0]", ""},
 	}
 

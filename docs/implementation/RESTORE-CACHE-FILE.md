@@ -1222,7 +1222,499 @@ git commit -m "feat(restore): implement no-op cache check
 
 ---
 
-### Chunk 6: Update CLI to Match Dotnet Output for No-Op
+### Chunk 6: Implement Local Dependency Provider for Cached Packages
+
+**CRITICAL PERFORMANCE FIX**: This chunk eliminates HTTP calls for cached packages, closing the 128ms performance gap with dotnet.
+
+**Problem**: gonuget makes HTTP requests to get package metadata even when packages are already cached locally. This causes:
+- gonuget: 261ms (first restore with cached packages)
+- dotnet: 133ms (first restore with cached packages)
+- **Gap: 128ms slower**
+
+**Root Cause**: `walker.Walk()` in `restore/restorer.go` line 285 uses only remote providers (HTTP), never checking local cache first.
+
+**Solution**: Implement local dependency provider that reads from cached `.nuspec` files (NO HTTP).
+
+**Goal**: Match dotnet's behavior of checking local cache BEFORE making HTTP requests.
+
+---
+
+#### How NuGet.Client Avoids HTTP Calls (Detailed Investigation)
+
+**Architecture Overview**:
+
+NuGet.Client uses TWO separate provider lists in `RemoteWalkContext`:
+1. **LocalLibraryProviders** - Read from `~/.nuget/packages` (NO HTTP)
+2. **RemoteLibraryProviders** - Read from remote feeds (WITH HTTP)
+
+**Walker Behavior**:
+- Walker tries `LocalLibraryProviders` FIRST
+- Only falls back to `RemoteLibraryProviders` if package not found locally
+- This is why dotnet is 128ms faster - it reads from cached .nuspec files instead of HTTP
+
+**File**: `RestoreCommand.cs` line 2037-2050
+```csharp
+private static RemoteWalkContext CreateRemoteWalkContext(RestoreRequest request, RestoreCollectorLogger logger)
+{
+    var context = new RemoteWalkContext(
+        request.CacheContext,
+        request.PackageSourceMapping,
+        logger);
+
+    // LOCAL PROVIDERS - check cache first (NO HTTP)
+    foreach (var provider in request.DependencyProviders.LocalProviders)
+    {
+        context.LocalLibraryProviders.Add(provider);
+    }
+
+    // REMOTE PROVIDERS - fallback to HTTP
+    foreach (var provider in request.DependencyProviders.RemoteProviders)
+    {
+        context.RemoteLibraryProviders.Add(provider);
+    }
+
+    return context;
+}
+```
+
+**Local Provider Chain**:
+
+1. **RestoreCommandProvidersCache.CreateLocalProviders()** (line 109-152):
+   - Creates `SourceRepositoryDependencyProvider` for global packages folder
+   - Uses `Repository.Factory.GetCoreV3(path, FeedType.FileSystemV3)` to create local file system repository
+   - Passes `LocalPackageFileCache` for .nuspec caching
+
+2. **SourceRepositoryDependencyProvider** (wraps local repository):
+   - Implements `IRemoteDependencyProvider` interface
+   - `GetDependenciesAsync()` calls `FindPackageByIdResource.GetDependencyInfoAsync()` (line 369)
+   - For local repositories, this is `LocalV3FindPackageByIdResource`
+
+3. **LocalV3FindPackageByIdResource** (reads from disk):
+   - Uses `VersionFolderPathResolver` to find package paths
+   - **DoesVersionExist()** (line 459-468): Checks for `.nupkg.metadata` or `.nupkg.sha512`
+   - **GetDependencyInfoAsync()** (line 247-302):
+     ```csharp
+     if (DoesVersionExist(id, version))
+     {
+         dependencyInfo = ProcessNuspecReader(
+             id,
+             version,
+             nuspecReader =>
+             {
+                 return GetDependencyInfo(nuspecReader);
+             });
+     }
+     ```
+   - **ProcessNuspecReader()** (line 430-457):
+     ```csharp
+     var nuspecPath = _resolver.GetManifestFilePath(id, version);
+     var expandedPath = _resolver.GetInstallPath(id, version);
+
+     // Read the nuspec from disk
+     nuspecReader = PackageFileCache.GetOrAddNuspec(nuspecPath, expandedPath).Value;
+
+     // Process nuspec
+     return process(nuspecReader);
+     ```
+   - **GetDependencyInfo()** (line 145-156):
+     ```csharp
+     return new FindPackageByIdDependencyInfo(
+         reader.GetIdentity(),
+         reader.GetDependencyGroups(),  // Extract dependencies from .nuspec
+         reader.GetFrameworkAssemblyGroups());
+     ```
+
+**Key Paths**:
+- .nuspec file: `~/.nuget/packages/{id}/{version}/{id}.nuspec`
+- Completion marker: `~/.nuget/packages/{id}/{version}/.nupkg.metadata`
+- Fallback marker: `~/.nuget/packages/{id}/{version}/{id}.{version}.nupkg.sha512`
+
+**Example**: For Newtonsoft.Json 13.0.3:
+- .nuspec: `~/.nuget/packages/newtonsoft.json/13.0.3/newtonsoft.json.nuspec`
+- Metadata: `~/.nuget/packages/newtonsoft.json/13.0.3/.nupkg.metadata`
+
+**NuGet.Client Source Files**:
+- `RestoreCommandProvidersCache.cs` - Creates local + remote providers (line 109-152)
+- `SourceRepositoryDependencyProvider.cs` - Wrapper for repositories (line 313-412)
+- `LocalV3FindPackageByIdResource.cs` - Reads from local file system (line 247-302, 430-468)
+- `FindPackageByIdResource.cs` - Base class with GetDependencyInfo() (line 145-156)
+- `RemoteWalkContext.cs` - Context with LocalLibraryProviders + RemoteLibraryProviders (line 24-25, 37-38)
+
+---
+
+#### Implementation Plan
+
+**Files to Create**:
+- `restore/local_dependency_provider.go` - Local provider that reads from cache
+- `restore/local_dependency_provider_test.go` - Unit tests
+
+**Files to Modify**:
+- `restore/restorer.go` - Use local provider BEFORE remote walker
+
+**Implementation**:
+
+```go
+// restore/local_dependency_provider.go
+package restore
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+
+	"github.com/willibrandon/gonuget/frameworks"
+	"github.com/willibrandon/gonuget/packaging"
+	"github.com/willibrandon/gonuget/version"
+)
+
+// LocalDependencyProvider reads package dependencies from locally cached packages.
+// Matches NuGet.Client LocalV3FindPackageByIdResource behavior.
+// This avoids HTTP calls for packages that are already in the global packages folder.
+type LocalDependencyProvider struct {
+	packagesFolder string
+	resolver       *packaging.VersionFolderPathResolver
+}
+
+// NewLocalDependencyProvider creates a provider that reads from the global packages folder.
+func NewLocalDependencyProvider(packagesFolder string) *LocalDependencyProvider {
+	return &LocalDependencyProvider{
+		packagesFolder: packagesFolder,
+		resolver:       packaging.NewVersionFolderPathResolver(packagesFolder),
+	}
+}
+
+// GetDependencies returns dependencies for a package by reading its cached .nuspec file.
+// Returns nil if package is not cached locally.
+// Matches LocalV3FindPackageByIdResource.GetDependencyInfoAsync behavior.
+func (p *LocalDependencyProvider) GetDependencies(
+	ctx context.Context,
+	packageID string,
+	packageVersion string,
+	targetFramework *frameworks.NuGetFramework,
+) ([]Dependency, error) {
+	// Check if package exists locally
+	// Matches DoesVersionExist() in LocalV3FindPackageByIdResource.cs line 459-468
+	if !p.packageExists(packageID, packageVersion) {
+		return nil, nil // Not cached locally
+	}
+
+	// Read .nuspec file
+	// Matches ProcessNuspecReader() in LocalV3FindPackageByIdResource.cs line 430-457
+	nuspecPath := p.resolver.GetManifestFilePath(packageID, packageVersion)
+
+	reader, err := packaging.OpenNuspecFile(nuspecPath)
+	if err != nil {
+		// If we can't read the .nuspec, treat as not cached
+		return nil, nil
+	}
+	defer reader.Close()
+
+	// Parse dependencies for target framework
+	// Matches GetDependencyInfo() in FindPackageByIdResource.cs line 145-156
+	return p.extractDependencies(reader, targetFramework)
+}
+
+// packageExists checks if package is cached locally.
+// Matches DoesVersionExist() in LocalV3FindPackageByIdResource.cs line 459-468.
+func (p *LocalDependencyProvider) packageExists(packageID, packageVersion string) bool {
+	// Check for .nupkg.metadata (completion marker)
+	metadataPath := p.resolver.GetNupkgMetadataPath(packageID, packageVersion)
+	if _, err := os.Stat(metadataPath); err == nil {
+		return true
+	}
+
+	// Fallback: check for .nupkg.sha512 (old marker)
+	hashPath := p.resolver.GetHashPath(packageID, packageVersion)
+	if _, err := os.Stat(hashPath); err == nil {
+		return true
+	}
+
+	return false
+}
+
+// extractDependencies parses dependencies from .nuspec for target framework.
+// Matches reader.GetDependencyGroups() in FindPackageByIdResource.cs line 154.
+func (p *LocalDependencyProvider) extractDependencies(
+	reader *packaging.NuspecReader,
+	targetFramework *frameworks.NuGetFramework,
+) ([]Dependency, error) {
+	metadata, err := reader.GetMetadata()
+	if err != nil {
+		return nil, fmt.Errorf("read nuspec metadata: %w", err)
+	}
+
+	// Find dependency group matching target framework
+	// NuGet uses NearestFrameworkMatch logic
+	var bestMatch *packaging.DependencyGroup
+	for _, group := range metadata.DependencyGroups {
+		groupFw, err := frameworks.ParseFramework(group.TargetFramework)
+		if err != nil {
+			continue
+		}
+
+		// Exact match
+		if groupFw.Equals(targetFramework) {
+			bestMatch = &group
+			break
+		}
+
+		// Compatible match
+		if frameworks.IsCompatible(targetFramework, groupFw) {
+			if bestMatch == nil {
+				bestMatch = &group
+			} else {
+				// Keep nearest match
+				bestFw, _ := frameworks.ParseFramework(bestMatch.TargetFramework)
+				if frameworks.GetDistance(targetFramework, groupFw) < frameworks.GetDistance(targetFramework, bestFw) {
+					bestMatch = &group
+				}
+			}
+		}
+	}
+
+	// No matching framework group
+	if bestMatch == nil {
+		return []Dependency{}, nil
+	}
+
+	// Convert to resolver dependencies
+	deps := make([]Dependency, 0, len(bestMatch.Dependencies))
+	for _, dep := range bestMatch.Dependencies {
+		versionRange, err := version.ParseVersionRange(dep.Version)
+		if err != nil {
+			return nil, fmt.Errorf("parse version range %s: %w", dep.Version, err)
+		}
+
+		deps = append(deps, Dependency{
+			ID:           dep.ID,
+			VersionRange: versionRange,
+		})
+	}
+
+	return deps, nil
+}
+
+// Dependency represents a package dependency.
+type Dependency struct {
+	ID           string
+	VersionRange *version.VersionRange
+}
+```
+
+**Tests**:
+
+```go
+// restore/local_dependency_provider_test.go
+package restore
+
+import (
+	"context"
+	"os"
+	"path/filepath"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"github.com/willibrandon/gonuget/frameworks"
+)
+
+func TestLocalDependencyProvider_GetDependencies_PackageNotCached(t *testing.T) {
+	tmpDir := t.TempDir()
+	provider := NewLocalDependencyProvider(tmpDir)
+
+	targetFw, _ := frameworks.ParseFramework("net8.0")
+
+	deps, err := provider.GetDependencies(
+		context.Background(),
+		"NonExistent",
+		"1.0.0",
+		targetFw,
+	)
+
+	require.NoError(t, err)
+	assert.Nil(t, deps, "should return nil for non-cached package")
+}
+
+func TestLocalDependencyProvider_GetDependencies_PackageCached(t *testing.T) {
+	// Use real global packages folder
+	home, _ := os.UserHomeDir()
+	packagesFolder := filepath.Join(home, ".nuget", "packages")
+
+	// Test with Newtonsoft.Json 13.0.3 (if cached)
+	provider := NewLocalDependencyProvider(packagesFolder)
+	targetFw, _ := frameworks.ParseFramework("net8.0")
+
+	deps, err := provider.GetDependencies(
+		context.Background(),
+		"Newtonsoft.Json",
+		"13.0.3",
+		targetFw,
+	)
+
+	require.NoError(t, err)
+
+	// Newtonsoft.Json 13.0.3 has NO dependencies for net8.0
+	// If package is cached, should return empty list (not nil)
+	if deps != nil {
+		assert.Empty(t, deps, "Newtonsoft.Json should have no dependencies for net8.0")
+	}
+}
+
+func TestLocalDependencyProvider_packageExists(t *testing.T) {
+	tmpDir := t.TempDir()
+	provider := NewLocalDependencyProvider(tmpDir)
+
+	// Create fake package with .nupkg.metadata marker
+	packageID := "test.package"
+	packageVersion := "1.0.0"
+
+	metadataPath := provider.resolver.GetNupkgMetadataPath(packageID, packageVersion)
+	err := os.MkdirAll(filepath.Dir(metadataPath), 0755)
+	require.NoError(t, err)
+	err = os.WriteFile(metadataPath, []byte("{}"), 0644)
+	require.NoError(t, err)
+
+	// Should detect package exists
+	exists := provider.packageExists(packageID, packageVersion)
+	assert.True(t, exists)
+
+	// Should not find non-existent package
+	exists = provider.packageExists("nonexistent", "1.0.0")
+	assert.False(t, exists)
+}
+```
+
+**Update Restorer**:
+
+```go
+// Modify restore/restorer.go
+
+// Add field to Restorer struct:
+type Restorer struct {
+	client   *core.NuGetClient
+	opts     *Options
+	console  Console
+	localProvider *LocalDependencyProvider  // NEW
+}
+
+// Update NewRestorer:
+func NewRestorer(opts *Options, console Console) *Restorer {
+	if opts.PackagesFolder == "" {
+		home, _ := os.UserHomeDir()
+		opts.PackagesFolder = filepath.Join(home, ".nuget", "packages")
+	}
+
+	client := core.NewNuGetClient(opts.Sources...)
+
+	return &Restorer{
+		client:        client,
+		opts:          opts,
+		console:       console,
+		localProvider: NewLocalDependencyProvider(opts.PackagesFolder),  // NEW
+	}
+}
+
+// Update walker.Walk() call at line 285:
+// OLD CODE:
+graphNode, err := walker.Walk(
+	ctx,
+	pkgRef.Include,
+	versionRange,
+	targetFramework,
+	true, // recursive=true for transitive resolution
+)
+
+// NEW CODE - check local cache FIRST:
+var graphNode *GraphNode
+var err error
+
+// Try local cache first (NO HTTP)
+localDeps, err := r.localProvider.GetDependencies(
+	ctx,
+	pkgRef.Include,
+	selectedVersion.String(),
+	targetFramework,
+)
+
+if err != nil {
+	return nil, fmt.Errorf("check local cache for %s: %w", pkgRef.Include, err)
+}
+
+if localDeps != nil {
+	// Package is cached - use local dependencies (NO HTTP)
+	graphNode = &GraphNode{
+		Item: &GraphItem{
+			Key: &LibraryRange{
+				Name:         pkgRef.Include,
+				VersionRange: versionRange,
+			},
+			Data: &RemoteMatch{
+				Library: &LibraryIdentity{
+					Name:    pkgRef.Include,
+					Version: selectedVersion,
+				},
+				Provider: nil, // Local provider
+			},
+		},
+		InnerNodes: make([]*GraphNode, 0),
+	}
+
+	// Recursively resolve local dependencies
+	for _, dep := range localDeps {
+		childNode, err := r.resolveLocalDependency(ctx, dep, targetFramework)
+		if err != nil {
+			// Fallback to HTTP walker if local resolution fails
+			break
+		}
+		if childNode != nil {
+			graphNode.InnerNodes = append(graphNode.InnerNodes, childNode)
+		}
+	}
+} else {
+	// Package not cached - use HTTP walker
+	graphNode, err = walker.Walk(
+		ctx,
+		pkgRef.Include,
+		versionRange,
+		targetFramework,
+		true,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("walk dependencies for %s: %w", pkgRef.Include, err)
+	}
+}
+```
+
+**Verification**:
+```bash
+# Unit tests
+go test ./restore -v -run TestLocalDependencyProvider
+
+# Integration test - should be MUCH faster now
+cd /tmp/dotnet-cached
+time ./gonuget restore
+
+# Should be <= 133ms (matching dotnet)
+```
+
+**Commit**:
+```bash
+git add restore/local_dependency_provider.go restore/local_dependency_provider_test.go restore/restorer.go
+git commit -m "feat(restore): implement local dependency provider to eliminate HTTP calls
+
+- Add LocalDependencyProvider that reads from cached .nuspec files
+- Check local cache BEFORE making HTTP requests
+- Matches NuGet.Client LocalV3FindPackageByIdResource behavior
+- Eliminates 128ms HTTP overhead for cached packages
+- gonuget now matches dotnet performance: ~133ms for cached packages
+- 100% parity with dotnet restore performance"
+```
+
+---
+
+### Chunk 7: Update CLI to Match Dotnet Output for No-Op
 
 **Goal**: When cache is valid, match dotnet's silent output (no "Restored" message)
 
@@ -1390,7 +1882,7 @@ git commit -m "feat(cli): silent output for no-op restore
 
 ---
 
-### Chunk 7: Add Interop Tests for Cache File Parity
+### Chunk 8: Add Interop Tests for Cache File Parity
 
 **Goal**: C# interop tests to verify cache file format matches dotnet exactly
 
@@ -1652,32 +2144,63 @@ time ./gonuget restore
 
 ## Success Criteria
 
-- [ ] Cache file format matches dotnet exactly (JSON structure, field names)
-- [ ] dgSpecHash calculation is deterministic and changes when dependencies change
-- [ ] Cache validation correctly checks hash + package file existence
-- [ ] Restore writes cache file after success
-- [ ] Restore reads cache and skips work when valid
+### Chunk 1-5 (Already Complete):
+- [x] Cache file format matches dotnet exactly (JSON structure, field names)
+- [x] dgSpecHash calculation is deterministic and changes when dependencies change
+- [x] Cache validation correctly checks hash + package file existence
+- [x] Restore writes cache file after success
+- [x] Restore reads cache and skips work when valid
+
+### Chunk 6 (In Progress):
+- [ ] CLI output matches dotnet (silent/minimal for no-op)
+- [ ] CacheHit flag added to restore.Result
+
+### Chunk 7 (CRITICAL - Performance Parity):
+- [ ] **Local dependency provider reads from cached .nuspec files**
+- [ ] **gonuget checks local cache BEFORE making HTTP requests**
+- [ ] **Performance with cached packages: gonuget ≤ 133ms (matches dotnet)**
+- [ ] **Eliminates 128ms HTTP overhead**
+- [ ] **100% parity with dotnet restore performance**
+
+### Chunk 8 (Pending):
+- [ ] Interop tests for cache file parity
+
+### General:
 - [ ] --force flag bypasses cache
-- [ ] CLI output matches dotnet (silent for no-op)
 - [ ] All unit tests pass
 - [ ] All integration tests pass
 - [ ] All interop tests pass
-- [ ] Performance improvement: 4-5x faster for no-op restore
+- [ ] Performance improvement: 4-5x faster for no-op restore (cache hit)
 - [ ] gonuget can read cache files created by dotnet
 - [ ] dotnet can read cache files created by gonuget
+
+### Hard Requirements (User Specified):
+- [ ] **gonuget MUST match or beat dotnet performance for cached packages**
+- [ ] **No commits accepted until performance gap is closed**
 
 ---
 
 ## References
 
-**NuGet.Client Source**:
+**NuGet.Client Source - Cache Files**:
 - `NuGet.ProjectModel/CacheFile.cs` - Cache file data structure
 - `NuGet.ProjectModel/CacheFileFormat.cs` - JSON serialization
-- `NuGet.Commands/RestoreCommand/RestoreCommand.cs` - No-op logic (lines 217-228, 442-501)
+- `NuGet.Commands/RestoreCommand/RestoreCommand.cs` - No-op logic (lines 217-228, 442-501, 2037-2056)
 - `NuGet.Commands/RestoreCommand/RestoreResult.cs` - Cache file writing (line 296)
 - `NuGet.Commands/RestoreCommand/Utility/NoOpRestoreUtilities.cs` - Cache utilities
 
+**NuGet.Client Source - Local Dependency Provider (Chunk 8)**:
+- `NuGet.Commands/RestoreCommand/RestoreCommandProvidersCache.cs` - Creates local + remote providers (lines 109-152)
+- `NuGet.Commands/RestoreCommand/SourceRepositoryDependencyProvider.cs` - Dependency provider wrapper (lines 313-412)
+- `NuGet.Protocol/LocalRepositories/LocalV3FindPackageByIdResource.cs` - Reads from local packages folder (lines 247-302, 430-468)
+- `NuGet.Protocol/Resources/FindPackageByIdResource.cs` - Base class with GetDependencyInfo() (lines 145-156)
+- `NuGet.Protocol/PackagesFolder/NuGetv3LocalRepository.cs` - Local package repository (entire file)
+- `NuGet.DependencyResolver.Core/Remote/RemoteWalkContext.cs` - Context with LocalLibraryProviders + RemoteLibraryProviders (lines 24-25, 37-38)
+- `NuGet.DependencyResolver.Core/Providers/LocalDependencyProvider.cs` - Local provider wrapper (entire file)
+- `NuGet.DependencyResolver.Core/Providers/IDependencyProvider.cs` - Provider interface (entire file)
+
 **Performance Impact**:
-- First restore: ~250ms (unchanged)
-- Subsequent restores: ~60ms (4x improvement)
-- Matches dotnet behavior exactly
+- **No-op restore (cache hit)**: ~60ms (4x improvement over first restore)
+- **First restore with cached packages**: ≤133ms (matches dotnet after Chunk 8)
+- **First restore without cached packages**: ~250ms (unchanged)
+- **Goal**: 100% parity with dotnet behavior and performance

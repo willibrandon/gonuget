@@ -249,7 +249,10 @@ func (n *Nuspec) GetDependencyGroups() ([]ParsedDependencyGroup, error) {
 		if group.TargetFramework != "" {
 			fw, err := frameworks.ParseFramework(group.TargetFramework)
 			if err != nil {
-				return nil, fmt.Errorf("parse target framework %q: %w", group.TargetFramework, err)
+				// Skip groups with unparseable frameworks instead of failing
+				// Some nuspecs have malformed framework strings (e.g., ".NETFramework4.5" without comma and Version=)
+				// Continue parsing other groups - caller will select compatible ones
+				continue
 			}
 			targetFramework = fw
 		} else {

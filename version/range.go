@@ -154,7 +154,9 @@ func (r *Range) Satisfies(version *NuGetVersion) bool {
 	return true
 }
 
-// FindBestMatch finds the highest version that satisfies this range.
+// FindBestMatch finds the best matching version that satisfies this range.
+// Matches NuGet.Client behavior: favors LOWER versions (nearest wins).
+// Reference: NuGet.Versioning/VersionRange.cs IsBetter method (line 93: "Favor lower versions")
 //
 // Returns nil if no version satisfies the range.
 func (r *Range) FindBestMatch(versions []*NuGetVersion) *NuGetVersion {
@@ -162,7 +164,8 @@ func (r *Range) FindBestMatch(versions []*NuGetVersion) *NuGetVersion {
 
 	for _, v := range versions {
 		if r.Satisfies(v) {
-			if best == nil || v.GreaterThan(best) {
+			// Favor lower versions (NuGet's "nearest wins" strategy)
+			if best == nil || v.LessThan(best) {
 				best = v
 			}
 		}

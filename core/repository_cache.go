@@ -84,6 +84,7 @@ func GetOrCreateRepository(sourceURL string) *SourceRepository {
 
 	// Create new repository with global HTTP client AND global cache
 	repo := NewSourceRepository(RepositoryConfig{
+		Name:       sourceURL, // Use source URL as the unique repository name
 		SourceURL:  sourceURL,
 		HTTPClient: nugethttp.GetGlobalClient(), // Use global HTTP client
 		Cache:      globalMultiTierCache,        // Use global multi-tier cache (critical for first-run performance!)

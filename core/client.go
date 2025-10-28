@@ -518,6 +518,32 @@ func (c *Client) CreateDependencyWalker(sources []string, targetFramework string
 	return resolver.NewDependencyWalker(adapter, sources, targetFramework), nil
 }
 
+// CreateMetadataClient creates a PackageMetadataClient using the client's efficient adapter.
+// The adapter uses V3 registration API to fetch all versions in a single HTTP call.
+func (c *Client) CreateMetadataClient(sources []string) (resolver.PackageMetadataClient, error) {
+	// Create V3 clients for efficient metadata retrieval
+	repos := c.repositoryManager.ListRepositories()
+	var httpClient *nugethttp.Client
+	if len(repos) > 0 && repos[0].httpClient != nil {
+		httpClient = repos[0].httpClient
+	} else {
+		httpClient = nugethttp.NewClient(nil)
+	}
+
+	serviceIndexClient := v3.NewServiceIndexClient(httpClient)
+	metadataClient := v3.NewMetadataClient(httpClient, serviceIndexClient)
+
+	// Create adapter that implements PackageMetadataClient
+	adapter := &clientMetadataAdapter{
+		client:           c,
+		v3MetadataClient: metadataClient,
+		v3ServiceClient:  serviceIndexClient,
+		v2PackageCache:   make(map[string][]*ProtocolMetadata),
+	}
+
+	return adapter, nil
+}
+
 // ResolvePackageDependencies resolves all dependencies for a package
 func (c *Client) ResolvePackageDependencies(
 	ctx context.Context,

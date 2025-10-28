@@ -312,6 +312,12 @@ func TestRestorer_Restore_PackageAlreadyCached(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Create .nupkg.sha512 marker file to indicate package is properly cached
+	sha512Path := filepath.Join(packagePath, "newtonsoft.json.13.0.1.nupkg.sha512")
+	if err := os.WriteFile(sha512Path, []byte("dummy-sha512-hash"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
 	console := &mockConsole{}
 	opts := &Options{
 		PackagesFolder: packagesFolder,
@@ -322,6 +328,7 @@ func TestRestorer_Restore_PackageAlreadyCached(t *testing.T) {
 	restorer := NewRestorer(opts, console)
 	packageRefs := proj.GetPackageReferences()
 
+	// First restore - should create cache file
 	result, err := restorer.Restore(context.Background(), proj, packageRefs)
 	if err != nil {
 		t.Errorf("unexpected error: %v", err)
@@ -331,17 +338,26 @@ func TestRestorer_Restore_PackageAlreadyCached(t *testing.T) {
 		t.Errorf("expected 1 package, got %d", len(result.DirectPackages))
 	}
 
-	// Check console output for "already cached" message
-	found := false
-	for _, msg := range console.messages {
-		if strings.Contains(msg, "already cached") {
-			found = true
-			break
-		}
+	// Verify cache file was written
+	cachePath := GetCacheFilePath(projPath)
+	if _, err := os.Stat(cachePath); err != nil {
+		t.Fatalf("cache file should exist: %v", err)
 	}
 
-	if !found {
-		t.Error("expected 'already cached' message")
+	// Second restore - should hit cache (no-op)
+	console2 := &mockConsole{}
+	restorer2 := NewRestorer(opts, console2)
+	result2, err := restorer2.Restore(context.Background(), proj, packageRefs)
+	if err != nil {
+		t.Errorf("unexpected error on second restore: %v", err)
+	}
+
+	if !result2.CacheHit {
+		t.Error("expected cache hit on second restore")
+	}
+
+	if len(result2.DirectPackages) != 1 {
+		t.Errorf("expected 1 package on cache hit, got %d", len(result2.DirectPackages))
 	}
 }
 

@@ -13,6 +13,7 @@ import (
 	"github.com/willibrandon/gonuget/cmd/gonuget/project"
 	"github.com/willibrandon/gonuget/core"
 	"github.com/willibrandon/gonuget/core/resolver"
+	"github.com/willibrandon/gonuget/frameworks"
 	"github.com/willibrandon/gonuget/packaging"
 	"github.com/willibrandon/gonuget/version"
 )
@@ -252,19 +253,30 @@ fullRestore:
 	}
 
 	// Get target framework
-	targetFrameworks := proj.GetTargetFrameworks()
-	if len(targetFrameworks) == 0 {
+	targetFrameworkStrings := proj.GetTargetFrameworks()
+	if len(targetFrameworkStrings) == 0 {
 		return nil, fmt.Errorf("project has no target frameworks")
 	}
-	targetFramework := targetFrameworks[0] // Use first TFM
+	targetFrameworkStr := targetFrameworkStrings[0] // Use first TFM
+
+	// Parse target framework
+	targetFramework, err := frameworks.ParseFramework(targetFrameworkStr)
+	if err != nil {
+		return nil, fmt.Errorf("parse target framework: %w", err)
+	}
 
 	// Track all resolved packages (direct + transitive)
 	allResolvedPackages := make(map[string]*resolver.PackageDependencyInfo)
 	unresolvedPackages := make([]*resolver.GraphNode, 0)
 
 	// Phase 1: Walk dependency graph for each direct dependency
-	// Use client's efficient metadata adapter (V3 registration API in single HTTP call)
-	walker, err := r.client.CreateDependencyWalker(r.opts.Sources, targetFramework)
+	// Create local dependency provider for cached packages (NO HTTP!)
+	// Matches NuGet.Client's LocalLibraryProviders approach (RestoreCommand.cs line 2037-2056)
+	localProvider := NewLocalDependencyProvider(packagesFolder)
+
+	// Create dependency walker with local-first metadata client
+	// Matches NuGet.Client's RemoteWalkContext with LocalLibraryProviders + RemoteLibraryProviders
+	walker, err := r.createLocalFirstWalker(localProvider, targetFramework)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create dependency walker: %w", err)
 	}
@@ -286,7 +298,7 @@ fullRestore:
 			ctx,
 			pkgRef.Include,
 			versionRange,
-			targetFramework,
+			targetFrameworkStr,
 			true, // recursive=true for transitive resolution
 		)
 		if err != nil {
@@ -592,4 +604,89 @@ func (r *Restorer) installPackageV2(ctx context.Context, packageID, packageVersi
 
 	r.console.Printf("    Downloaded and extracted to %s\n", packagePath)
 	return nil
+}
+
+// createLocalFirstWalker creates a DependencyWalker that checks local cache before HTTP.
+// Matches NuGet.Client's RemoteWalkContext with LocalLibraryProviders + RemoteLibraryProviders.
+// Reference: RestoreCommand.cs (lines 2037-2056), RemoteWalkContext.cs (lines 24-25, 37-38)
+func (r *Restorer) createLocalFirstWalker(
+	localProvider *LocalDependencyProvider,
+	targetFramework *frameworks.NuGetFramework,
+) (*resolver.DependencyWalker, error) {
+	// Wrap with local-first metadata client
+	// Remote metadata client is created lazily only when needed (when local provider returns nil)
+	localFirstClient := &localFirstMetadataClient{
+		localProvider:   localProvider,
+		restorer:        r,
+		targetFramework: targetFramework,
+	}
+
+	// Create walker with local-first client
+	return resolver.NewDependencyWalker(
+		localFirstClient,
+		r.opts.Sources,
+		targetFramework.String(),
+	), nil
+}
+
+// getRemoteMetadataClient creates a metadata client that implements resolver.PackageMetadataClient.
+// This client makes HTTP calls to fetch package metadata using V3 registration API.
+func (r *Restorer) getRemoteMetadataClient() (resolver.PackageMetadataClient, error) {
+	// Use the client's new CreateMetadataClient method
+	// This creates the efficient V3 metadata adapter that fetches all versions in a single HTTP call
+	return r.client.CreateMetadataClient(r.opts.Sources)
+}
+
+// localFirstMetadataClient implements resolver.PackageMetadataClient.
+// It checks the local dependency provider FIRST (no HTTP), then falls back to remote.
+// Matches NuGet.Client's provider list prioritization: LocalLibraryProviders → RemoteLibraryProviders
+type localFirstMetadataClient struct {
+	localProvider        *LocalDependencyProvider
+	restorer             *Restorer
+	remoteMetadataClient resolver.PackageMetadataClient // Lazy-initialized only when needed
+	targetFramework      *frameworks.NuGetFramework
+}
+
+// GetPackageMetadata implements resolver.PackageMetadataClient.
+// Tries local provider first (reads from cached .nuspec), falls back to HTTP if not cached.
+func (c *localFirstMetadataClient) GetPackageMetadata(
+	ctx context.Context,
+	source string,
+	packageID string,
+	versionRange string,
+) ([]*resolver.PackageDependencyInfo, error) {
+	// Try local provider first (NO HTTP!)
+	// LocalDependencyProvider now handles both exact versions and version ranges
+	// Matches NuGet.Client: LocalLibraryProviders are tried before RemoteLibraryProviders
+	depGroups, resolvedVersion, err := c.localProvider.GetDependencies(ctx, packageID, versionRange)
+	if err != nil {
+		// Error reading from cache - log and fall back to remote
+		// Don't fail the restore just because we couldn't read a cached file
+		// Silent fallback to HTTP (no logging)
+	} else if depGroups != nil {
+		// Found in local cache! Build PackageDependencyInfo from cached .nuspec
+		// No logging - this is the fast path
+		info := &resolver.PackageDependencyInfo{
+			ID:               packageID,
+			Version:          resolvedVersion, // Use resolved specific version (not the range!)
+			DependencyGroups: depGroups,       // Return ALL groups (walker filters by framework)
+		}
+
+		return []*resolver.PackageDependencyInfo{info}, nil
+	}
+
+	// Not in local cache - lazy-initialize remote metadata client (only when needed)
+	// This avoids creating HTTP clients and fetching service index until we actually need it
+	if c.remoteMetadataClient == nil {
+		remoteClient, err := c.restorer.getRemoteMetadataClient()
+		if err != nil {
+			return nil, fmt.Errorf("create remote metadata client: %w", err)
+		}
+		c.remoteMetadataClient = remoteClient
+	}
+
+	// Fall back to remote metadata client (HTTP)
+	// This will fetch from nuget.org using V3 registration API
+	// Matches NuGet.Client: RemoteLibraryProviders fallback
+	return c.remoteMetadataClient.GetPackageMetadata(ctx, source, packageID, versionRange)
 }

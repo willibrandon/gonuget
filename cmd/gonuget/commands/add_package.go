@@ -185,15 +185,24 @@ func runAddPackage(ctx context.Context, packageID string, opts *AddPackageOption
 		}
 
 		// Generate project.assets.json (matches dotnet add package behavior)
-		lockFile := restore.NewLockFileBuilder().Build(proj, result)
 		objDir := filepath.Join(filepath.Dir(projectPath), "obj")
 		assetsPath := filepath.Join(objDir, "project.assets.json")
 
-		// Match dotnet: "Writing assets file to disk. Path: PATH"
-		fmt.Printf("info : Writing assets file to disk. Path: %s\n", assetsPath)
+		// If cache hit, dotnet says "Assets file has not changed. Skipping assets file writing."
+		// Otherwise, it writes the assets file
+		if result.CacheHit {
+			// Match dotnet cache hit message
+			fmt.Printf("info : Assets file has not changed. Skipping assets file writing. Path: %s\n", assetsPath)
+		} else {
+			// Full restore - generate and write assets file
+			lockFile := restore.NewLockFileBuilder().Build(proj, result)
 
-		if err := lockFile.Save(assetsPath); err != nil {
-			return fmt.Errorf("failed to save project.assets.json: %w", err)
+			// Match dotnet: "Writing assets file to disk. Path: PATH"
+			fmt.Printf("info : Writing assets file to disk. Path: %s\n", assetsPath)
+
+			if err := lockFile.Save(assetsPath); err != nil {
+				return fmt.Errorf("failed to save project.assets.json: %w", err)
+			}
 		}
 
 		// Match dotnet: "log  : Restored PATH (in X ms)."
