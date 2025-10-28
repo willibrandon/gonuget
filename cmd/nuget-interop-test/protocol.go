@@ -419,6 +419,50 @@ type ValidateCacheFileResponse struct {
 	Valid bool `json:"valid"`
 }
 
+// CalculateDgSpecHashRequest asks gonuget to calculate dgSpecHash for a project.
+// This validates that gonuget's dgSpecHash matches NuGet.Client's DependencyGraphSpec.GetHash().
+type CalculateDgSpecHashRequest struct {
+	// ProjectPath is the absolute path to the .csproj/.fsproj/.vbproj file.
+	ProjectPath string `json:"projectPath"`
+}
+
+// CalculateDgSpecHashResponse contains the computed dgSpecHash.
+type CalculateDgSpecHashResponse struct {
+	// Hash is the base64-encoded FNV-1a hash of the dependency graph specification.
+	Hash string `json:"hash"`
+}
+
+// VerifyProjectCacheFileRequest asks gonuget to verify a project.nuget.cache file.
+// This validates that gonuget can read and validate cache files created by dotnet.
+type VerifyProjectCacheFileRequest struct {
+	// CachePath is the absolute path to the project.nuget.cache file.
+	CachePath string `json:"cachePath"`
+
+	// CurrentHash is the expected dgSpecHash to compare against.
+	CurrentHash string `json:"currentHash"`
+}
+
+// VerifyProjectCacheFileResponse contains cache validation results.
+type VerifyProjectCacheFileResponse struct {
+	// Valid is true if the cache file exists and dgSpecHash matches.
+	Valid bool `json:"valid"`
+
+	// Version is the cache file format version.
+	Version int `json:"version"`
+
+	// DgSpecHash is the hash stored in the cache file.
+	DgSpecHash string `json:"dgSpecHash,omitempty"`
+
+	// Success indicates whether the restore was successful.
+	Success bool `json:"success"`
+
+	// ProjectFilePath is the project path stored in the cache.
+	ProjectFilePath string `json:"projectFilePath,omitempty"`
+
+	// ExpectedPackageFilesCount is the number of expected package files.
+	ExpectedPackageFilesCount int `json:"expectedPackageFilesCount"`
+}
+
 // WalkGraphRequest walks the dependency graph for a package.
 type WalkGraphRequest struct {
 	// PackageID is the package identifier (e.g., "Newtonsoft.Json").

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -146,7 +147,8 @@ func (w *OrderedJSONWriter) writeRestoreMetadata(hasher *DgSpecHasher) {
 	w.writeStringField("projectUniqueName", projectPath)
 
 	// 2. projectName (line 126)
-	projectName := strings.TrimSuffix(projectPath[strings.LastIndex(projectPath, "/")+1:], ".csproj")
+	// Use filepath.Base for cross-platform compatibility (Windows uses backslashes)
+	projectName := strings.TrimSuffix(filepath.Base(projectPath), ".csproj")
 	w.writeString(",")
 	w.writeStringField("projectName", projectName)
 
@@ -167,7 +169,9 @@ func (w *OrderedJSONWriter) writeRestoreMetadata(hasher *DgSpecHasher) {
 	}
 
 	// 6. outputPath (line 130)
-	objDir := projectPath[:strings.LastIndex(projectPath, "/")] + "/obj/"
+	// Use filepath.Join for cross-platform path handling, then convert to forward slashes
+	// NuGet.Client always uses forward slashes in JSON, even on Windows
+	objDir := filepath.ToSlash(filepath.Join(filepath.Dir(projectPath), "obj")) + "/"
 	w.writeString(",")
 	w.writeStringField("outputPath", objDir)
 

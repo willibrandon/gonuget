@@ -6,7 +6,32 @@ import (
 	"time"
 
 	"github.com/willibrandon/gonuget/cache"
+	"github.com/willibrandon/gonuget/cmd/gonuget/project"
+	"github.com/willibrandon/gonuget/restore"
 )
+
+// Helper functions for cache file parity tests
+
+// loadProject loads a .NET project file.
+func loadProject(projectPath string) (*project.Project, error) {
+	return project.LoadProject(projectPath)
+}
+
+// calculateDgSpecHash calculates the dgSpecHash for a project.
+func calculateDgSpecHash(proj *project.Project) (string, error) {
+	return restore.CalculateDgSpecHash(proj)
+}
+
+// isCacheValid checks if a cache file is valid.
+func isCacheValid(cachePath, currentHash string) (bool, *restore.CacheFile, error) {
+	cache, err := restore.LoadCacheFile(cachePath)
+	if err != nil {
+		return false, nil, err
+	}
+
+	valid := cache.IsValid() && cache.DgSpecHash == currentHash
+	return valid, cache, nil
+}
 
 // ComputeCacheHashHandler computes a cache hash for a given value.
 // This validates that gonuget's hash algorithm matches NuGet.Client's CachingUtility.ComputeHash().
@@ -152,4 +177,86 @@ func (h *ValidateCacheFileHandler) Handle(data json.RawMessage) (interface{}, er
 	return ValidateCacheFileResponse{
 		Valid: valid,
 	}, nil
+}
+
+// CalculateDgSpecHashHandler calculates the dgSpecHash for a project.
+// This validates that gonuget's dgSpecHash matches NuGet.Client's DependencyGraphSpec.GetHash().
+type CalculateDgSpecHashHandler struct{}
+
+// ErrorCode returns the error code for this handler.
+func (h *CalculateDgSpecHashHandler) ErrorCode() string { return "CACHE_DGSPEC_001" }
+
+// Handle processes the request.
+func (h *CalculateDgSpecHashHandler) Handle(data json.RawMessage) (interface{}, error) {
+	var req CalculateDgSpecHashRequest
+	if err := json.Unmarshal(data, &req); err != nil {
+		return nil, fmt.Errorf("parse request: %w", err)
+	}
+
+	// Validate required fields
+	if req.ProjectPath == "" {
+		return nil, fmt.Errorf("projectPath is required")
+	}
+
+	// Load project file
+	proj, err := loadProject(req.ProjectPath)
+	if err != nil {
+		return nil, fmt.Errorf("load project: %w", err)
+	}
+
+	// Calculate dgSpecHash
+	hash, err := calculateDgSpecHash(proj)
+	if err != nil {
+		return nil, fmt.Errorf("calculate dgSpecHash: %w", err)
+	}
+
+	return CalculateDgSpecHashResponse{
+		Hash: hash,
+	}, nil
+}
+
+// VerifyProjectCacheFileHandler verifies a project.nuget.cache file.
+// This validates that gonuget can read and validate cache files created by dotnet.
+type VerifyProjectCacheFileHandler struct{}
+
+// ErrorCode returns the error code for this handler.
+func (h *VerifyProjectCacheFileHandler) ErrorCode() string { return "CACHE_VERIFY_001" }
+
+// Handle processes the request.
+func (h *VerifyProjectCacheFileHandler) Handle(data json.RawMessage) (interface{}, error) {
+	var req VerifyProjectCacheFileRequest
+	if err := json.Unmarshal(data, &req); err != nil {
+		return nil, fmt.Errorf("parse request: %w", err)
+	}
+
+	// Validate required fields
+	if req.CachePath == "" {
+		return nil, fmt.Errorf("cachePath is required")
+	}
+	if req.CurrentHash == "" {
+		return nil, fmt.Errorf("currentHash is required")
+	}
+
+	// Load and validate cache file
+	valid, cacheFile, err := isCacheValid(req.CachePath, req.CurrentHash)
+	if err != nil {
+		return nil, fmt.Errorf("validate cache file: %w", err)
+	}
+
+	// Build response
+	resp := VerifyProjectCacheFileResponse{
+		Valid:   valid,
+		Version: 0,
+		Success: false,
+	}
+
+	if cacheFile != nil {
+		resp.Version = cacheFile.Version
+		resp.DgSpecHash = cacheFile.DgSpecHash
+		resp.Success = cacheFile.Success
+		resp.ProjectFilePath = cacheFile.ProjectFilePath
+		resp.ExpectedPackageFilesCount = len(cacheFile.ExpectedPackageFiles)
+	}
+
+	return resp, nil
 }

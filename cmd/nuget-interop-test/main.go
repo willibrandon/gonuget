@@ -107,6 +107,10 @@ func main() {
 		handler = &GenerateCachePathsHandler{}
 	case "validate_cache_file":
 		handler = &ValidateCacheFileHandler{}
+	case "calculate_dgspec_hash":
+		handler = &CalculateDgSpecHashHandler{}
+	case "verify_project_cache_file":
+		handler = &VerifyProjectCacheFileHandler{}
 
 	// Resolver operations
 	case "walk_graph":

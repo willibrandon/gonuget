@@ -377,6 +377,39 @@ public static class GonugetBridge
     }
 
     /// <summary>
+    /// Calculates the dgSpecHash for a project file.
+    /// </summary>
+    /// <param name="projectPath">The absolute path to the project file (.csproj/.fsproj/.vbproj).</param>
+    /// <returns>The calculated dgSpecHash.</returns>
+    public static CalculateDgSpecHashResponse CalculateDgSpecHash(string projectPath)
+    {
+        var request = new
+        {
+            action = "calculate_dgspec_hash",
+            data = new { projectPath }
+        };
+
+        return Execute<CalculateDgSpecHashResponse>(request);
+    }
+
+    /// <summary>
+    /// Verifies a project.nuget.cache file.
+    /// </summary>
+    /// <param name="cachePath">The absolute path to the project.nuget.cache file.</param>
+    /// <param name="currentHash">The expected dgSpecHash to compare against.</param>
+    /// <returns>Cache validation results.</returns>
+    public static VerifyProjectCacheFileResponse VerifyProjectCacheFile(string cachePath, string currentHash)
+    {
+        var request = new
+        {
+            action = "verify_project_cache_file",
+            data = new { cachePath, currentHash }
+        };
+
+        return Execute<VerifyProjectCacheFileResponse>(request);
+    }
+
+    /// <summary>
     /// Executes a request against the gonuget CLI and deserializes the response.
     /// </summary>
     private static TResponse Execute<TResponse>(object request)
