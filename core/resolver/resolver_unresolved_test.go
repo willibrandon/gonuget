@@ -418,3 +418,62 @@ func findSubstring(s, substr string) bool {
 	}
 	return false
 }
+
+// TestResolver_EnhancedDiagnostics_NU1103 verifies that NU1103 error code is used
+// when a package exists but only has prerelease versions available when stable is requested.
+func TestResolver_EnhancedDiagnostics_NU1103(t *testing.T) {
+	client := &mockPackageMetadataClient{
+		packages: map[string]*PackageDependencyInfo{
+			"A|1.0.0": {
+				ID:      "A",
+				Version: "1.0.0",
+				Dependencies: []PackageDependency{
+					{ID: "B", VersionRange: "[1.0.0]"}, // Requesting exactly stable 1.0.0
+				},
+			},
+			// B exists but only has prerelease versions
+			"B|1.0.0-beta.1": {ID: "B", Version: "1.0.0-beta.1", Dependencies: []PackageDependency{}},
+			"B|1.0.0-rc.1":   {ID: "B", Version: "1.0.0-rc.1", Dependencies: []PackageDependency{}},
+			"B|2.0.0-alpha":  {ID: "B", Version: "2.0.0-alpha", Dependencies: []PackageDependency{}},
+		},
+	}
+
+	resolver := NewResolver(client, []string{"source1"}, "net8.0")
+	result, err := resolver.Resolve(context.Background(), "A", "[1.0.0]")
+
+	if err != nil {
+		t.Fatalf("Resolve() failed: %v", err)
+	}
+
+	// Should have 1 unresolved package (B)
+	if len(result.Unresolved) != 1 {
+		t.Fatalf("Expected 1 unresolved package, got %d", len(result.Unresolved))
+	}
+
+	unresolved := result.Unresolved[0]
+
+	// Should use NU1103 (only prerelease available)
+	if unresolved.ErrorCode != string(NU1103) {
+		t.Errorf("Expected error code NU1103, got %s", unresolved.ErrorCode)
+	}
+
+	// Should have available versions (all prerelease)
+	if len(unresolved.AvailableVersions) != 3 {
+		t.Errorf("Expected 3 available versions, got %d", len(unresolved.AvailableVersions))
+	}
+
+	// Should have sources populated
+	if len(unresolved.Sources) == 0 {
+		t.Error("Expected sources to be populated")
+	}
+
+	// Message should mention prerelease
+	if !contains(unresolved.Message, "prerelease") {
+		t.Errorf("Expected message to mention prerelease, got: %s", unresolved.Message)
+	}
+
+	// Message should mention stable
+	if !contains(unresolved.Message, "stable") {
+		t.Errorf("Expected message to mention stable, got: %s", unresolved.Message)
+	}
+}

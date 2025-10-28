@@ -3,6 +3,8 @@ package resolver
 import (
 	"context"
 	"fmt"
+
+	"github.com/willibrandon/gonuget/version"
 )
 
 // Resolver provides high-level resolution API.
@@ -175,17 +177,28 @@ func (r *Resolver) diagnoseUnresolvedPackage(ctx context.Context, packageID stri
 			packageID, formatSources(sources))
 	} else {
 		// Package exists but version doesn't match
-		// TODO: Check if only prerelease versions exist (NU1103)
-		// For now, use NU1102 (version mismatch)
-		errorCode = NU1102
+		// Check if only prerelease versions exist (NU1103)
+		allPrerelease := r.areAllVersionsPrerelease(availableVersions)
+		requestingStable := r.isRequestingStableVersion(versionRange)
+
+		if allPrerelease && requestingStable {
+			// NU1103: Only prerelease versions available but stable requested
+			errorCode = NU1103
+			message = fmt.Sprintf("Unable to find a stable package '%s' with version (%s)",
+				packageID, versionRange)
+			message += "\n  - Only prerelease versions are available in source(s)"
+		} else {
+			// NU1102: Version mismatch
+			errorCode = NU1102
+			message = fmt.Sprintf("Unable to find package '%s' with version (%s)",
+				packageID, versionRange)
+		}
 
 		// Find nearest version (for now, just use first available)
 		if len(availableVersions) > 0 {
 			nearestVersion = availableVersions[0]
 		}
 
-		message = fmt.Sprintf("Unable to find package '%s' with version (%s)",
-			packageID, versionRange)
 		if nearestVersion != "" {
 			message += fmt.Sprintf("\n  - Found %d version(s) in source(s) [ Nearest version: %s ]",
 				len(availableVersions), nearestVersion)
@@ -221,6 +234,57 @@ func formatSources(sources []string) string {
 		result += source
 	}
 	return result
+}
+
+// areAllVersionsPrerelease checks if all available versions are prerelease versions.
+func (r *Resolver) areAllVersionsPrerelease(versions []string) bool {
+	if len(versions) == 0 {
+		return false
+	}
+
+	for _, versionStr := range versions {
+		v, err := version.Parse(versionStr)
+		if err != nil {
+			// If we can't parse, assume it's not prerelease
+			return false
+		}
+		if !v.IsPrerelease() {
+			// Found at least one stable version
+			return false
+		}
+	}
+
+	// All versions are prerelease
+	return true
+}
+
+// isRequestingStableVersion determines if the version range is requesting stable (non-prerelease) versions.
+// Returns true if the range does not explicitly include prerelease versions.
+func (r *Resolver) isRequestingStableVersion(versionRange string) bool {
+	if versionRange == "" {
+		// Empty range means latest stable
+		return true
+	}
+
+	// Try to parse as a range
+	parsedRange, err := version.ParseVersionRange(versionRange)
+	if err != nil {
+		// If we can't parse, assume requesting stable
+		return true
+	}
+
+	// If the MinVersion is specified and is prerelease, then prerelease is allowed
+	if parsedRange.MinVersion != nil && parsedRange.MinVersion.IsPrerelease() {
+		return false
+	}
+
+	// If the MaxVersion is specified and is prerelease, then prerelease is allowed
+	if parsedRange.MaxVersion != nil && parsedRange.MaxVersion.IsPrerelease() {
+		return false
+	}
+
+	// No prerelease versions in the range, so requesting stable
+	return true
 }
 
 // collectAllNodes collects all nodes from graph by package ID.
