@@ -277,6 +277,42 @@ func (r *Restorer) Restore(
 		}
 	}
 
+	// Phase 4: Write cache file for no-op optimization
+	// Matches RestoreCommand.CommitCacheFileAsync (RestoreResult.cs line 296)
+	cachePath := GetCacheFilePath(proj.Path)
+
+	// Calculate hash
+	dgSpecHash, err := CalculateDgSpecHash(proj)
+	if err != nil {
+		// If we can't calculate hash, just proceed without cache
+		r.console.Warning("Failed to calculate dgspec hash: %v\n", err)
+	} else {
+		// Build expected package file paths (all .nupkg.sha512 files)
+		expectedPackageFiles := make([]string, 0, len(allResolvedPackages))
+		for _, pkgInfo := range allResolvedPackages {
+			normalizedID := strings.ToLower(pkgInfo.ID)
+			sha512Path := filepath.Join(packagesFolder, normalizedID, pkgInfo.Version,
+				fmt.Sprintf("%s.%s.nupkg.sha512", normalizedID, pkgInfo.Version))
+			expectedPackageFiles = append(expectedPackageFiles, sha512Path)
+		}
+
+		// Create cache file
+		cacheFile := &CacheFile{
+			Version:              CacheFileVersion,
+			DgSpecHash:           dgSpecHash,
+			Success:              true,
+			ProjectFilePath:      proj.Path,
+			ExpectedPackageFiles: expectedPackageFiles,
+			Logs:                 []LogMessage{}, // TODO: Capture warnings/errors
+		}
+
+		// Save cache file
+		if err := cacheFile.Save(cachePath); err != nil {
+			// Don't fail restore if cache write fails
+			r.console.Warning("Failed to write cache file: %v\n", err)
+		}
+	}
+
 	return result, nil
 }
 
