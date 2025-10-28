@@ -127,8 +127,8 @@ func TestLoadCacheFile_InvalidJSON(t *testing.T) {
 }
 
 func TestGetCacheFilePath(t *testing.T) {
-	projectPath := "/path/to/MyProject/MyProject.csproj"
-	expected := "/path/to/MyProject/obj/project.nuget.cache"
+	projectPath := filepath.Join("/", "path", "to", "MyProject", "MyProject.csproj")
+	expected := filepath.Join("/", "path", "to", "MyProject", "obj", "project.nuget.cache")
 
 	result := GetCacheFilePath(projectPath)
 	assert.Equal(t, expected, result)
