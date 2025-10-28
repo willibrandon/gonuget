@@ -117,3 +117,41 @@ func GetCacheFilePath(projectPath string) string {
 	objDir := filepath.Join(filepath.Dir(projectPath), "obj")
 	return filepath.Join(objDir, CacheFileName)
 }
+
+// VerifyPackageFilesExist checks if all expected package files exist on disk.
+// Matches NoOpRestoreUtilities.VerifyRestoreOutput in NuGet.Client.
+func (c *CacheFile) VerifyPackageFilesExist() bool {
+	for _, pkgPath := range c.ExpectedPackageFiles {
+		if _, err := os.Stat(pkgPath); err != nil {
+			return false
+		}
+	}
+	return true
+}
+
+// IsCacheValid checks if cache can be used (hash matches + files exist).
+// Matches the logic in RestoreCommand.EvaluateCacheFile (line 1360).
+func IsCacheValid(cachePath string, currentHash string) (bool, *CacheFile, error) {
+	// Load cache file
+	cache, err := LoadCacheFile(cachePath)
+	if err != nil {
+		return false, nil, err
+	}
+
+	// Check if cache is structurally valid
+	if !cache.IsValid() {
+		return false, cache, nil
+	}
+
+	// Check if hash matches
+	if cache.DgSpecHash != currentHash {
+		return false, cache, nil
+	}
+
+	// Check if all package files exist
+	if !cache.VerifyPackageFilesExist() {
+		return false, cache, nil
+	}
+
+	return true, cache, nil
+}

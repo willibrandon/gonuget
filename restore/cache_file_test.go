@@ -133,3 +133,135 @@ func TestGetCacheFilePath(t *testing.T) {
 	result := GetCacheFilePath(projectPath)
 	assert.Equal(t, expected, result)
 }
+
+func TestCacheFile_VerifyPackageFilesExist(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create a real package file
+	pkgPath := filepath.Join(tmpDir, "packages", "foo", "1.0.0", "foo.1.0.0.nupkg.sha512")
+	err := os.MkdirAll(filepath.Dir(pkgPath), 0755)
+	require.NoError(t, err)
+	err = os.WriteFile(pkgPath, []byte("dummy"), 0644)
+	require.NoError(t, err)
+
+	tests := []struct {
+		name   string
+		files  []string
+		exists bool
+	}{
+		{
+			name:   "all files exist",
+			files:  []string{pkgPath},
+			exists: true,
+		},
+		{
+			name:   "no files",
+			files:  []string{},
+			exists: true,
+		},
+		{
+			name:   "file missing",
+			files:  []string{"/nonexistent/package.sha512"},
+			exists: false,
+		},
+		{
+			name:   "some exist some missing",
+			files:  []string{pkgPath, "/nonexistent/package.sha512"},
+			exists: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cache := &CacheFile{
+				ExpectedPackageFiles: tt.files,
+			}
+			assert.Equal(t, tt.exists, cache.VerifyPackageFilesExist())
+		})
+	}
+}
+
+func TestIsCacheValid(t *testing.T) {
+	tmpDir := t.TempDir()
+	cachePath := filepath.Join(tmpDir, "cache.json")
+
+	// Create package file
+	pkgPath := filepath.Join(tmpDir, "packages", "foo.sha512")
+	err := os.MkdirAll(filepath.Dir(pkgPath), 0755)
+	require.NoError(t, err)
+	err = os.WriteFile(pkgPath, []byte("dummy"), 0644)
+	require.NoError(t, err)
+
+	tests := []struct {
+		name        string
+		cache       *CacheFile
+		currentHash string
+		valid       bool
+	}{
+		{
+			name: "valid cache",
+			cache: &CacheFile{
+				Version:              CacheFileVersion,
+				DgSpecHash:           "abc123",
+				Success:              true,
+				ExpectedPackageFiles: []string{pkgPath},
+			},
+			currentHash: "abc123",
+			valid:       true,
+		},
+		{
+			name: "hash mismatch",
+			cache: &CacheFile{
+				Version:              CacheFileVersion,
+				DgSpecHash:           "abc123",
+				Success:              true,
+				ExpectedPackageFiles: []string{pkgPath},
+			},
+			currentHash: "xyz789",
+			valid:       false,
+		},
+		{
+			name: "package missing",
+			cache: &CacheFile{
+				Version:              CacheFileVersion,
+				DgSpecHash:           "abc123",
+				Success:              true,
+				ExpectedPackageFiles: []string{"/nonexistent/package.sha512"},
+			},
+			currentHash: "abc123",
+			valid:       false,
+		},
+		{
+			name: "restore failed",
+			cache: &CacheFile{
+				Version:              CacheFileVersion,
+				DgSpecHash:           "abc123",
+				Success:              false,
+				ExpectedPackageFiles: []string{pkgPath},
+			},
+			currentHash: "abc123",
+			valid:       false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Save cache
+			err := tt.cache.Save(cachePath)
+			require.NoError(t, err)
+
+			// Validate
+			valid, _, err := IsCacheValid(cachePath, tt.currentHash)
+			require.NoError(t, err)
+			assert.Equal(t, tt.valid, valid)
+		})
+	}
+}
+
+func TestIsCacheValid_CacheNotExists(t *testing.T) {
+	valid, cache, err := IsCacheValid("/nonexistent/cache.json", "hash123")
+	require.NoError(t, err)
+	assert.False(t, valid)
+	assert.NotNil(t, cache)
+	assert.False(t, cache.IsValid())
+}
