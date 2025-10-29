@@ -1,3 +1,6 @@
+// Package restore implements NuGet package restore operations.
+// It provides functionality to restore packages from project files,
+// resolve dependencies, and manage the package cache.
 package restore
 
 import (
@@ -21,6 +24,9 @@ import (
 // Run executes the restore operation (entry point called from CLI).
 func Run(ctx context.Context, args []string, opts *Options, console Console) error {
 	start := time.Now()
+	// Show detailed summary messages for both detailed and diagnostic verbosity
+	isDetailed := opts.Verbosity == "detailed" || opts.Verbosity == "diagnostic"
+	isQuiet := opts.Verbosity == "quiet" || opts.Verbosity == "q"
 
 	// 1. Find project file
 	projectPath, err := findProjectFile(args)
@@ -28,7 +34,8 @@ func Run(ctx context.Context, args []string, opts *Options, console Console) err
 		return err
 	}
 
-	console.Printf("Restoring packages for %s...\n", projectPath)
+	// Note: indent removed - Terminal Logger doesn't use internal MSBuild message indentation
+	_ = isDetailed // Suppress unused warning
 
 	// 2. Load project
 	proj, err := project.LoadProject(projectPath)
@@ -39,53 +46,258 @@ func Run(ctx context.Context, args []string, opts *Options, console Console) err
 	// 3. Get package references
 	packageRefs := proj.GetPackageReferences()
 
+	// 4. Create restorer (no messages yet - dotnet prints summary first, then details)
+	restorer := NewRestorer(opts, console)
+
+	// Diagnostic: Show project analysis
+	isDiagnostic := opts.Verbosity == "diagnostic" || opts.Verbosity == "diag"
+	if isDiagnostic {
+		// Get target frameworks
+		var targetFrameworks []string
+		if len(proj.TargetFrameworks) > 0 {
+			targetFrameworks = proj.TargetFrameworks
+		} else if proj.TargetFramework != "" {
+			targetFrameworks = []string{proj.TargetFramework}
+		}
+
+		// Get SDK (if available)
+		sdk := ""
+		if proj.Root != nil {
+			sdk = proj.Root.Sdk
+		}
+
+		restorer.tracer.TraceProjectAnalysis(proj.Path, sdk, targetFrameworks, len(packageRefs))
+
+		// Show package sources
+		if len(opts.Sources) > 0 {
+			restorer.tracer.TracePackageSources(opts.Sources)
+		}
+	}
+
 	if len(packageRefs) == 0 {
-		console.Printf("Nothing to restore\n")
+		if !isQuiet {
+			console.Printf("Nothing to restore\n")
+		}
 		return nil
 	}
 
-	// 4. Create restorer
-	restorer := NewRestorer(opts, console)
+	// 5. Execute restore (track separate timing for per-project message)
+	// Start terminal status updater (30Hz right-aligned status)
+	projectName := filepath.Base(proj.Path)
+	termStatus := NewTerminalStatus(console.Output(), projectName)
+	defer termStatus.Stop()
 
-	// 5. Execute restore
+	restoreStart := time.Now()
 	result, err := restorer.Restore(ctx, proj, packageRefs)
+	restoreElapsed := time.Since(restoreStart)
+
+	// Stop terminal status before printing results
+	termStatus.Stop()
 	if err != nil {
-		return fmt.Errorf("restore failed: %w", err)
+		// Print NuGet errors in correct format (if any)
+		// DON'T print "Determining projects to restore..." on error path (matches dotnet)
+		if result != nil && len(result.Errors) > 0 {
+			for _, nugetErr := range result.Errors {
+				// NU1102 and NU1103 require multi-line format with per-source version info
+				if nugetErr.Code == ErrorCodePackageVersionNotFound || nugetErr.Code == ErrorCodePackageDownloadFailed {
+					// Format version-not-found errors (NU1102/NU1103) with multi-line output
+					console.Printf("%s\n", FormatVersionNotFoundError(
+						nugetErr.ProjectPath,
+						nugetErr.PackageID,
+						nugetErr.Constraint,
+						nugetErr.VersionInfos,
+						nugetErr.Code,
+					))
+				} else {
+					// Use single-line format for other errors (NU1101)
+					console.Printf("%s\n", nugetErr.Error())
+				}
+			}
+			// Print "Restore failed" summary (matches dotnet format)
+			elapsed := time.Since(start)
+			errorCount := len(result.Errors)
+
+			// ANSI color codes (use bright red like error codes)
+			const (
+				red   = "\033[1;31m"
+				reset = "\033[0m"
+			)
+
+			// Add blank line before summary (dotnet has spacing)
+			console.Printf("\n")
+
+			// Format: "Restore failed with N error(s) in X.Xs" with red on "failed with N error(s)"
+			console.Printf("Restore %sfailed with %d error(s)%s in %.1fs\n",
+				red, errorCount, reset, elapsed.Seconds())
+
+			// Return a clean error without wrapping (main.go will add "Error: " prefix)
+			return fmt.Errorf("")
+		}
+		return err
 	}
 
 	// 6. Generate lock file (project.assets.json) - only if not cache hit
+	// Note: Terminal Logger hides all MSBuild internal messages (dg file, MSBuild files, assets, cache, etc.)
+	// We match Terminal Logger behavior: clean output, no internal spam
+	var assetsInfo *AssetsInfo
 	if !result.CacheHit {
 		lockFile := NewLockFileBuilder().Build(proj, result)
 		objDir := filepath.Join(filepath.Dir(proj.Path), "obj")
 		assetsPath := filepath.Join(objDir, "project.assets.json")
+
 		if err := lockFile.Save(assetsPath); err != nil {
 			return fmt.Errorf("failed to save project.assets.json: %w", err)
 		}
+
+		// Diagnostic: Collect assets information
+		if isDiagnostic {
+			assetsInfo = &AssetsInfo{
+				ProjectAssetsFile: assetsPath,
+				PackageCount:      len(result.DirectPackages) + len(result.TransitivePackages),
+				TargetFrameworks:  proj.GetTargetFrameworks(),
+			}
+
+			// Get file size
+			if fileInfo, err := os.Stat(assetsPath); err == nil {
+				assetsInfo.ProjectAssetsSize = fileInfo.Size()
+			}
+
+			// Get cache file info
+			cachePath := GetCacheFilePath(proj.Path)
+			if fileInfo, err := os.Stat(cachePath); err == nil {
+				assetsInfo.CacheFile = cachePath
+				assetsInfo.CacheFileSize = fileInfo.Size()
+
+				// Read cache file to get dgspec hash
+				if cache, err := LoadCacheFile(cachePath); err == nil {
+					assetsInfo.DgSpecHash = cache.DgSpecHash
+				}
+			}
+		}
 	}
 
-	// 7. Report summary
+	// 7. Report summary (matches MSBuild Terminal Logger format)
 	elapsed := time.Since(start)
-	if result.CacheHit {
-		// Match dotnet: "All projects are up-to-date for restore."
-		console.Printf("  All projects are up-to-date for restore.\n")
+
+	// Diagnostic: Show assets generation
+	if isDiagnostic && assetsInfo != nil {
+		restorer.tracer.TraceAssetsGeneration(assetsInfo)
+	}
+
+	// Diagnostic: Show performance breakdown
+	if isDiagnostic && result != nil && result.PerformanceTiming != nil {
+		restorer.tracer.TracePerformanceBreakdown(result.PerformanceTiming)
+	}
+
+	// Quiet mode: No output on success
+	if isQuiet {
+		return nil
+	}
+
+	// Detect if output is TTY or piped (Console Logger vs Terminal Logger)
+	isTTY := termStatus.IsTTY()
+
+	// Terminal Logger (TTY) - clean output for interactive terminals
+	if isTTY {
+		// Print "Restore complete" summary first (matches dotnet Terminal Logger)
+		console.Printf("Restore complete (%.1fs)\n", elapsed.Seconds())
+
+		// Detailed mode: Print breakdown of what happened (indented with 4 spaces)
+		// Skip in diagnostic mode - we already have comprehensive diagnostic output
+		if isDetailed && !isDiagnostic {
+			console.Printf("    Determining projects to restore...\n")
+			console.Printf("    Restored %s (in %d ms).\n", proj.Path, restoreElapsed.Milliseconds())
+		}
+
+		// Add blank line and success message (matches dotnet's "Build succeeded" but says "Restore succeeded")
+		// ANSI green color for "succeeded" (color 32 then ;1 for bright to match MSBuild exactly)
+		const (
+			green = "\033[32;1m"
+			reset = "\033[0m"
+		)
+		console.Printf("\nRestore %ssucceeded%s in %.1fs\n", green, reset, elapsed.Seconds())
 	} else {
-		console.Printf("  Restored %s (in %d ms)\n", projectPath, elapsed.Milliseconds())
+		// Console Logger (piped) - matches dotnet when output is redirected
+		// Format: "  Determining projects to restore..."
+		//         "  Restored /path/to/project.csproj (in X ms)."
+		console.Printf("  Determining projects to restore...\n")
+		console.Printf("  Restored %s (in %d ms).\n", proj.Path, restoreElapsed.Milliseconds())
+
+		// Detailed mode: Show verbose restore details (matches dotnet Console Logger detailed verbosity)
+		if isDetailed && !isDiagnostic {
+			console.Printf("\n")
+
+			// Show file write operations or cache status (BEFORE config files section)
+			objDir := filepath.Join(filepath.Dir(proj.Path), "obj")
+			assetsPath := filepath.Join(objDir, "project.assets.json")
+			cachePath := GetCacheFilePath(proj.Path)
+
+			if !result.CacheHit {
+				// Files were written - show write messages
+				dgSpecPath := filepath.Join(objDir, filepath.Base(proj.Path)+".nuget.dgspec.json")
+				console.Printf("  Writing assets file to disk. Path: %s\n", assetsPath)
+				console.Printf("  Writing cache file to disk. Path: %s\n", cachePath)
+				console.Printf("  Persisting dg to %s\n", dgSpecPath)
+			} else {
+				// Cache hit - show that assets file and cache were not updated
+				console.Printf("  Assets file has not changed. Skipping assets file writing. Path: %s\n", assetsPath)
+				console.Printf("  No-Op restore. The cache will not be updated. Path: %s\n", cachePath)
+			}
+
+			console.Printf("\n")
+
+			// Show NuGet config files used
+			console.Printf("  NuGet Config files used:\n")
+			// Get user config path
+			if home, err := os.UserHomeDir(); err == nil {
+				userConfigPath := filepath.Join(home, ".nuget", "NuGet", "NuGet.Config")
+				if _, err := os.Stat(userConfigPath); err == nil {
+					console.Printf("      %s\n", userConfigPath)
+				}
+			}
+
+			console.Printf("\n")
+
+			// Show feeds used
+			console.Printf("  Feeds used:\n")
+			if len(opts.Sources) > 0 {
+				for _, source := range opts.Sources {
+					console.Printf("      %s\n", source)
+				}
+			}
+
+			console.Printf("  All projects are up-to-date for restore.\n")
+		}
 	}
 
 	return nil
 }
 
 func findProjectFile(args []string) (string, error) {
+	var projectPath string
+	var err error
+
 	if len(args) > 0 {
-		return args[0], nil
+		projectPath = args[0]
+	} else {
+		cwd, err := os.Getwd()
+		if err != nil {
+			return "", err
+		}
+		projectPath, err = project.FindProjectFile(cwd)
+		if err != nil {
+			return "", err
+		}
 	}
 
-	cwd, err := os.Getwd()
+	// Convert to absolute path WITHOUT resolving symlinks (matches dotnet behavior)
+	// On macOS, /tmp is a symlink to /private/tmp, but dotnet preserves /tmp in output
+	absPath, err := filepath.Abs(projectPath)
 	if err != nil {
 		return "", err
 	}
 
-	return project.FindProjectFile(cwd)
+	return absPath, nil
 }
 
 // Restorer executes restore operations.
@@ -93,6 +305,8 @@ type Restorer struct {
 	opts    *Options
 	console Console
 	client  *core.Client
+	tracer  DiagnosticTracer // Diagnostic output tracer (enabled for diagnostic verbosity only)
+	logs    []LogMessage     // Collected warnings/errors during restore (for cache file)
 }
 
 // NewRestorer creates a new restorer.
@@ -122,6 +336,74 @@ func NewRestorer(opts *Options, console Console) *Restorer {
 		opts:    opts,
 		console: console,
 		client:  client,
+		tracer:  NewResolutionTracer(console, opts.Verbosity),
+		logs:    make([]LogMessage, 0),
+	}
+}
+
+// addLog adds a log message to the collector for cache file persistence.
+// Matches MSBuildRestoreUtility.CollectMessage in NuGet.Client.
+func (r *Restorer) addLog(log LogMessage) {
+	r.logs = append(r.logs, log)
+}
+
+// addErrorLog creates and adds an error log from a NuGetError.
+// Matches NuGet.Client's error logging in RestoreCommand.
+func (r *Restorer) addErrorLog(err *NuGetError, targetFramework string) {
+	log := LogMessage{
+		Code:         err.Code,
+		Level:        "Error",
+		Message:      err.Message,
+		ProjectPath:  err.ProjectPath,
+		FilePath:     err.ProjectPath,
+		LibraryID:    err.PackageID,
+		TargetGraphs: []string{targetFramework},
+	}
+	r.addLog(log)
+}
+
+// replayLogs outputs cached logs to console (on cache hit).
+// Matches MSBuildRestoreUtility.ReplayWarningsAndErrorsAsync in NuGet.Client.
+func (r *Restorer) replayLogs(logs []LogMessage) {
+	for _, log := range logs {
+		// Format log message similar to NuGetError.Error()
+		// Use ANSI colors like dotnet does
+		const (
+			red   = "\033[1;31m"
+			reset = "\033[0m"
+		)
+
+		level := strings.ToLower(log.Level)
+		switch level {
+		case "error":
+			// Format: "    /path/to/project.csproj : error NU1101: message"
+			r.console.Printf("    %s : %serror %s%s: %s\n",
+				log.ProjectPath, red, log.Code, reset, log.Message)
+		case "warning":
+			// Format warnings similarly (yellow color)
+			const yellow = "\033[1;33m"
+			r.console.Printf("    %s : %swarning %s%s: %s\n",
+				log.ProjectPath, yellow, log.Code, reset, log.Message)
+		}
+	}
+}
+
+// writeCacheFileOnError writes a cache file when restore fails early.
+// Matches NuGet.Client behavior of writing cache even on failure (with success=false).
+func (r *Restorer) writeCacheFileOnError(proj *project.Project, dgSpecHash, cachePath string) {
+	cacheFile := &CacheFile{
+		Version:              CacheFileVersion,
+		DgSpecHash:           dgSpecHash,
+		Success:              false, // Restore failed
+		ProjectFilePath:      proj.Path,
+		ExpectedPackageFiles: []string{}, // No packages resolved
+		DirectPackageFiles:   []string{},
+		Logs:                 r.logs, // Collected error logs
+	}
+
+	// Don't fail if cache write fails (just log warning)
+	if err := cacheFile.Save(cachePath); err != nil {
+		r.console.Warning("Failed to write cache file: %v\n", err)
 	}
 }
 
@@ -138,6 +420,27 @@ type Result struct {
 
 	// CacheHit indicates restore was skipped (cache valid)
 	CacheHit bool
+
+	// Errors contains NuGet errors encountered during restore
+	Errors []*NuGetError
+
+	// PerformanceTiming holds detailed timing metrics (diagnostic mode only)
+	PerformanceTiming *PerformanceTiming
+}
+
+// PerformanceTiming holds detailed timing metrics for diagnostic output.
+type PerformanceTiming struct {
+	// Phase timings
+	DependencyResolution time.Duration
+	PackageDownloads     time.Duration
+	AssetsGeneration     time.Duration
+
+	// Per-package resolution timing
+	ResolutionTimings map[string]time.Duration // packageID -> duration
+
+	// Per-package download timing
+	DownloadTimings map[string]time.Duration // packageID -> duration
+	CacheHits       map[string]bool          // packageID -> cache hit
 }
 
 // PackageInfo holds package information.
@@ -148,9 +451,6 @@ type PackageInfo struct {
 
 	// IsDirect indicates if this is a direct dependency
 	IsDirect bool
-
-	// Parents lists packages that depend on this (for transitive deps)
-	Parents []string
 }
 
 // AllPackages returns all packages (direct + transitive).
@@ -174,6 +474,16 @@ func (r *Restorer) Restore(
 		TransitivePackages: make([]PackageInfo, 0),
 	}
 
+	// Initialize performance timing in diagnostic mode
+	isDiagnostic := r.opts.Verbosity == "diagnostic" || r.opts.Verbosity == "diag"
+	if isDiagnostic {
+		result.PerformanceTiming = &PerformanceTiming{
+			ResolutionTimings: make(map[string]time.Duration),
+			DownloadTimings:   make(map[string]time.Duration),
+			CacheHits:         make(map[string]bool),
+		}
+	}
+
 	// Phase 0: No-op optimization (cache check)
 	// Matches RestoreCommand.EvaluateNoOpAsync (line 442-501)
 	cachePath := GetCacheFilePath(proj.Path)
@@ -192,6 +502,14 @@ func (r *Restorer) Restore(
 			// Cache hit! Return cached result without doing restore
 			// (Message will be printed by Run() function)
 
+			// Diagnostic: Show project-level cache hit
+			isDiagnostic := r.opts.Verbosity == "diagnostic" || r.opts.Verbosity == "diag"
+			if isDiagnostic {
+				r.console.Printf("Project restore cache hit (dgspec hash: %s)\n", currentHash)
+				r.console.Printf("  Using cached restore result from: %s\n", cachePath)
+				r.console.Printf("  All packages already restored - skipping dependency resolution\n\n")
+			}
+
 			// Get packages folder for path construction
 			packagesFolder := r.opts.PackagesFolder
 			if packagesFolder == "" {
@@ -204,10 +522,10 @@ func (r *Restorer) Restore(
 			}
 
 			// Build result from cache
-			// Group packages by direct vs transitive
-			directPackageIDs := make(map[string]bool)
-			for _, pkgRef := range packageRefs {
-				directPackageIDs[strings.ToLower(pkgRef.Include)] = true
+			// Build map of direct package file paths for fast lookup
+			directPackagePaths := make(map[string]bool)
+			for _, path := range cachedFile.DirectPackageFiles {
+				directPackagePaths[path] = true
 			}
 
 			// Parse package info from cache paths
@@ -222,12 +540,15 @@ func (r *Restorer) Restore(
 				version := parts[len(parts)-2]
 				id := parts[len(parts)-3]
 
+				// Check if this specific package path is in directPackageFiles
+				normalizedID := strings.ToLower(id)
+				isDirect := directPackagePaths[pkgPath]
+
 				info := PackageInfo{
 					ID:       id,
 					Version:  version,
-					Path:     filepath.Join(packagesFolder, strings.ToLower(id), version),
-					IsDirect: directPackageIDs[strings.ToLower(id)],
-					Parents:  []string{},
+					Path:     filepath.Join(packagesFolder, normalizedID, version),
+					IsDirect: isDirect,
 				}
 
 				if info.IsDirect {
@@ -238,6 +559,31 @@ func (r *Restorer) Restore(
 			}
 
 			result.CacheHit = true
+
+			// Replay warnings/errors from cache (matches NuGet.Client line 471)
+			// This must happen on cache hit to show users any problems from cached restore
+			if len(cachedFile.Logs) > 0 {
+				r.replayLogs(cachedFile.Logs)
+			}
+
+			// Diagnostic: Show cached packages
+			if isDiagnostic {
+				r.console.Printf("Cached packages:\n")
+				if len(result.DirectPackages) > 0 {
+					r.console.Printf("  Direct packages (%d):\n", len(result.DirectPackages))
+					for _, pkg := range result.DirectPackages {
+						r.console.Printf("    - %s %s\n", pkg.ID, pkg.Version)
+					}
+				}
+				if len(result.TransitivePackages) > 0 {
+					r.console.Printf("  Transitive packages (%d):\n", len(result.TransitivePackages))
+					for _, pkg := range result.TransitivePackages {
+						r.console.Printf("    - %s %s\n", pkg.ID, pkg.Version)
+					}
+				}
+				r.console.Printf("\n")
+			}
+
 			return result, nil
 		}
 	}
@@ -276,7 +622,20 @@ fullRestore:
 	allResolvedPackages := make(map[string]*resolver.PackageDependencyInfo)
 	unresolvedPackages := make([]*resolver.GraphNode, 0)
 
+	// Track direct package ID+version combinations (key format: "packageid|version")
+	// This is used to properly categorize packages when multiple versions of same ID exist
+	directPackageKeys := make(map[string]bool)
+
+	// Diagnostic: Start resolution trace
+	isDiagnostic = r.opts.Verbosity == "diagnostic" || r.opts.Verbosity == "diag"
+	if isDiagnostic {
+		r.console.Printf("\nResolving dependencies for %s:\n", targetFrameworkStr)
+	}
+
 	// Phase 1: Walk dependency graph for each direct dependency
+	// Start timing dependency resolution
+	resolutionStart := time.Now()
+
 	// Create local dependency provider for cached packages (NO HTTP!)
 	// Matches NuGet.Client's LocalLibraryProviders approach (RestoreCommand.cs line 2037-2056)
 	localProvider := NewLocalDependencyProvider(packagesFolder)
@@ -289,18 +648,69 @@ fullRestore:
 	}
 
 	for _, pkgRef := range packageRefs {
-		// Convert version to version range format if needed
-		// Plain versions like "13.0.1" need to become "[13.0.1]" (exact range)
+		// Use version as-is from PackageReference
+		// ParseVersionRange will handle conversion correctly:
+		// - Plain versions like "13.0.1" are interpreted as ">= 13.0.1" (minimum version)
+		// - Bracketed versions like "[13.0.1]" are exact matches
+		// - Ranges like "[1.0,2.0)" are preserved
+		// This matches NuGet.Client's VersionRange.Parse behavior
 		versionRange := pkgRef.Version
-		if versionRange != "" && !strings.Contains(versionRange, "[") && !strings.Contains(versionRange, "(") && !strings.Contains(versionRange, ",") && !strings.Contains(versionRange, "*") {
-			// Looks like a plain version, convert to exact range
-			versionRange = "[" + versionRange + "]"
-		}
 		if versionRange == "" {
 			versionRange = "0.0.0" // Empty means any version >= 0.0.0
 		}
 
+		// Diagnostic: Trace package resolution start
+		if isDiagnostic {
+			r.console.Printf("  %s %s (direct reference)\n", pkgRef.Include, versionRange)
+			r.console.Printf("    Constraint: %s\n", versionRange)
+		}
+
+		// OPTIMIZATION: Early version availability check (matches NuGet.Client's SourceRepositoryDependencyProvider)
+		// Check if any version satisfying the constraint exists BEFORE running expensive dependency walk
+		// This provides massive speedup for NU1102/NU1103 error cases (version not found)
+		versionInfos, allVersions, allSourceNames, canSatisfy := r.checkVersionAvailability(ctx, pkgRef.Include, versionRange)
+
+		// Diagnostic: Show available versions (limit to last 10 for readability)
+		if isDiagnostic && len(allVersions) > 0 {
+			displayVersions := allVersions
+			if len(displayVersions) > 10 {
+				displayVersions = displayVersions[len(displayVersions)-10:]
+			}
+			r.console.Printf("    Available versions: %s\n", strings.Join(displayVersions, ", "))
+		}
+
+		if !canSatisfy {
+			// Version not found - immediately return NU1101/NU1102/NU1103 error without dependency walk
+			// This saves ~160-195ms by skipping graph traversal
+			var nugetErr *NuGetError
+			switch {
+			case len(versionInfos) == 0:
+				// Package doesn't exist at all - NU1101
+				nugetErr = NewPackageNotFoundError(proj.Path, pkgRef.Include, versionRange, allSourceNames)
+			case !isPrereleaseAllowed(versionRange) && hasPrereleaseVersionsOnly(versionRange, allVersions):
+				// Only prerelease versions satisfy the range when stable requested - NU1103
+				// For NU1103, dotnet shows the LOWEST prerelease version (not highest)
+				parsedRange, _ := version.ParseVersionRange(versionRange)
+				versionInfosNU1103 := r.updateNearestVersionForNU1103(versionInfos, allVersions, parsedRange)
+				nugetErr = NewPackageDownloadFailedError(proj.Path, pkgRef.Include, versionRange, versionInfosNU1103)
+			default:
+				// Package exists but no compatible version - NU1102
+				nugetErr = NewPackageVersionNotFoundError(proj.Path, pkgRef.Include, versionRange, versionInfos)
+			}
+
+			// Add error to result and collect for cache file
+			result.Errors = []*NuGetError{nugetErr}
+			r.addErrorLog(nugetErr, targetFrameworkStr)
+
+			// Write cache file with error before returning (matches NuGet.Client behavior)
+			// Cache file is written even on failure so errors can be replayed on cache hit
+			r.writeCacheFileOnError(proj, currentHash, cachePath)
+
+			return result, fmt.Errorf("restore failed due to package version not found")
+		}
+
 		// Walk dependency graph (matches RemoteDependencyWalker.WalkAsync line 28)
+		pkgResolutionStart := time.Now()
 		graphNode, err := walker.Walk(
 			ctx,
 			pkgRef.Include,
@@ -308,8 +718,37 @@ fullRestore:
 			targetFrameworkStr,
 			true, // recursive=true for transitive resolution
 		)
+		pkgResolutionDuration := time.Since(pkgResolutionStart)
+
+		// Record per-package resolution timing
+		if isDiagnostic && result.PerformanceTiming != nil {
+			result.PerformanceTiming.ResolutionTimings[pkgRef.Include] = pkgResolutionDuration
+		}
+
 		if err != nil {
 			return nil, fmt.Errorf("failed to walk dependencies for %s: %w", pkgRef.Include, err)
+		}
+
+		// Track this as a direct dependency (the root node from walker.Walk)
+		if graphNode != nil && graphNode.Item != nil {
+			key := fmt.Sprintf("%s|%s", strings.ToLower(graphNode.Item.ID), graphNode.Item.Version)
+			directPackageKeys[key] = true
+		}
+
+		// Diagnostic: Show selected version and dependencies
+		if isDiagnostic && graphNode != nil && graphNode.Item != nil {
+			r.console.Printf("    Selected: %s (highest matching)\n", graphNode.Item.Version)
+			r.console.Printf("    Framework: compatible with %s\n", targetFrameworkStr)
+
+			// Show dependencies for this package
+			deps := r.getDependenciesForFramework(graphNode.Item, targetFrameworkStr)
+			if len(deps) > 0 {
+				r.console.Printf("    Dependencies:\n")
+				for _, dep := range deps {
+					r.console.Printf("      → %s %s\n", dep.ID, dep.VersionRange)
+				}
+			}
+			r.console.Printf("\n")
 		}
 
 		// Collect all packages from graph (breadth-first)
@@ -319,47 +758,80 @@ fullRestore:
 		}
 	}
 
+	// Record total resolution timing
+	if isDiagnostic && result.PerformanceTiming != nil {
+		result.PerformanceTiming.DependencyResolution = time.Since(resolutionStart)
+	}
+
+	// Diagnostic: Show dependency graph summary
+	if isDiagnostic {
+		directCount := len(packageRefs)
+		transitiveCount := max(0, len(allResolvedPackages)-directCount) // Safety check
+		r.tracer.TraceDependencyGraph(directCount, transitiveCount)
+	}
+
 	// Check for unresolved packages and fail restore if any found
 	// Matches NuGet.Client: RestoreCommand fails when graphs have Unresolved.Count > 0
 	if len(unresolvedPackages) > 0 {
-		return nil, r.buildUnresolvedError(unresolvedPackages)
+		// Store NuGet errors in result for proper formatting by Run()
+		result.Errors = r.buildUnresolvedError(ctx, unresolvedPackages, proj.Path)
+		return result, fmt.Errorf("restore failed due to unresolved packages")
 	}
 
 	// Phase 2: Download all resolved packages (direct + transitive)
 	// Matches ProjectRestoreCommand.InstallPackagesAsync behavior
+	downloadStart := time.Now()
 	for _, pkgInfo := range allResolvedPackages {
 		normalizedID := strings.ToLower(pkgInfo.ID)
 		packagePath := filepath.Join(packagesFolder, normalizedID, pkgInfo.Version)
 
 		// Check if package already exists in cache
+		cacheHit := false
 		if !r.opts.Force {
 			if _, err := os.Stat(packagePath); err == nil {
-				continue
+				cacheHit = true
 			}
 		}
 
-		// Download package
-		if err := r.downloadPackage(ctx, normalizedID, pkgInfo.Version, packagePath); err != nil {
+		// Record cache hit status
+		if isDiagnostic && result.PerformanceTiming != nil {
+			result.PerformanceTiming.CacheHits[pkgInfo.ID] = cacheHit
+		}
+
+		// Time individual package download
+		pkgDownloadStart := time.Now()
+
+		// Download package (pass original ID for display, with cache hit flag for logging)
+		if err := r.downloadPackage(ctx, pkgInfo.ID, pkgInfo.Version, packagePath, cacheHit); err != nil {
 			return nil, fmt.Errorf("failed to download package %s %s: %w", pkgInfo.ID, pkgInfo.Version, err)
+		}
+
+		// Record per-package download timing
+		if isDiagnostic && result.PerformanceTiming != nil {
+			result.PerformanceTiming.DownloadTimings[pkgInfo.ID] = time.Since(pkgDownloadStart)
 		}
 	}
 
-	// Phase 3: Categorize packages as direct vs transitive
-	directPackageIDs := make(map[string]bool)
-	for _, pkgRef := range packageRefs {
-		directPackageIDs[strings.ToLower(pkgRef.Include)] = true
+	// Record total download timing
+	if isDiagnostic && result.PerformanceTiming != nil {
+		result.PerformanceTiming.PackageDownloads = time.Since(downloadStart)
 	}
 
+	// Phase 3: Categorize packages as direct vs transitive
+	// Use directPackageKeys that was built during resolution (tracks ID+version, not just ID)
 	for _, pkgInfo := range allResolvedPackages {
 		normalizedID := strings.ToLower(pkgInfo.ID)
 		packagePath := filepath.Join(packagesFolder, normalizedID, pkgInfo.Version)
+
+		// Check if this specific package ID+version is direct
+		key := fmt.Sprintf("%s|%s", normalizedID, pkgInfo.Version)
+		isDirect := directPackageKeys[key]
 
 		info := PackageInfo{
 			ID:       pkgInfo.ID,
 			Version:  pkgInfo.Version,
 			Path:     packagePath,
-			IsDirect: directPackageIDs[normalizedID],
-			Parents:  []string{}, // TODO: Collect from graph
+			IsDirect: isDirect,
 		}
 
 		if info.IsDirect {
@@ -371,6 +843,7 @@ fullRestore:
 
 	// Phase 4: Write cache file for no-op optimization
 	// Matches RestoreCommand.CommitCacheFileAsync (RestoreResult.cs line 296)
+	assetsStart := time.Now()
 	cachePath = GetCacheFilePath(proj.Path)
 
 	// Calculate hash
@@ -388,6 +861,15 @@ fullRestore:
 			expectedPackageFiles = append(expectedPackageFiles, sha512Path)
 		}
 
+		// Build direct package file paths (only direct dependencies)
+		directPackageFiles := make([]string, 0, len(result.DirectPackages))
+		for _, pkg := range result.DirectPackages {
+			normalizedID := strings.ToLower(pkg.ID)
+			sha512Path := filepath.Join(packagesFolder, normalizedID, pkg.Version,
+				fmt.Sprintf("%s.%s.nupkg.sha512", normalizedID, pkg.Version))
+			directPackageFiles = append(directPackageFiles, sha512Path)
+		}
+
 		// Create cache file
 		cacheFile := &CacheFile{
 			Version:              CacheFileVersion,
@@ -395,7 +877,8 @@ fullRestore:
 			Success:              true,
 			ProjectFilePath:      proj.Path,
 			ExpectedPackageFiles: expectedPackageFiles,
-			Logs:                 []LogMessage{}, // TODO: Capture warnings/errors
+			DirectPackageFiles:   directPackageFiles,
+			Logs:                 r.logs, // Collected warnings/errors during restore
 		}
 
 		// Save cache file
@@ -403,6 +886,11 @@ fullRestore:
 			// Don't fail restore if cache write fails
 			r.console.Warning("Failed to write cache file: %v\n", err)
 		}
+	}
+
+	// Record assets generation timing
+	if isDiagnostic && result.PerformanceTiming != nil {
+		result.PerformanceTiming.AssetsGeneration = time.Since(assetsStart)
 	}
 
 	return result, nil
@@ -451,23 +939,378 @@ func (r *Restorer) collectPackagesFromGraph(
 	return nil
 }
 
-// buildUnresolvedError creates an error message for unresolved packages.
+// buildUnresolvedError creates NuGetError instances for unresolved packages.
 // Matches NuGet.Client's error reporting format.
-func (r *Restorer) buildUnresolvedError(unresolvedNodes []*resolver.GraphNode) error {
+// Distinguishes between NU1101 (package doesn't exist), NU1102 (package exists but no compatible version),
+// and NU1103 (only prerelease versions available when stable requested).
+func (r *Restorer) buildUnresolvedError(ctx context.Context, unresolvedNodes []*resolver.GraphNode, projectPath string) []*NuGetError {
 	if len(unresolvedNodes) == 0 {
 		return nil
 	}
 
-	// Build error message
-	msg := fmt.Sprintf("Restore failed. Unable to resolve %d package(s):\n", len(unresolvedNodes))
+	errors := make([]*NuGetError, 0, len(unresolvedNodes))
 	for _, node := range unresolvedNodes {
-		msg += fmt.Sprintf("  - %s %s\n", node.Item.ID, node.Item.Version)
+		// Try to detect if this is NU1101, NU1102, or NU1103
+		queryResult := r.tryGetVersionInfo(ctx, node.Item.ID, node.Item.Version)
+
+		if queryResult.packageFound && len(queryResult.versionInfos) > 0 {
+			// Package exists but no compatible version found
+			// Check if this is NU1103 (only prerelease versions satisfy the range when stable requested)
+			// Matches NuGet.Client logic: !IsPrereleaseAllowed(range) && HasPrereleaseVersionsOnly(range, allVersions)
+			if !isPrereleaseAllowed(node.Item.Version) && hasPrereleaseVersionsOnly(node.Item.Version, queryResult.allVersions) {
+				// NU1103: Only prerelease versions satisfy the range, but stable requested
+				err := NewPackageDownloadFailedError(
+					projectPath,
+					node.Item.ID,
+					node.Item.Version,
+					queryResult.versionInfos,
+				)
+				errors = append(errors, err)
+			} else {
+				// NU1102: Package exists but no compatible version
+				err := NewPackageVersionNotFoundError(
+					projectPath,
+					node.Item.ID,
+					node.Item.Version,
+					queryResult.versionInfos,
+				)
+				errors = append(errors, err)
+			}
+		} else {
+			// NU1101: Package doesn't exist at all
+			err := NewPackageNotFoundError(
+				projectPath,
+				node.Item.ID,
+				node.Item.Version,
+				r.opts.Sources,
+			)
+			errors = append(errors, err)
+		}
 	}
 
-	return fmt.Errorf("%s", msg)
+	return errors
 }
 
-func (r *Restorer) downloadPackage(ctx context.Context, packageID, packageVersion, packagePath string) error {
+// checkVersionAvailability checks if any version satisfying the constraint exists across all sources.
+// This is an optimization to fail fast for NU1102/NU1103 cases without running expensive dependency walk.
+// Returns version information per source, all versions, all queried source names, and a boolean indicating if constraint can be satisfied.
+func (r *Restorer) checkVersionAvailability(ctx context.Context, packageID, versionConstraint string) ([]VersionInfo, []string, []string, bool) {
+	// Parse version range constraint
+	versionRange, err := version.ParseVersionRange(versionConstraint)
+	if err != nil {
+		// If we can't parse the constraint, let the walk handle it
+		return nil, nil, nil, true
+	}
+
+	// Get all repositories from the client
+	repos := r.client.GetRepositoryManager().ListRepositories()
+
+	// Parallel source queries for 2x faster error reporting (critical for NU1101/NU1102/NU1103)
+	type sourceResult struct {
+		index          int
+		sourceName     string
+		versions       []string
+		nearestVersion string
+		canSatisfy     bool
+		hasVersions    bool
+	}
+
+	results := make(chan sourceResult, len(repos))
+
+	// Query all sources in parallel - network I/O is the bottleneck
+	for idx, repo := range repos {
+		go func(idx int, repo *core.SourceRepository) {
+			// Format source name (check V2 first since it also contains "nuget.org")
+			sourceName := repo.SourceURL()
+			if strings.Contains(sourceName, "/api/v2") {
+				sourceName = "NuGet V2"
+			} else if strings.Contains(sourceName, "nuget.org") {
+				sourceName = "nuget.org"
+			}
+
+			// Try to list all versions of this package from this repository
+			versions, err := repo.ListVersions(ctx, nil, packageID)
+
+			if err != nil || len(versions) == 0 {
+				// Package doesn't exist in this source
+				results <- sourceResult{index: idx, sourceName: sourceName, hasVersions: false}
+				return
+			}
+
+			// Package exists! Optimize by checking max version first for early rejection
+			var nearestVersion string
+			var maxVersion *version.NuGetVersion
+
+			// Find max version (versions are typically sorted, so check last first)
+			// For NU1102 error display: use HIGHEST version (nearest to requested version)
+			// For NU1103 error display: use LOWEST prerelease (will be updated later)
+			if len(versions) > 0 {
+				// Try last version first (usually the highest) for optimization
+				if maxV, err := version.Parse(versions[len(versions)-1]); err == nil {
+					maxVersion = maxV
+					nearestVersion = versions[len(versions)-1]
+				}
+
+				// Verify it's actually the max by checking a few more
+				for i := len(versions) - 2; i >= 0 && i >= len(versions)-5; i-- {
+					if v, err := version.Parse(versions[i]); err == nil {
+						if maxVersion == nil || v.Compare(maxVersion) > 0 {
+							maxVersion = v
+							nearestVersion = versions[i]
+						}
+					}
+				}
+			}
+
+			// OPTIMIZATION: If constraint minimum > max version, no version can satisfy
+			// This provides fast rejection for NU1102 cases like "99.99.99" > "13.0.4"
+			canSatisfy := false
+			if maxVersion != nil && versionRange.MinVersion != nil {
+				cmp := versionRange.MinVersion.Compare(maxVersion)
+				switch {
+				case !versionRange.MinInclusive && cmp == 0:
+					// Constraint requires > maxVersion, which is impossible
+					// Don't set canSatisfy, use nearestVersion = maxVersion
+				case cmp > 0:
+					// Constraint requires higher than any available version - fast fail
+					// Don't set canSatisfy, use nearestVersion = maxVersion
+				default:
+					// Constraint might be satisfiable - check if max version satisfies
+					if versionRange.Satisfies(maxVersion) {
+						canSatisfy = true
+					} else {
+						// Max doesn't satisfy, need to check other versions
+						for _, v := range versions {
+							nv, err := version.Parse(v)
+							if err != nil {
+								continue
+							}
+							if versionRange.Satisfies(nv) {
+								canSatisfy = true
+								nearestVersion = v
+								break
+							}
+						}
+					}
+				}
+			}
+
+			results <- sourceResult{
+				index:          idx,
+				sourceName:     sourceName,
+				versions:       versions,
+				nearestVersion: nearestVersion,
+				canSatisfy:     canSatisfy,
+				hasVersions:    true,
+			}
+		}(idx, repo)
+	}
+
+	// Collect results from parallel queries and preserve original order
+	resultsByIndex := make([]sourceResult, len(repos))
+	for range len(repos) {
+		result := <-results
+		resultsByIndex[result.index] = result
+	}
+
+	// Process results in original source order (critical for source name display order)
+	versionInfos := make([]VersionInfo, 0, len(repos))
+	allVersions := make([]string, 0)
+	allSourceNames := make([]string, 0, len(repos))
+	canSatisfy := false
+
+	for _, result := range resultsByIndex {
+		// Track all sources queried (for NU1101 error reporting)
+		allSourceNames = append(allSourceNames, result.sourceName)
+
+		if !result.hasVersions {
+			continue
+		}
+
+		// Collect all versions for NU1103 detection
+		allVersions = append(allVersions, result.versions...)
+
+		if result.canSatisfy {
+			canSatisfy = true
+		}
+
+		versionInfos = append(versionInfos, VersionInfo{
+			Source:         result.sourceName,
+			VersionCount:   len(result.versions),
+			NearestVersion: result.nearestVersion,
+		})
+	}
+
+	return versionInfos, allVersions, allSourceNames, canSatisfy
+}
+
+// updateNearestVersionForNU1103 updates versionInfos to show the LOWEST prerelease version
+// for NU1103 errors (dotnet shows lowest, not highest, for prerelease-only scenarios)
+func (r *Restorer) updateNearestVersionForNU1103(versionInfos []VersionInfo, allVersions []string, versionRange *version.Range) []VersionInfo {
+	// Parse all versions once
+	parsedVersions := make([]*version.NuGetVersion, 0, len(allVersions))
+	versionStrings := make([]string, 0, len(allVersions))
+
+	for _, vStr := range allVersions {
+		if v, err := version.Parse(vStr); err == nil {
+			parsedVersions = append(parsedVersions, v)
+			versionStrings = append(versionStrings, vStr)
+		}
+	}
+
+	// Find lowest prerelease that satisfies numeric bounds
+	var lowestPrerelease *version.NuGetVersion
+	var lowestPrereleaseStr string
+
+	for i, v := range parsedVersions {
+		// Check if it's prerelease and satisfies numeric bounds
+		if v.IsPrerelease() && versionRange.SatisfiesNumericBounds(v) {
+			if lowestPrerelease == nil || v.LessThan(lowestPrerelease) {
+				lowestPrerelease = v
+				lowestPrereleaseStr = versionStrings[i]
+			}
+		}
+	}
+
+	// Update all versionInfos to use the lowest prerelease
+	if lowestPrereleaseStr != "" {
+		updatedInfos := make([]VersionInfo, len(versionInfos))
+		for i, info := range versionInfos {
+			updatedInfos[i] = VersionInfo{
+				Source:         info.Source,
+				VersionCount:   info.VersionCount,
+				NearestVersion: lowestPrereleaseStr,
+			}
+		}
+		return updatedInfos
+	}
+
+	// Fallback: return original if no prerelease found
+	return versionInfos
+}
+
+// versionQueryResult holds the results of querying for versions from all sources.
+type versionQueryResult struct {
+	versionInfos []VersionInfo
+	allVersions  []string
+	packageFound bool
+}
+
+// tryGetVersionInfo attempts to query available versions for a package to distinguish NU1101 vs NU1102 vs NU1103.
+// Returns version information per source, all version strings, and a boolean indicating if package was found.
+func (r *Restorer) tryGetVersionInfo(ctx context.Context, packageID, versionConstraint string) versionQueryResult {
+	// Get all repositories from the client
+	repos := r.client.GetRepositoryManager().ListRepositories()
+	versionInfos := make([]VersionInfo, 0, len(repos))
+	allVersions := make([]string, 0)
+
+	for _, repo := range repos {
+		// Try to list all versions of this package from this repository
+		versions, err := repo.ListVersions(ctx, nil, packageID)
+
+		if err != nil || len(versions) == 0 {
+			// Package doesn't exist in this source
+			continue
+		}
+
+		// Package exists! Collect all versions for NU1103 detection
+		allVersions = append(allVersions, versions...)
+
+		// Use latest (highest) version as "nearest" for error display
+		nearestVersion := versions[len(versions)-1]
+
+		// Format source name (check V2 first since it also contains "nuget.org")
+		sourceName := repo.SourceURL()
+		if strings.Contains(sourceName, "/api/v2") {
+			sourceName = "NuGet V2"
+		} else if strings.Contains(sourceName, "nuget.org") {
+			sourceName = "nuget.org"
+		}
+
+		versionInfos = append(versionInfos, VersionInfo{
+			Source:         sourceName,
+			VersionCount:   len(versions),
+			NearestVersion: nearestVersion,
+		})
+	}
+
+	return versionQueryResult{
+		versionInfos: versionInfos,
+		allVersions:  allVersions,
+		packageFound: len(versionInfos) > 0,
+	}
+}
+
+// hasPrereleaseVersionsOnly checks if prerelease versions satisfy the range but no stable versions do.
+// Matches NuGet.Client's HasPrereleaseVersionsOnly logic.
+// Returns true if:
+//  1. There exists at least one prerelease version that satisfies the range (numeric bounds only)
+//  2. There exists NO stable version that satisfies the range (numeric bounds only)
+//
+// Note: Uses SatisfiesNumericBounds instead of Satisfies to check if versions WOULD satisfy
+// the range if the prerelease restriction were lifted. This is necessary for NU1103 detection.
+func hasPrereleaseVersionsOnly(versionRangeStr string, versions []string) bool {
+	vr, err := version.ParseVersionRange(versionRangeStr)
+	if err != nil {
+		return false
+	}
+
+	hasPrereleaseInRange := false
+	hasStableInRange := false
+
+	for _, versionStr := range versions {
+		v, err := version.Parse(versionStr)
+		if err != nil {
+			continue
+		}
+
+		// Check numeric bounds only (ignore prerelease restriction)
+		if vr.SatisfiesNumericBounds(v) {
+			if v.IsPrerelease() {
+				hasPrereleaseInRange = true
+			} else {
+				hasStableInRange = true
+			}
+		}
+	}
+
+	// True if prerelease versions satisfy the range but no stable versions do
+	return hasPrereleaseInRange && !hasStableInRange
+}
+
+// isPrereleaseAllowed checks if the version range allows prerelease versions.
+// Matches NuGet.Client's IsPrereleaseAllowed logic.
+// Returns true if the min or max version of the range has a prerelease label.
+func isPrereleaseAllowed(versionRangeStr string) bool {
+	vr, err := version.ParseVersionRange(versionRangeStr)
+	if err != nil {
+		return false
+	}
+
+	if vr.MinVersion != nil && vr.MinVersion.IsPrerelease() {
+		return true
+	}
+	if vr.MaxVersion != nil && vr.MaxVersion.IsPrerelease() {
+		return true
+	}
+
+	return false
+}
+
+func (r *Restorer) downloadPackage(ctx context.Context, packageID, packageVersion, packagePath string, cacheHit bool) error {
+	isDiagnostic := r.opts.Verbosity == "diagnostic"
+
+	// Diagnostic: Show cache hit or lock acquisition
+	if isDiagnostic {
+		if cacheHit {
+			// Package already in cache - show CACHE message (use 9 space indent to match lock messages)
+			r.console.Printf("         CACHE %s %s (already in %s)\n", packageID, packageVersion, packagePath)
+		} else {
+			// Package needs to be downloaded - show lock acquisition (use 9 space indent)
+			r.console.Printf("         Acquiring lock for the installation of %s %s\n", packageID, packageVersion)
+			r.console.Printf("         Acquired lock for the installation of %s %s\n", packageID, packageVersion)
+		}
+	}
 	// Parse version
 	pkgVer, err := version.Parse(packageVersion)
 	if err != nil {
@@ -503,18 +1346,33 @@ func (r *Restorer) downloadPackage(ctx context.Context, packageID, packageVersio
 
 	// Use V3 or V2 installer based on protocol
 	if protocolVersion == "v3" {
-		return r.installPackageV3(ctx, packageID, packageVersion, packagePath, packageIdentity, sourceURL, extractionContext)
+		return r.installPackageV3(ctx, packageID, packageVersion, packagePath, packageIdentity, sourceURL, extractionContext, cacheHit)
 	}
-	return r.installPackageV2(ctx, packageID, packageVersion, packagePath, packageIdentity, sourceURL, extractionContext)
+	return r.installPackageV2(ctx, packageID, packageVersion, packagePath, packageIdentity, sourceURL, extractionContext, cacheHit)
 }
 
-func (r *Restorer) installPackageV3(ctx context.Context, packageID, packageVersion, packagePath string, packageIdentity *packaging.PackageIdentity, sourceURL string, extractionContext *packaging.PackageExtractionContext) error {
+func (r *Restorer) installPackageV3(ctx context.Context, packageID, packageVersion, packagePath string, packageIdentity *packaging.PackageIdentity, sourceURL string, extractionContext *packaging.PackageExtractionContext, cacheHit bool) error {
+	isDiagnostic := r.opts.Verbosity == "diagnostic"
+
 	// Create path resolver for V3 layout
 	packagesFolder := filepath.Dir(filepath.Dir(packagePath)) // Go up to packages root
 	pathResolver := packaging.NewVersionFolderPathResolver(packagesFolder, true)
 
 	// Create download callback
 	copyToAsync := func(targetPath string) error {
+		// Diagnostic: HTTP GET request (if not cached) - use 11 space indent
+		downloadStart := time.Now()
+		if isDiagnostic && !cacheHit {
+			// Build package download URL for logging (use lowercase for URL)
+			downloadURL := fmt.Sprintf("%s/flatcontainer/%s/%s/%s.%s.nupkg",
+				strings.TrimSuffix(sourceURL, "/index.json"),
+				strings.ToLower(packageID),
+				strings.ToLower(packageVersion),
+				strings.ToLower(packageID),
+				strings.ToLower(packageVersion))
+			r.console.Printf("           GET %s\n", downloadURL)
+		}
+
 		stream, err := r.client.DownloadPackage(ctx, packageID, packageVersion)
 		if err != nil {
 			return fmt.Errorf("download package: %w", err)
@@ -524,6 +1382,18 @@ func (r *Restorer) installPackageV3(ctx context.Context, packageID, packageVersi
 				r.console.Error("failed to close package stream: %v\n", cerr)
 			}
 		}()
+
+		// Diagnostic: HTTP OK response (if not cached) - use 11 space indent
+		if isDiagnostic && !cacheHit {
+			elapsed := time.Since(downloadStart)
+			downloadURL := fmt.Sprintf("%s/flatcontainer/%s/%s/%s.%s.nupkg",
+				strings.TrimSuffix(sourceURL, "/index.json"),
+				strings.ToLower(packageID),
+				strings.ToLower(packageVersion),
+				strings.ToLower(packageID),
+				strings.ToLower(packageVersion))
+			r.console.Printf("           OK %s %dms\n", downloadURL, elapsed.Milliseconds())
+		}
 
 		outFile, err := os.Create(targetPath)
 		if err != nil {
@@ -543,7 +1413,7 @@ func (r *Restorer) installPackageV3(ctx context.Context, packageID, packageVersi
 	}
 
 	// Install package (download + extract) using V3 layout
-	installed, err := packaging.InstallFromSourceV3(
+	_, err := packaging.InstallFromSourceV3(
 		ctx,
 		sourceURL,
 		packageIdentity,
@@ -556,16 +1426,21 @@ func (r *Restorer) installPackageV3(ctx context.Context, packageID, packageVersi
 		return fmt.Errorf("failed to install package: %w", err)
 	}
 
-	if installed {
-		r.console.Printf("    Downloaded and extracted to %s\n", packagePath)
-	} else {
-		r.console.Printf("    Package already cached at %s\n", packagePath)
+	// Diagnostic: Vulnerability check (always CACHE since we don't implement vulnerability DB yet) - use 11 space indent
+	if isDiagnostic && !cacheHit {
+		vulnURL := "https://api.nuget.org/v3/vulnerabilities/index.json"
+		r.console.Printf("           CACHE %s\n", vulnURL)
 	}
+
+	// Note: Terminal Logger hides download/cache messages in detailed mode
+	// We match Terminal Logger behavior: diagnostic mode shows download messages, detailed mode is clean
 
 	return nil
 }
 
-func (r *Restorer) installPackageV2(ctx context.Context, packageID, packageVersion, packagePath string, packageIdentity *packaging.PackageIdentity, sourceURL string, extractionContext *packaging.PackageExtractionContext) error {
+func (r *Restorer) installPackageV2(ctx context.Context, packageID, packageVersion, packagePath string, packageIdentity *packaging.PackageIdentity, sourceURL string, extractionContext *packaging.PackageExtractionContext, cacheHit bool) error {
+	isDiagnostic := r.opts.Verbosity == "diagnostic"
+
 	// Create path resolver for V2 layout
 	packagesFolder := filepath.Dir(filepath.Dir(packagePath)) // Go up to packages root
 	pathResolver := packaging.NewPackagePathResolver(packagesFolder, true)
@@ -573,8 +1448,18 @@ func (r *Restorer) installPackageV2(ctx context.Context, packageID, packageVersi
 	// Check if already installed
 	targetPath := pathResolver.GetInstallPath(packageIdentity)
 	if _, err := os.Stat(targetPath); err == nil {
-		r.console.Printf("    Package already cached at %s\n", packagePath)
+		// Note: Terminal Logger hides this message completely
 		return nil
+	}
+
+	// Diagnostic: HTTP GET request (if not cached) - use 11 space indent
+	downloadStart := time.Now()
+	if isDiagnostic && !cacheHit {
+		downloadURL := fmt.Sprintf("%s/Packages(Id='%s',Version='%s')",
+			strings.TrimSuffix(sourceURL, "/"),
+			packageID,
+			packageVersion)
+		r.console.Printf("           GET %s\n", downloadURL)
 	}
 
 	// Download package to memory
@@ -587,6 +1472,16 @@ func (r *Restorer) installPackageV2(ctx context.Context, packageID, packageVersi
 			r.console.Error("failed to close package stream: %v\n", cerr)
 		}
 	}()
+
+	// Diagnostic: HTTP OK response (if not cached) - use 11 space indent
+	if isDiagnostic && !cacheHit {
+		elapsed := time.Since(downloadStart)
+		downloadURL := fmt.Sprintf("%s/Packages(Id='%s',Version='%s')",
+			strings.TrimSuffix(sourceURL, "/"),
+			packageID,
+			packageVersion)
+		r.console.Printf("           OK %s %dms\n", downloadURL, elapsed.Milliseconds())
+	}
 
 	// Read into memory (V2 extractor needs ReadSeeker)
 	packageData, err := io.ReadAll(stream)
@@ -609,7 +1504,13 @@ func (r *Restorer) installPackageV2(ctx context.Context, packageID, packageVersi
 		return fmt.Errorf("failed to extract package: %w", err)
 	}
 
-	r.console.Printf("    Downloaded and extracted to %s\n", packagePath)
+	// Diagnostic: Vulnerability check (always CACHE since we don't implement vulnerability DB yet) - use 11 space indent
+	if isDiagnostic && !cacheHit {
+		vulnURL := "https://api.nuget.org/v3/vulnerabilities/index.json"
+		r.console.Printf("           CACHE %s\n", vulnURL)
+	}
+
+	// Note: Terminal Logger hides download messages in detailed mode
 	return nil
 }
 
@@ -642,6 +1543,29 @@ func (r *Restorer) getRemoteMetadataClient() (resolver.PackageMetadataClient, er
 	// Use the client's new CreateMetadataClient method
 	// This creates the efficient V3 metadata adapter that fetches all versions in a single HTTP call
 	return r.client.CreateMetadataClient(r.opts.Sources)
+}
+
+// getDependenciesForFramework extracts dependencies for a specific target framework.
+// This helper is used for diagnostic output to show which dependencies are active for the resolved package.
+// Returns the dependencies from the matching dependency group, or the first group if no exact match.
+func (r *Restorer) getDependenciesForFramework(info *resolver.PackageDependencyInfo, framework string) []resolver.PackageDependency {
+	if info == nil {
+		return nil
+	}
+
+	// Find matching dependency group for the target framework
+	for _, group := range info.DependencyGroups {
+		if group.TargetFramework == framework {
+			return group.Dependencies
+		}
+	}
+
+	// Fallback: return first group if no exact match (shouldn't normally happen)
+	if len(info.DependencyGroups) > 0 {
+		return info.DependencyGroups[0].Dependencies
+	}
+
+	return nil
 }
 
 // localFirstMetadataClient implements resolver.PackageMetadataClient.

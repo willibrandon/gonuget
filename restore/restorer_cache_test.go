@@ -60,12 +60,8 @@ func TestRestorer_Restore_WritesCacheFile(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, cache.IsValid())
 	assert.True(t, cache.Success)
-	// Resolve projectPath for comparison (LoadProject resolves symlinks)
-	expectedPath, _ := filepath.EvalSymlinks(projectPath)
-	if expectedPath == "" {
-		expectedPath = projectPath
-	}
-	assert.Equal(t, expectedPath, cache.ProjectFilePath)
+	// Both paths should match (no symlink resolution to match dotnet behavior)
+	assert.Equal(t, proj.Path, cache.ProjectFilePath)
 	assert.NotEmpty(t, cache.DgSpecHash)
 	assert.NotEmpty(t, cache.ExpectedPackageFiles)
 

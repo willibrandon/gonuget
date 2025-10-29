@@ -2,6 +2,7 @@ package restore
 
 import (
 	"context"
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
@@ -239,3 +240,4 @@ type testConsole struct{}
 func (c *testConsole) Printf(format string, args ...any)  {}
 func (c *testConsole) Error(format string, args ...any)   {}
 func (c *testConsole) Warning(format string, args ...any) {}
+func (c *testConsole) Output() io.Writer                  { return io.Discard }

@@ -1,10 +1,16 @@
 package cache
 
 import (
+	"context"
 	"time"
 
 	"github.com/google/uuid"
 )
+
+// contextKey is a private type for context keys to avoid collisions
+type contextKey string
+
+const cacheContextKey contextKey = "nuget.cache.context"
 
 // SourceCacheContext provides cache control settings matching NuGet.Client behavior.
 type SourceCacheContext struct {
@@ -41,4 +47,26 @@ func (ctx *SourceCacheContext) Clone() *SourceCacheContext {
 		RefreshMemoryCache: ctx.RefreshMemoryCache,
 		SessionID:          ctx.SessionID,
 	}
+}
+
+// WithCacheContext adds the source cache context to the Go context.
+// This allows protocol layer code to respect cache control flags without
+// passing SourceCacheContext through every function.
+func WithCacheContext(ctx context.Context, cacheCtx *SourceCacheContext) context.Context {
+	if cacheCtx == nil {
+		return ctx
+	}
+	return context.WithValue(ctx, cacheContextKey, cacheCtx)
+}
+
+// FromContext retrieves the source cache context from the Go context.
+// Returns nil if no cache context was set.
+func FromContext(ctx context.Context) *SourceCacheContext {
+	if ctx == nil {
+		return nil
+	}
+	if cacheCtx, ok := ctx.Value(cacheContextKey).(*SourceCacheContext); ok {
+		return cacheCtx
+	}
+	return nil
 }

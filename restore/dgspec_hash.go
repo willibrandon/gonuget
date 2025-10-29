@@ -73,7 +73,7 @@ func DefaultDgSpecConfig() *DgSpecConfig {
 			"https://api.nuget.org/v3/index.json",
 		},
 		ConfigPaths:   []string{},
-		RuntimeIDPath: "/usr/local/share/dotnet/sdk/9.0.306/RuntimeIdentifierGraph.json",
+		RuntimeIDPath: "/usr/local/share/dotnet/sdk/9.0.306/PortableRuntimeIdentifierGraph.json",
 	}
 }
 
@@ -146,6 +146,6 @@ func DiscoverDgSpecConfig(proj *project.Project) (*DgSpecConfig, error) {
 		PackagesPath:  packagesPath,
 		Sources:       allSources,
 		ConfigPaths:   configPaths,
-		RuntimeIDPath: "/usr/local/share/dotnet/sdk/9.0.306/RuntimeIdentifierGraph.json",
+		RuntimeIDPath: "/usr/local/share/dotnet/sdk/9.0.306/PortableRuntimeIdentifierGraph.json",
 	}, nil
 }

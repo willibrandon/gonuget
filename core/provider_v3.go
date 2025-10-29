@@ -50,12 +50,25 @@ func NewV3ResourceProviderWithServiceIndex(sourceURL, serviceIndexURL string, ht
 	// Pass cache to service index client for disk caching (critical for first-run performance)
 	serviceIndexClient := v3.NewServiceIndexClientWithCache(client, mtCache)
 
+	// Create metadata client
+	metadataClient := v3.NewMetadataClient(client, serviceIndexClient)
+
+	// Enable HTTP disk cache (matches NuGet.Client's 30min TTL)
+	// Use NuGet's standard location to share cache with dotnet
+	httpCacheDir := getHTTPCacheDirectory()
+	if httpCacheDir != "" {
+		httpCache, err := cache.NewDiskCache(httpCacheDir, 1024*1024*1024) // 1GB max
+		if err == nil {
+			metadataClient.SetHTTPCache(httpCache)
+		}
+	}
+
 	return &V3ResourceProvider{
 		sourceURL:          sourceURL,
 		serviceIndexURL:    serviceIndexURL,
 		serviceIndexClient: serviceIndexClient,
 		searchClient:       v3.NewSearchClient(client, serviceIndexClient),
-		metadataClient:     v3.NewMetadataClient(client, serviceIndexClient),
+		metadataClient:     metadataClient,
 		downloadClient:     v3.NewDownloadClient(client, serviceIndexClient),
 		cache:              mtCache,
 	}
@@ -67,6 +80,9 @@ func (p *V3ResourceProvider) GetMetadata(ctx context.Context, cacheCtx *cache.So
 	if cacheCtx == nil {
 		cacheCtx = cache.NewSourceCacheContext()
 	}
+
+	// Store cache context in Go context for protocol layer to access
+	ctx = cache.WithCacheContext(ctx, cacheCtx)
 
 	// Check cache if enabled
 	if p.cache != nil && !cacheCtx.NoCache {
@@ -146,6 +162,9 @@ func (p *V3ResourceProvider) ListVersions(ctx context.Context, cacheCtx *cache.S
 		cacheCtx = cache.NewSourceCacheContext()
 	}
 
+	// Store cache context in Go context for protocol layer to access
+	ctx = cache.WithCacheContext(ctx, cacheCtx)
+
 	// Check cache if enabled
 	if p.cache != nil && !cacheCtx.NoCache {
 		cacheKey := fmt.Sprintf("versions:%s", packageID)
@@ -181,6 +200,9 @@ func (p *V3ResourceProvider) Search(ctx context.Context, cacheCtx *cache.SourceC
 	if cacheCtx == nil {
 		cacheCtx = cache.NewSourceCacheContext()
 	}
+
+	// Store cache context in Go context for protocol layer to access
+	ctx = cache.WithCacheContext(ctx, cacheCtx)
 
 	// Check cache if enabled
 	if p.cache != nil && !cacheCtx.NoCache {
@@ -240,6 +262,9 @@ func (p *V3ResourceProvider) DownloadPackage(ctx context.Context, cacheCtx *cach
 	if cacheCtx == nil {
 		cacheCtx = cache.NewSourceCacheContext()
 	}
+
+	// Store cache context in Go context for protocol layer to access
+	ctx = cache.WithCacheContext(ctx, cacheCtx)
 
 	// Check cache if enabled
 	if p.cache != nil && !cacheCtx.NoCache {

@@ -4,9 +4,13 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
+	"runtime"
 	"slices"
 	"sync"
 
+	"github.com/willibrandon/gonuget/cache"
 	"github.com/willibrandon/gonuget/core/resolver"
 	"github.com/willibrandon/gonuget/frameworks"
 	nugethttp "github.com/willibrandon/gonuget/http"
@@ -39,6 +43,9 @@ type clientMetadataAdapter struct {
 	// Cache for V2 FindPackagesById results to avoid repeated calls
 	v2PackageCache map[string][]*ProtocolMetadata
 	v2CacheMutex   sync.RWMutex
+	// Cache for V3 registration index results to avoid repeated calls
+	v3PackageCache map[string][]*resolver.PackageDependencyInfo
+	v3CacheMutex   sync.RWMutex
 }
 
 // NewClient creates a new NuGet client
@@ -74,12 +81,23 @@ func NewClient(cfg ClientConfig) *Client {
 		serviceIndexClient := v3.NewServiceIndexClient(httpClient)
 		metadataClient := v3.NewMetadataClient(httpClient, serviceIndexClient)
 
+		// Enable HTTP disk cache (matches NuGet.Client's 30min TTL)
+		// Use NuGet's standard location to share cache with dotnet
+		httpCacheDir := getHTTPCacheDirectory()
+		if httpCacheDir != "" {
+			httpCache, err := cache.NewDiskCache(httpCacheDir, 1024*1024*1024) // 1GB max
+			if err == nil {
+				metadataClient.SetHTTPCache(httpCache)
+			}
+		}
+
 		// Create adapter that implements PackageMetadataClient
 		adapter := &clientMetadataAdapter{
 			client:           client,
 			v3MetadataClient: metadataClient,
 			v3ServiceClient:  serviceIndexClient,
 			v2PackageCache:   make(map[string][]*ProtocolMetadata),
+			v3PackageCache:   make(map[string][]*resolver.PackageDependencyInfo),
 		}
 
 		// Create resolver with adapter
@@ -338,57 +356,80 @@ func (a *clientMetadataAdapter) getPackageMetadataV3(ctx context.Context, provid
 		serviceIndexURL = provider.SourceURL()
 	}
 
-	// Use V3 registration API to get all versions in a single HTTP call
-	index, err := a.v3MetadataClient.GetPackageMetadata(ctx, serviceIndexURL, packageID)
-	if err != nil {
-		return nil, err
+	// Check cache first (avoid repeated V3 registration API calls)
+	// Cache key includes service index URL and package ID (not version range - we cache all versions)
+	cacheKey := fmt.Sprintf("%s|%s", serviceIndexURL, packageID)
+
+	a.v3CacheMutex.RLock()
+	allPackages, cached := a.v3PackageCache[cacheKey]
+	a.v3CacheMutex.RUnlock()
+
+	if cached {
+		observability.RecordCacheHit(ctx, true)
+	} else {
+		observability.RecordCacheHit(ctx, false)
+
+		// Use V3 registration API to get all versions in a single HTTP call
+		index, err := a.v3MetadataClient.GetPackageMetadata(ctx, serviceIndexURL, packageID)
+		if err != nil {
+			return nil, err
+		}
+
+		// Convert all versions to PackageDependencyInfo (cache ALL versions, filter later)
+		// Matches NuGet.Client's ResolverMetadataClient.GetDependencies line 50
+		allPackages = make([]*resolver.PackageDependencyInfo, 0)
+		for _, page := range index.Items {
+			for _, leaf := range page.Items {
+				if leaf.CatalogEntry == nil {
+					continue
+				}
+
+				pkg := &resolver.PackageDependencyInfo{
+					ID:               leaf.CatalogEntry.PackageID,
+					Version:          leaf.CatalogEntry.Version,
+					DependencyGroups: make([]resolver.DependencyGroup, 0, len(leaf.CatalogEntry.DependencyGroups)),
+				}
+
+				// Convert dependency groups
+				for _, v3Group := range leaf.CatalogEntry.DependencyGroups {
+					group := resolver.DependencyGroup{
+						TargetFramework: v3Group.TargetFramework,
+						Dependencies:    make([]resolver.PackageDependency, 0, len(v3Group.Dependencies)),
+					}
+
+					// Convert dependencies
+					for _, v3Dep := range v3Group.Dependencies {
+						dep := resolver.PackageDependency{
+							ID:              v3Dep.ID,
+							VersionRange:    v3Dep.Range,
+							TargetFramework: group.TargetFramework,
+						}
+						group.Dependencies = append(group.Dependencies, dep)
+					}
+
+					pkg.DependencyGroups = append(pkg.DependencyGroups, group)
+				}
+
+				allPackages = append(allPackages, pkg)
+			}
+		}
+
+		// Cache the result (all versions, not filtered)
+		a.v3CacheMutex.Lock()
+		a.v3PackageCache[cacheKey] = allPackages
+		a.v3CacheMutex.Unlock()
 	}
 
-	// Convert matching versions to PackageDependencyInfo
-	// Matches NuGet.Client's ResolverMetadataClient.GetDependencies line 50
+	// Filter cached packages by version range
 	var packages []*resolver.PackageDependencyInfo
-	for _, page := range index.Items {
-		for _, leaf := range page.Items {
-			if leaf.CatalogEntry == nil {
-				continue
-			}
+	for _, pkg := range allPackages {
+		// Parse version and check if it satisfies the range
+		ver, err := version.Parse(pkg.Version)
+		if err != nil {
+			continue // Skip invalid versions
+		}
 
-			// Parse version and check if it satisfies the range
-			ver, err := version.Parse(leaf.CatalogEntry.Version)
-			if err != nil {
-				continue // Skip invalid versions
-			}
-
-			if !versionRange.Satisfies(ver) {
-				continue // Skip versions that don't match the range
-			}
-
-			pkg := &resolver.PackageDependencyInfo{
-				ID:               leaf.CatalogEntry.PackageID,
-				Version:          leaf.CatalogEntry.Version,
-				DependencyGroups: make([]resolver.DependencyGroup, 0, len(leaf.CatalogEntry.DependencyGroups)),
-			}
-
-			// Convert dependency groups
-			for _, v3Group := range leaf.CatalogEntry.DependencyGroups {
-				group := resolver.DependencyGroup{
-					TargetFramework: v3Group.TargetFramework,
-					Dependencies:    make([]resolver.PackageDependency, 0, len(v3Group.Dependencies)),
-				}
-
-				// Convert dependencies
-				for _, v3Dep := range v3Group.Dependencies {
-					dep := resolver.PackageDependency{
-						ID:              v3Dep.ID,
-						VersionRange:    v3Dep.Range,
-						TargetFramework: group.TargetFramework,
-					}
-					group.Dependencies = append(group.Dependencies, dep)
-				}
-
-				pkg.DependencyGroups = append(pkg.DependencyGroups, group)
-			}
-
+		if versionRange.Satisfies(ver) {
 			packages = append(packages, pkg)
 		}
 	}
@@ -506,12 +547,22 @@ func (c *Client) CreateDependencyWalker(sources []string, targetFramework string
 	serviceIndexClient := v3.NewServiceIndexClient(httpClient)
 	metadataClient := v3.NewMetadataClient(httpClient, serviceIndexClient)
 
+	// Enable HTTP disk cache (matches NuGet.Client's 30min TTL)
+	httpCacheDir := getHTTPCacheDirectory()
+	if httpCacheDir != "" {
+		httpCache, err := cache.NewDiskCache(httpCacheDir, 1024*1024*1024) // 1GB max
+		if err == nil {
+			metadataClient.SetHTTPCache(httpCache)
+		}
+	}
+
 	// Create adapter that implements PackageMetadataClient
 	adapter := &clientMetadataAdapter{
 		client:           c,
 		v3MetadataClient: metadataClient,
 		v3ServiceClient:  serviceIndexClient,
 		v2PackageCache:   make(map[string][]*ProtocolMetadata),
+		v3PackageCache:   make(map[string][]*resolver.PackageDependencyInfo),
 	}
 
 	// Create walker with efficient adapter
@@ -533,12 +584,22 @@ func (c *Client) CreateMetadataClient(sources []string) (resolver.PackageMetadat
 	serviceIndexClient := v3.NewServiceIndexClient(httpClient)
 	metadataClient := v3.NewMetadataClient(httpClient, serviceIndexClient)
 
+	// Enable HTTP disk cache (matches NuGet.Client's 30min TTL)
+	httpCacheDir := getHTTPCacheDirectory()
+	if httpCacheDir != "" {
+		httpCache, err := cache.NewDiskCache(httpCacheDir, 1024*1024*1024) // 1GB max
+		if err == nil {
+			metadataClient.SetHTTPCache(httpCache)
+		}
+	}
+
 	// Create adapter that implements PackageMetadataClient
 	adapter := &clientMetadataAdapter{
 		client:           c,
 		v3MetadataClient: metadataClient,
 		v3ServiceClient:  serviceIndexClient,
 		v2PackageCache:   make(map[string][]*ProtocolMetadata),
+		v3PackageCache:   make(map[string][]*resolver.PackageDependencyInfo),
 	}
 
 	return adapter, nil
@@ -557,4 +618,33 @@ func (c *Client) ResolvePackageDependencies(
 	// Use exact version constraint [version]
 	versionRange := fmt.Sprintf("[%s]", versionStr)
 	return c.resolver.Resolve(ctx, packageID, versionRange)
+}
+
+// getHTTPCacheDirectory returns the NuGet HTTP cache directory.
+// Matches NuGet.Client's NuGetEnvironment.GetFolderPath(HttpCacheDirectory).
+// Returns ~/.local/share/NuGet/http-cache on macOS/Linux, %LOCALAPPDATA%\NuGet\v3-cache on Windows.
+func getHTTPCacheDirectory() string {
+	// Check for NUGET_HTTP_CACHE_PATH environment variable first (allows override)
+	if cacheDir := os.Getenv("NUGET_HTTP_CACHE_PATH"); cacheDir != "" {
+		return cacheDir
+	}
+
+	// Get user's home directory
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+
+	// Platform-specific paths matching NuGet.Client exactly
+	if runtime.GOOS == "windows" {
+		// Windows: %LOCALAPPDATA%\NuGet\v3-cache
+		localAppData := os.Getenv("LOCALAPPDATA")
+		if localAppData == "" {
+			localAppData = filepath.Join(homeDir, "AppData", "Local")
+		}
+		return filepath.Join(localAppData, "NuGet", "v3-cache")
+	}
+
+	// macOS/Linux: ~/.local/share/NuGet/http-cache
+	return filepath.Join(homeDir, ".local", "share", "NuGet", "http-cache")
 }

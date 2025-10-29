@@ -3,6 +3,7 @@ package commands
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"time"
@@ -232,6 +233,10 @@ func (c *cliConsole) Error(format string, args ...any) {
 
 func (c *cliConsole) Warning(format string, args ...any) {
 	fmt.Fprintf(os.Stderr, "warn  : "+format, args...)
+}
+
+func (c *cliConsole) Output() io.Writer {
+	return os.Stdout
 }
 
 // addPackageWithCPM handles adding a package to a CPM-enabled project.

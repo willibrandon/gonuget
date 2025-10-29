@@ -89,7 +89,7 @@ func TestRestoreCommand_FlagDefaults(t *testing.T) {
 		isBoolFlag   bool
 		expectedBool bool
 	}{
-		{"verbosity default", "verbosity", "normal", false, false},
+		{"verbosity default", "verbosity", "minimal", false, false}, // dotnet restore default is minimal
 		{"force default", "force", "", true, false},
 		{"no-cache default", "no-cache", "", true, false},
 		{"no-dependencies default", "no-dependencies", "", true, false},

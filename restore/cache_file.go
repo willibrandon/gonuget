@@ -25,15 +25,36 @@ type CacheFile struct {
 	// ExpectedPackageFiles lists .nupkg.sha512 paths that must exist
 	ExpectedPackageFiles []string `json:"expectedPackageFiles"`
 
+	// DirectPackageFiles lists .nupkg.sha512 paths for direct dependencies only
+	// This is a gonuget extension to properly track direct vs transitive packages
+	DirectPackageFiles []string `json:"directPackageFiles,omitempty"`
+
 	// Logs contains warnings/errors from restore (for replay on cache hit)
 	Logs []LogMessage `json:"logs"`
 }
 
 // LogMessage represents a log entry in the cache file.
+// Matches NuGet.ProjectModel.IAssetsLogMessage in NuGet.Client.
 type LogMessage struct {
-	Level   string `json:"level"`   // "Warning", "Error", etc.
-	Code    string `json:"code"`    // "NU1001", etc.
-	Message string `json:"message"` // Full message text
+	Code    string `json:"code"`    // NuGet error code (e.g., "NU1101")
+	Level   string `json:"level"`   // Log level: "Error", "Warning", "Information"
+	Message string `json:"message"` // Human-readable message
+
+	// Optional fields
+	ProjectPath  string   `json:"projectPath,omitempty"`  // Project file path
+	FilePath     string   `json:"filePath,omitempty"`     // File causing the issue
+	LibraryID    string   `json:"libraryId,omitempty"`    // Package ID
+	TargetGraphs []string `json:"targetGraphs,omitempty"` // Affected target frameworks
+
+	// Line/column information (omitted if zero)
+	StartLineNumber   int `json:"startLineNumber,omitempty"`
+	StartColumnNumber int `json:"startColumnNumber,omitempty"`
+	EndLineNumber     int `json:"endLineNumber,omitempty"`
+	EndColumnNumber   int `json:"endColumnNumber,omitempty"`
+
+	// WarningLevel is only relevant for warnings (0 = show no warnings, 1 = severe)
+	// Omitted from JSON if not a warning
+	WarningLevel int `json:"warningLevel,omitempty"`
 }
 
 const (

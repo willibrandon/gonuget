@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"github.com/willibrandon/gonuget/cmd/gonuget/cli"
@@ -19,7 +20,27 @@ var (
 	builtBy = "unknown"
 )
 
+// preprocessArgs converts dotnet-style colon syntax to Cobra-compatible equals syntax
+// Converts: -v:quiet  -> -v=quiet
+// Converts: -v:d      -> -v=d
+func preprocessArgs(args []string) []string {
+	result := make([]string, 0, len(args))
+	for _, arg := range args {
+		// Check if arg matches -X:VALUE pattern (single letter flag with colon)
+		if strings.HasPrefix(arg, "-") && !strings.HasPrefix(arg, "--") && strings.Contains(arg, ":") {
+			// Convert -v:quiet to -v=quiet
+			result = append(result, strings.Replace(arg, ":", "=", 1))
+		} else {
+			result = append(result, arg)
+		}
+	}
+	return result
+}
+
 func main() {
+	// Preprocess arguments to support dotnet-style colon syntax (e.g., -v:quiet)
+	os.Args = preprocessArgs(os.Args)
+
 	// Set version info
 	cli.Version = version
 	cli.Commit = commit
@@ -59,7 +80,10 @@ func main() {
 	if err := cli.Execute(); err != nil {
 		// Print error to stderr since SilenceErrors is true in rootCmd
 		// Use os.Stderr directly to ensure error goes to stderr for interop testing
-		_, _ = fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		// Don't print empty errors (used when NuGet errors are already formatted)
+		if err.Error() != "" {
+			_, _ = fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		}
 		os.Exit(1)
 	}
 }

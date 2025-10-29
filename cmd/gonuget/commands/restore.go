@@ -25,7 +25,8 @@ Examples:
   gonuget restore
   gonuget restore MyApp.csproj
   gonuget restore --packages /custom/packages
-  gonuget restore --force`,
+  gonuget restore --force
+  gonuget restore -v:quiet`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Load sources from NuGet.config if not provided via --source flag
@@ -61,7 +62,7 @@ Examples:
 	cmd.Flags().BoolVar(&opts.Force, "force", false, "Force re-download even if packages exist")
 	cmd.Flags().BoolVar(&opts.NoCache, "no-cache", false, "Don't use HTTP cache")
 	cmd.Flags().BoolVar(&opts.NoDependencies, "no-dependencies", false, "Only restore direct references")
-	cmd.Flags().StringVar(&opts.Verbosity, "verbosity", "normal", "Verbosity level")
+	cmd.Flags().StringVarP(&opts.Verbosity, "verbosity", "v", "minimal", "Verbosity level: q[uiet], m[inimal], n[ormal], d[etailed], or diag[nostic]")
 
 	return cmd
 }

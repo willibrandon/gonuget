@@ -344,7 +344,7 @@ func (w *OrderedJSONWriter) writeFrameworkInfo(hasher *DgSpecHasher, tfm string)
 	// 5. assetTargetFallback (line 556)
 	// 6. secondaryFramework (line 557) - skip
 	// 7. warn (line 559)
-	// 8. downloadDependencies (line 560)
+	// 8. downloadDependencies (line 560) - SKIP (not included in dgspec for hash)
 	// 9. frameworkReferences (line 561)
 	// 10. runtimeIdentifierGraphPath (line 562)
 	// 11. packagesToPrune (line 563) - skip if empty
@@ -403,10 +403,6 @@ func (w *OrderedJSONWriter) writeFrameworkInfo(hasher *DgSpecHasher, tfm string)
 		w.writeString(",")
 		w.writeBoolField("warn", true)
 
-		// downloadDependencies
-		w.writeString(",")
-		w.writeDownloadDependencies(tfm)
-
 		// frameworkReferences
 		w.writeString(",")
 		w.writeFrameworkReferences()
@@ -417,33 +413,6 @@ func (w *OrderedJSONWriter) writeFrameworkInfo(hasher *DgSpecHasher, tfm string)
 			w.writeStringField("runtimeIdentifierGraphPath", hasher.runtimeIDPath)
 		}
 	}
-}
-
-// writeDownloadDependencies writes download dependencies array.
-func (w *OrderedJSONWriter) writeDownloadDependencies(tfm string) {
-	w.writeEscapedString("downloadDependencies")
-	w.writeString(":[")
-
-	// For net6.0, use 6.0.36
-	sdkVersion := "6.0.36"
-
-	// First: Microsoft.AspNetCore.App.Ref
-	w.writeString("{")
-	w.writeStringField("name", "Microsoft.AspNetCore.App.Ref")
-	w.writeString(",")
-	w.writeStringField("version", "["+sdkVersion+", "+sdkVersion+"]")
-	w.writeString("}")
-
-	w.writeString(",")
-
-	// Second: Microsoft.NETCore.App.Ref
-	w.writeString("{")
-	w.writeStringField("name", "Microsoft.NETCore.App.Ref")
-	w.writeString(",")
-	w.writeStringField("version", "["+sdkVersion+", "+sdkVersion+"]")
-	w.writeString("}")
-
-	w.writeString("]")
 }
 
 // writeFrameworkReferences writes framework references.

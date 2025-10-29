@@ -117,8 +117,10 @@ func parseRangeSyntax(s string) (*Range, error) {
 	}, nil
 }
 
-// Satisfies returns true if the version satisfies this range.
-func (r *Range) Satisfies(version *NuGetVersion) bool {
+// SatisfiesNumericBounds returns true if the version satisfies the numeric bounds of this range,
+// ignoring prerelease restrictions. This is used for NU1103 detection to identify cases where
+// prerelease versions would satisfy the range if the prerelease restriction were lifted.
+func (r *Range) SatisfiesNumericBounds(version *NuGetVersion) bool {
 	if version == nil {
 		return false
 	}
@@ -148,6 +150,27 @@ func (r *Range) Satisfies(version *NuGetVersion) bool {
 			if cmp >= 0 {
 				return false
 			}
+		}
+	}
+
+	return true
+}
+
+// Satisfies returns true if the version satisfies this range.
+func (r *Range) Satisfies(version *NuGetVersion) bool {
+	// First check numeric bounds
+	if !r.SatisfiesNumericBounds(version) {
+		return false
+	}
+
+	// Prerelease filtering: If the version is prerelease AND the range doesn't allow prerelease, reject it
+	// Matches NuGet.Client behavior: range [1.0.0,) only matches stable versions, not 1.1.0-alpha
+	// Prerelease is allowed if MinVersion or MaxVersion has prerelease label
+	if version.IsPrerelease() {
+		hasPrereleaseBounds := (r.MinVersion != nil && r.MinVersion.IsPrerelease()) ||
+			(r.MaxVersion != nil && r.MaxVersion.IsPrerelease())
+		if !hasPrereleaseBounds {
+			return false
 		}
 	}
 

@@ -274,7 +274,6 @@ func TestLockFileBuilder_ProjectFileDependencyGroups_OnlyDirectDeps(t *testing.T
 				Version:  "2.10.0",
 				Path:     filepath.Join(packagesPath, "serilog", "2.10.0"),
 				IsDirect: false,
-				Parents:  []string{"Serilog.Sinks.File"},
 			},
 		},
 	}

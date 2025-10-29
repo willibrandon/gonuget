@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"time"
@@ -313,3 +314,4 @@ type silentConsole struct{}
 func (c *silentConsole) Printf(format string, args ...any)  {}
 func (c *silentConsole) Error(format string, args ...any)   {}
 func (c *silentConsole) Warning(format string, args ...any) {}
+func (c *silentConsole) Output() io.Writer                  { return io.Discard }

@@ -170,3 +170,8 @@ func (c *Console) Detail(format string, a ...any) {
 		_, _ = fmt.Fprintf(c.out, format+"\n", a...)
 	}
 }
+
+// Output returns the underlying output writer
+func (c *Console) Output() io.Writer {
+	return c.out
+}

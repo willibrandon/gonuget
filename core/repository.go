@@ -271,6 +271,7 @@ func (c *authenticatedHTTPClient) SetUserAgent(ua string) {
 // RepositoryManager manages multiple package sources
 type RepositoryManager struct {
 	repositories map[string]*SourceRepository
+	order        []string // Track insertion order for deterministic iteration
 	mu           sync.RWMutex
 }
 
@@ -291,6 +292,7 @@ func (m *RepositoryManager) AddRepository(repo *SourceRepository) error {
 	}
 
 	m.repositories[repo.name] = repo
+	m.order = append(m.order, repo.name) // Track insertion order
 	return nil
 }
 
@@ -304,6 +306,15 @@ func (m *RepositoryManager) RemoveRepository(name string) error {
 	}
 
 	delete(m.repositories, name)
+
+	// Remove from order slice
+	for i, n := range m.order {
+		if n == name {
+			m.order = append(m.order[:i], m.order[i+1:]...)
+			break
+		}
+	}
+
 	return nil
 }
 
@@ -325,9 +336,12 @@ func (m *RepositoryManager) ListRepositories() []*SourceRepository {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	repos := make([]*SourceRepository, 0, len(m.repositories))
-	for _, repo := range m.repositories {
-		repos = append(repos, repo)
+	// Return repositories in insertion order
+	repos := make([]*SourceRepository, 0, len(m.order))
+	for _, name := range m.order {
+		if repo, exists := m.repositories[name]; exists {
+			repos = append(repos, repo)
+		}
 	}
 
 	return repos

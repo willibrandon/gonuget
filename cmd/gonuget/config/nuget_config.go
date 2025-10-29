@@ -435,7 +435,19 @@ func GetEnabledSourcesOrDefault(startDir string) []PackageSource {
 		}
 	}
 
-	// If no sources found, ensure user config exists and return default sources
+	// If no sources found in local config, try user config
+	userConfigPath := GetUserConfigPath()
+	if userConfigPath != "" {
+		cfg, err := LoadNuGetConfig(userConfigPath)
+		if err == nil {
+			sources := cfg.GetEnabledPackageSources()
+			if len(sources) > 0 {
+				return sources
+			}
+		}
+	}
+
+	// If still no sources found, ensure user config exists and return default sources
 	// This matches NuGet.Client behavior where it auto-creates the config with defaults
 	_ = EnsureUserConfigExists()
 	return DefaultPackageSources()

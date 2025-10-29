@@ -3,6 +3,7 @@ package restore
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -28,6 +29,10 @@ func (m *mockConsole) Error(format string, args ...any) {
 
 func (m *mockConsole) Warning(format string, args ...any) {
 	m.warnings = append(m.warnings, fmt.Sprintf(format, args...))
+}
+
+func (m *mockConsole) Output() io.Writer {
+	return io.Discard
 }
 
 func TestRun_NoProjectFile(t *testing.T) {
@@ -376,7 +381,12 @@ func TestFindProjectFile(t *testing.T) {
 				if err := os.WriteFile(projPath, []byte("<Project/>"), 0644); err != nil {
 					t.Fatalf("failed to write project file: %v", err)
 				}
-				return []string{projPath}, projPath
+				// Get absolute path WITHOUT resolving symlinks (matches findProjectFile behavior)
+				absPath, err := filepath.Abs(projPath)
+				if err != nil {
+					t.Fatalf("failed to get absolute path: %v", err)
+				}
+				return []string{projPath}, absPath
 			},
 			expectError: false,
 		},
@@ -442,6 +452,7 @@ func TestRun_WithPackages(t *testing.T) {
 	opts := &Options{
 		PackagesFolder: packagesFolder,
 		Sources:        []string{"https://api.nuget.org/v3/index.json"},
+		Verbosity:      "detailed", // Required for "Determining" and "Restored" messages
 	}
 
 	err := Run(context.Background(), []string{projPath}, opts, console)
@@ -467,7 +478,7 @@ func TestRun_WithPackages(t *testing.T) {
 	foundRestore := false
 	foundRestored := false
 	for _, msg := range console.messages {
-		if strings.Contains(msg, "Restoring packages") {
+		if strings.Contains(msg, "Determining") {
 			foundRestore = true
 		}
 		if strings.Contains(msg, "Restored") {
@@ -476,7 +487,7 @@ func TestRun_WithPackages(t *testing.T) {
 	}
 
 	if !foundRestore {
-		t.Error("expected 'Restoring packages' message")
+		t.Error("expected 'Determining' message")
 	}
 	if !foundRestored {
 		t.Error("expected 'Restored' message")
@@ -568,9 +579,10 @@ func TestRestorer_Restore_DownloadError(t *testing.T) {
 		t.Error("expected error for nonexistent package")
 	}
 
-	// Should get unresolved package error
-	if !strings.Contains(err.Error(), "Unable to resolve") || !strings.Contains(err.Error(), "NonExistentPackage999999") {
-		t.Errorf("expected unresolved package error for NonExistentPackage999999, got: %v", err)
+	// Should get package not found error (NU1101 or NU1102)
+	errMsg := err.Error()
+	if !strings.Contains(errMsg, "package version not found") && !strings.Contains(errMsg, "unresolved packages") {
+		t.Errorf("expected package not found error for NonExistentPackage999999, got: %v", err)
 	}
 }
 
@@ -613,13 +625,23 @@ func TestRestorer_Restore_DefaultPackagesFolder(t *testing.T) {
 
 func TestFindProjectFile_GetWorkingDirectory(t *testing.T) {
 	// Test case where explicit path is provided
-	args := []string{"/some/path/test.csproj"}
+	// Create a real file since findProjectFile resolves symlinks (requires file to exist)
+	tmpDir := t.TempDir()
+	projPath := filepath.Join(tmpDir, "test.csproj")
+	if err := os.WriteFile(projPath, []byte("<Project/>"), 0644); err != nil {
+		t.Fatalf("failed to write project file: %v", err)
+	}
+
+	args := []string{projPath}
 	path, err := findProjectFile(args)
 	if err != nil {
 		t.Errorf("unexpected error: %v", err)
 	}
-	if path != "/some/path/test.csproj" {
-		t.Errorf("expected /some/path/test.csproj, got %s", path)
+
+	// The returned path should be absolute WITHOUT resolving symlinks (matches dotnet behavior)
+	absPath, _ := filepath.Abs(projPath)
+	if path != absPath {
+		t.Errorf("expected %s, got %s", absPath, path)
 	}
 }
 
@@ -988,5 +1010,143 @@ func TestRestorer_Restore_V2Protocol(t *testing.T) {
 	libDir := filepath.Join(packagePath, "lib")
 	if _, err := os.Stat(libDir); os.IsNotExist(err) {
 		t.Error("Package layout should extract lib/ directory")
+	}
+}
+
+func TestHasPrereleaseVersionsOnly(t *testing.T) {
+	tests := []struct {
+		name         string
+		versionRange string
+		versions     []string
+		expected     bool
+		description  string
+	}{
+		{
+			name:         "empty versions",
+			versionRange: "[1.0.0,2.0.0)",
+			versions:     []string{},
+			expected:     false,
+			description:  "No versions available",
+		},
+		{
+			name:         "only stable versions satisfy range",
+			versionRange: "[1.0.0,2.0.0)",
+			versions:     []string{"1.0.0", "1.5.0"},
+			expected:     false,
+			description:  "Stable versions satisfy the range",
+		},
+		{
+			name:         "only prerelease versions satisfy range",
+			versionRange: "[1.0.0,2.0.0)",
+			versions:     []string{"1.0.0-alpha", "1.0.0-beta", "1.5.0-rc1"},
+			expected:     true,
+			description:  "Only prerelease versions satisfy the range",
+		},
+		{
+			name:         "mixed versions in range",
+			versionRange: "[1.0.0,2.0.0)",
+			versions:     []string{"1.0.0-alpha", "1.0.0", "1.5.0-beta"},
+			expected:     false,
+			description:  "Both stable and prerelease satisfy range",
+		},
+		{
+			name:         "prerelease in range, stable outside range",
+			versionRange: "[1.0.0,2.0.0)",
+			versions:     []string{"1.0.0-alpha", "1.5.0-beta", "2.0.0", "3.0.0"},
+			expected:     true,
+			description:  "Only prerelease versions satisfy range, stable versions exist but outside range",
+		},
+		{
+			name:         "no versions satisfy range",
+			versionRange: "[5.0.0,6.0.0)",
+			versions:     []string{"1.0.0", "2.0.0", "3.0.0"},
+			expected:     false,
+			description:  "No versions satisfy the range at all",
+		},
+		{
+			name:         "exact prerelease version",
+			versionRange: "[1.0.0-alpha]",
+			versions:     []string{"1.0.0-alpha", "1.0.0"},
+			expected:     true,
+			description:  "Exact prerelease version satisfies, stable doesn't (not exact match)",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := hasPrereleaseVersionsOnly(tt.versionRange, tt.versions)
+			if result != tt.expected {
+				t.Errorf("hasPrereleaseVersionsOnly(%q, %v) = %v, want %v (%s)",
+					tt.versionRange, tt.versions, result, tt.expected, tt.description)
+			}
+		})
+	}
+}
+
+func TestIsPrereleaseAllowed(t *testing.T) {
+	tests := []struct {
+		name         string
+		versionRange string
+		expected     bool
+		description  string
+	}{
+		{
+			name:         "exact stable version",
+			versionRange: "[1.0.0]",
+			expected:     false,
+			description:  "Exact version with no prerelease",
+		},
+		{
+			name:         "exact prerelease version",
+			versionRange: "[1.0.0-alpha]",
+			expected:     true,
+			description:  "Exact version with prerelease",
+		},
+		{
+			name:         "range with stable min and max",
+			versionRange: "[1.0.0,2.0.0)",
+			expected:     false,
+			description:  "Range with stable minimum and maximum",
+		},
+		{
+			name:         "range with prerelease min",
+			versionRange: "[1.0.0-alpha,2.0.0)",
+			expected:     true,
+			description:  "Range with prerelease minimum",
+		},
+		{
+			name:         "range with prerelease max",
+			versionRange: "[1.0.0,2.0.0-beta)",
+			expected:     true,
+			description:  "Range with prerelease maximum",
+		},
+		{
+			name:         "open ended range stable",
+			versionRange: "1.0.0",
+			expected:     false,
+			description:  "Open-ended range with stable version",
+		},
+		{
+			name:         "invalid version range",
+			versionRange: "invalid",
+			expected:     false,
+			description:  "Invalid range defaults to not allowing prerelease",
+		},
+		{
+			name:         "asterisk wildcard",
+			versionRange: "*",
+			expected:     false,
+			description:  "Wildcard does not have prerelease in min/max",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := isPrereleaseAllowed(tt.versionRange)
+			if result != tt.expected {
+				t.Errorf("isPrereleaseAllowed(%q) = %v, want %v (%s)",
+					tt.versionRange, result, tt.expected, tt.description)
+			}
+		})
 	}
 }
