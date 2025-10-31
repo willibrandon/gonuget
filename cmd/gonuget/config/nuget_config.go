@@ -14,10 +14,22 @@ type NuGetConfig struct {
 	XMLName                  xml.Name                  `xml:"configuration"`
 	PackageSources           *PackageSources           `xml:"packageSources"`
 	DisabledPackageSources   *DisabledPackageSources   `xml:"disabledPackageSources,omitempty"`
+	FallbackPackageFolders   *FallbackPackageFolders   `xml:"fallbackPackageFolders,omitempty"`
 	APIKeys                  *APIKeys                  `xml:"apikeys"`
 	Config                   *Section                  `xml:"config"`
 	TrustedSigners           *TrustedSigners           `xml:"trustedSigners"`
 	PackageSourceCredentials *PackageSourceCredentials `xml:"packageSourceCredentials"`
+}
+
+// FallbackPackageFolders contains fallback package folder definitions
+type FallbackPackageFolders struct {
+	Add []FallbackPackageFolder `xml:"add"`
+}
+
+// FallbackPackageFolder represents a fallback package folder
+type FallbackPackageFolder struct {
+	Key   string `xml:"key,attr"`
+	Value string `xml:"value,attr"`
 }
 
 // DisabledPackageSources contains disabled package source definitions
@@ -312,24 +324,47 @@ func GetConfigHierarchy(workingDirectory string) []string {
 	userConfig := GetUserConfigPath()
 	paths = append(paths, userConfig)
 
-	// Add machine-wide config (platform-specific)
-	machineConfig := getMachineWideConfigPath()
-	if machineConfig != "" {
-		paths = append(paths, machineConfig)
-	}
+	// Add machine-wide configs (platform-specific)
+	machineConfigs := getMachineWideConfigPaths()
+	paths = append(paths, machineConfigs...)
 
 	return paths
 }
 
-// getMachineWideConfigPath returns the machine-wide config path
-func getMachineWideConfigPath() string {
+// getMachineWideConfigPaths returns all machine-wide config paths.
+// On Windows, this scans the Program Files NuGet\Config directory for all .config files
+// to match dotnet's behavior of loading Visual Studio and other machine-wide configs.
+func getMachineWideConfigPaths() []string {
+	var paths []string
+
 	// Platform-specific logic
-	if programData := os.Getenv("ProgramData"); programData != "" {
-		// Windows
-		return filepath.Join(programData, "NuGet", "Config", "NuGet.config")
+	if programFiles := os.Getenv("ProgramFiles(x86)"); programFiles != "" {
+		// Windows: Scan C:\Program Files (x86)\NuGet\Config for all .config files
+		configDir := filepath.Join(programFiles, "NuGet", "Config")
+		if entries, err := os.ReadDir(configDir); err == nil {
+			for _, entry := range entries {
+				if !entry.IsDir() && filepath.Ext(entry.Name()) == ".config" {
+					paths = append(paths, filepath.Join(configDir, entry.Name()))
+				}
+			}
+		}
+
+		// Also check ProgramData location
+		if programData := os.Getenv("ProgramData"); programData != "" {
+			configPath := filepath.Join(programData, "NuGet", "Config", "NuGet.config")
+			if _, err := os.Stat(configPath); err == nil {
+				paths = append(paths, configPath)
+			}
+		}
+	} else {
+		// Unix-like systems: Check /etc/nuget
+		configPath := "/etc/nuget/NuGet.config"
+		if _, err := os.Stat(configPath); err == nil {
+			paths = append(paths, configPath)
+		}
 	}
-	// Unix-like systems
-	return "/etc/nuget/NuGet.config"
+
+	return paths
 }
 
 // IsSourceDisabled checks if a source is disabled

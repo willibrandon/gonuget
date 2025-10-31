@@ -7,11 +7,13 @@ import (
 // DgSpecHasher generates the exact JSON structure that NuGet.Client uses for dgSpecHash.
 // Reference: NuGet.ProjectModel/DependencyGraphSpec.cs Write() method
 type DgSpecHasher struct {
-	proj          *project.Project
-	packagesPath  string
-	sources       []string
-	configPaths   []string
-	runtimeIDPath string
+	proj             *project.Project
+	packagesPath     string
+	fallbackFolders  []string
+	sources          []string
+	configPaths      []string
+	runtimeIDPath    string
+	sdkAnalysisLevel string
 }
 
 // NewDgSpecHasher creates a hasher for a project.
@@ -24,6 +26,12 @@ func NewDgSpecHasher(proj *project.Project) *DgSpecHasher {
 // WithPackagesPath sets the global packages folder path.
 func (h *DgSpecHasher) WithPackagesPath(path string) *DgSpecHasher {
 	h.packagesPath = path
+	return h
+}
+
+// WithFallbackFolders sets the fallback package folders.
+func (h *DgSpecHasher) WithFallbackFolders(folders []string) *DgSpecHasher {
+	h.fallbackFolders = folders
 	return h
 }
 
@@ -42,6 +50,12 @@ func (h *DgSpecHasher) WithConfigPaths(paths []string) *DgSpecHasher {
 // WithRuntimeIDPath sets the RuntimeIdentifierGraph.json path.
 func (h *DgSpecHasher) WithRuntimeIDPath(path string) *DgSpecHasher {
 	h.runtimeIDPath = path
+	return h
+}
+
+// WithSdkAnalysisLevel sets the SDK analysis level.
+func (h *DgSpecHasher) WithSdkAnalysisLevel(level string) *DgSpecHasher {
+	h.sdkAnalysisLevel = level
 	return h
 }
 

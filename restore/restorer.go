@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/fatih/color"
 	"github.com/willibrandon/gonuget/cmd/gonuget/project"
 	"github.com/willibrandon/gonuget/core"
 	"github.com/willibrandon/gonuget/core/resolver"
@@ -418,24 +419,35 @@ func (r *Restorer) addErrorLog(err *NuGetError, targetFramework string) {
 // Matches MSBuildRestoreUtility.ReplayWarningsAndErrorsAsync in NuGet.Client.
 func (r *Restorer) replayLogs(logs []LogMessage) {
 	for _, log := range logs {
-		// Format log message similar to NuGetError.Error()
-		// Use ANSI colors like dotnet does
-		const (
-			red   = "\033[1;31m"
-			reset = "\033[0m"
-		)
-
 		level := strings.ToLower(log.Level)
 		switch level {
 		case "error":
 			// Format: "    /path/to/project.csproj : error NU1101: message"
-			r.console.Printf("    %s : %serror %s%s: %s\n",
-				log.ProjectPath, red, log.Code, reset, log.Message)
+			// Use ANSI colors only if colors are enabled (TTY mode)
+			if !color.NoColor {
+				const (
+					red   = "\033[1;31m"
+					reset = "\033[0m"
+				)
+				r.console.Printf("    %s : %serror %s%s: %s\n",
+					log.ProjectPath, red, log.Code, reset, log.Message)
+			} else {
+				r.console.Printf("    %s : error %s: %s\n",
+					log.ProjectPath, log.Code, log.Message)
+			}
 		case "warning":
-			// Format warnings similarly (yellow color)
-			const yellow = "\033[1;33m"
-			r.console.Printf("    %s : %swarning %s%s: %s\n",
-				log.ProjectPath, yellow, log.Code, reset, log.Message)
+			// Format warnings similarly (yellow color in TTY mode)
+			if !color.NoColor {
+				const (
+					yellow = "\033[1;33m"
+					reset  = "\033[0m"
+				)
+				r.console.Printf("    %s : %swarning %s%s: %s\n",
+					log.ProjectPath, yellow, log.Code, reset, log.Message)
+			} else {
+				r.console.Printf("    %s : warning %s: %s\n",
+					log.ProjectPath, log.Code, log.Message)
+			}
 		}
 	}
 }

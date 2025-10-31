@@ -162,16 +162,16 @@ func (w *OrderedJSONWriter) writeRestoreMetadata(hasher *DgSpecHasher) {
 	if hasher.packagesPath != "" {
 		w.writeString(",")
 		packagesPath := hasher.packagesPath
-		if !strings.HasSuffix(packagesPath, "/") {
-			packagesPath += "/"
+		// Add trailing separator (native to platform)
+		if !strings.HasSuffix(packagesPath, string(filepath.Separator)) {
+			packagesPath += string(filepath.Separator)
 		}
 		w.writeStringField("packagesPath", packagesPath)
 	}
 
 	// 6. outputPath (line 130)
-	// Use filepath.Join for cross-platform path handling, then convert to forward slashes
-	// NuGet.Client always uses forward slashes in JSON, even on Windows
-	objDir := filepath.ToSlash(filepath.Join(filepath.Dir(projectPath), "obj")) + "/"
+	// Use native path separators to match dotnet's behavior
+	objDir := filepath.Join(filepath.Dir(projectPath), "obj") + string(filepath.Separator)
 	w.writeString(",")
 	w.writeStringField("outputPath", objDir)
 
@@ -181,7 +181,11 @@ func (w *OrderedJSONWriter) writeRestoreMetadata(hasher *DgSpecHasher) {
 
 	// 8. Booleans (line 137) - WriteMetadataBooleans - skip if all false
 
-	// 9. fallbackFolders (lines 146-153) - skip if empty
+	// 9. fallbackFolders (lines 146-153)
+	if len(hasher.fallbackFolders) > 0 {
+		w.writeString(",")
+		w.writeArrayField("fallbackFolders", hasher.fallbackFolders)
+	}
 
 	// 10. configFilePaths (lines 146-153)
 	if len(hasher.configPaths) > 0 {
@@ -239,8 +243,10 @@ func (w *OrderedJSONWriter) writeRestoreMetadata(hasher *DgSpecHasher) {
 	// 18. packagesConfigPath (lines 166-169) - skip for PackageReference
 
 	// 19. SdkAnalysisLevel (lines 171-174)
-	w.writeString(",")
-	w.writeStringField("SdkAnalysisLevel", "9.0.300") // Last field
+	if hasher.sdkAnalysisLevel != "" {
+		w.writeString(",")
+		w.writeStringField("SdkAnalysisLevel", hasher.sdkAnalysisLevel) // Last field
+	}
 
 	w.writeString("}")
 }
