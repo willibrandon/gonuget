@@ -410,7 +410,12 @@ func (w *OrderedJSONWriter) writeFrameworkInfo(hasher *DgSpecHasher, tfm string)
 		w.writeBoolField("warn", true)
 
 		// downloadDependencies (framework reference packs)
-		w.writeString(",")
+		// Only write comma if we have dependencies to write
+		if hasher.downloadDependenciesMap != nil {
+			if deps, ok := hasher.downloadDependenciesMap[tfm]; ok && len(deps) > 0 {
+				w.writeString(",")
+			}
+		}
 		w.writeDownloadDependencies(hasher, tfm)
 
 		// frameworkReferences
