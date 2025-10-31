@@ -47,7 +47,33 @@ func TestCacheDebug(t *testing.T) {
 	gonugetHash, _ := CalculateDgSpecHash(proj)
 	t.Logf("Gonuget hash: %s", gonugetHash)
 
+	// Read dotnet's dgspec to compare
+	dgspecPath := filepath.Join(filepath.Dir(cwd), "tests", "test-scenarios", "complex", "obj", "test.csproj.nuget.dgspec.json")
+	dgspecData, _ := os.ReadFile(dgspecPath)
+	var dotnetDgspec map[string]interface{}
+	json.Unmarshal(dgspecData, &dotnetDgspec)
+
+	if projects, ok := dotnetDgspec["projects"].(map[string]interface{}); ok {
+		for _, proj := range projects {
+			if projMap, ok := proj.(map[string]interface{}); ok {
+				if restore, ok := projMap["restore"].(map[string]interface{}); ok {
+					if sources, ok := restore["sources"].(map[string]interface{}); ok {
+						t.Logf("Dotnet dgspec sources: %v", getKeys(sources))
+					}
+				}
+			}
+		}
+	}
+
 	if gonugetHash != dotnetCache.DgSpecHash {
 		t.Errorf("Hash mismatch! Dotnet: %s, Gonuget: %s", dotnetCache.DgSpecHash, gonugetHash)
 	}
+}
+
+func getKeys(m map[string]interface{}) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	return keys
 }
