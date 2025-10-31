@@ -475,19 +475,20 @@ func TestRun_WithPackages(t *testing.T) {
 	}
 
 	// Check console output
-	foundRestore := false
+	// In piped mode (mockConsole is not TTY), we expect "Committing restore..." instead of "Determining"
+	foundCommitting := false
 	foundRestored := false
 	for _, msg := range console.messages {
-		if strings.Contains(msg, "Determining") {
-			foundRestore = true
+		if strings.Contains(msg, "Committing restore") {
+			foundCommitting = true
 		}
 		if strings.Contains(msg, "Restored") {
 			foundRestored = true
 		}
 	}
 
-	if !foundRestore {
-		t.Error("expected 'Determining' message")
+	if !foundCommitting {
+		t.Errorf("expected 'Committing restore' message, got messages: %v", console.messages)
 	}
 	if !foundRestored {
 		t.Error("expected 'Restored' message")

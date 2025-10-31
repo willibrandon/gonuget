@@ -25,10 +25,6 @@ type CacheFile struct {
 	// ExpectedPackageFiles lists .nupkg.sha512 paths that must exist
 	ExpectedPackageFiles []string `json:"expectedPackageFiles"`
 
-	// DirectPackageFiles lists .nupkg.sha512 paths for direct dependencies only
-	// This is a gonuget extension to properly track direct vs transitive packages
-	DirectPackageFiles []string `json:"directPackageFiles,omitempty"`
-
 	// Logs contains warnings/errors from restore (for replay on cache hit)
 	Logs []LogMessage `json:"logs"`
 }

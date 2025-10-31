@@ -287,6 +287,46 @@ func (v *NuGetVersion) Compare(other *NuGetVersion) int {
 	return compareReleaseLabels(v.ReleaseLabels, other.ReleaseLabels)
 }
 
+// CompareNumericOnly compares only the numeric parts (Major.Minor.Patch[.Revision])
+// ignoring prerelease labels. This is used for NU1103 detection where we need to check
+// if a prerelease version would satisfy a range if the prerelease restriction were lifted.
+func (v *NuGetVersion) CompareNumericOnly(other *NuGetVersion) int {
+	if v == nil && other == nil {
+		return 0
+	}
+	if v == nil {
+		return -1
+	}
+	if other == nil {
+		return 1
+	}
+
+	// Compare major
+	if v.Major != other.Major {
+		return intCompare(v.Major, other.Major)
+	}
+
+	// Compare minor
+	if v.Minor != other.Minor {
+		return intCompare(v.Minor, other.Minor)
+	}
+
+	// Compare patch
+	if v.Patch != other.Patch {
+		return intCompare(v.Patch, other.Patch)
+	}
+
+	// Compare revision (only if both are legacy versions)
+	if v.IsLegacyVersion && other.IsLegacyVersion {
+		if v.Revision != other.Revision {
+			return intCompare(v.Revision, other.Revision)
+		}
+	}
+
+	// IMPORTANT: Do NOT compare release labels - that's the whole point of this method
+	return 0
+}
+
 // Equals returns true if v equals other.
 func (v *NuGetVersion) Equals(other *NuGetVersion) bool {
 	return v.Compare(other) == 0

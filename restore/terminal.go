@@ -3,10 +3,7 @@ package restore
 import (
 	"fmt"
 	"io"
-	"os"
 	"time"
-
-	"golang.org/x/term"
 )
 
 // TerminalStatus displays live restore status with right-aligned timer
@@ -26,17 +23,19 @@ type TerminalStatus struct {
 }
 
 // NewTerminalStatus creates a new terminal status updater
-func NewTerminalStatus(output io.Writer, projectName string) *TerminalStatus {
+// If detector is nil, DefaultTTYDetector is used
+func NewTerminalStatus(output io.Writer, projectName string, detector TTYDetector) *TerminalStatus {
+	// Use default detector if none provided
+	if detector == nil {
+		detector = DefaultTTYDetector
+	}
+
 	// Check if output is a TTY
-	isTTY := false
+	isTTY := detector.IsTTY(output)
 	width := 120
-	if f, ok := output.(*os.File); ok {
-		fd := int(f.Fd())
-		isTTY = term.IsTerminal(fd)
-		if isTTY {
-			if w, _, err := term.GetSize(fd); err == nil && w > 0 {
-				width = w
-			}
+	if isTTY {
+		if w, _, err := detector.GetSize(output); err == nil && w > 0 {
+			width = w
 		}
 	}
 

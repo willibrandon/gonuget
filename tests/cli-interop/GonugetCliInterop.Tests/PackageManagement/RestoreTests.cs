@@ -27,10 +27,17 @@ public class RestoreTests
         Assert.Equal(0, result.GonugetExitCode);
 
         // Both should succeed and mention restore completion
+        // Valid success messages: "Restored" (fresh restore) or "All projects are up-to-date" (cache hit)
         var dotnetOutput = result.DotnetStdOut + result.DotnetStdErr;
         var gonugetOutput = result.GonugetStdOut + result.GonugetStdErr;
-        Assert.Contains("Restored", dotnetOutput, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("Restored", gonugetOutput, StringComparison.OrdinalIgnoreCase);
+
+        var dotnetHasSuccess = dotnetOutput.Contains("Restored", StringComparison.OrdinalIgnoreCase) ||
+                               dotnetOutput.Contains("up-to-date", StringComparison.OrdinalIgnoreCase);
+        var gonugetHasSuccess = gonugetOutput.Contains("Restored", StringComparison.OrdinalIgnoreCase) ||
+                                gonugetOutput.Contains("up-to-date", StringComparison.OrdinalIgnoreCase);
+
+        Assert.True(dotnetHasSuccess, $"dotnet output should contain 'Restored' or 'up-to-date'. Actual: {dotnetOutput}");
+        Assert.True(gonugetHasSuccess, $"gonuget output should contain 'Restored' or 'up-to-date'. Actual: {gonugetOutput}");
     }
 
     [Fact]

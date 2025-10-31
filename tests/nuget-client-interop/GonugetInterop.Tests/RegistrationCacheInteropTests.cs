@@ -1,13 +1,10 @@
 using System;
 using System.IO;
-using System.IO.Compression;
 using System.Net.Http;
 using System.Text.Json;
-using System.Threading;
 using System.Threading.Tasks;
 using GonugetInterop.Tests.TestHelpers;
 using NuGet.Protocol;
-using NuGet.Protocol.Core.Types;
 using Xunit;
 
 namespace GonugetInterop.Tests;

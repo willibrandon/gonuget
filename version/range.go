@@ -125,9 +125,9 @@ func (r *Range) SatisfiesNumericBounds(version *NuGetVersion) bool {
 		return false
 	}
 
-	// Check lower bound
+	// Check lower bound - use CompareNumericOnly to ignore prerelease labels
 	if r.MinVersion != nil {
-		cmp := version.Compare(r.MinVersion)
+		cmp := version.CompareNumericOnly(r.MinVersion)
 		if r.MinInclusive {
 			if cmp < 0 {
 				return false
@@ -139,9 +139,9 @@ func (r *Range) SatisfiesNumericBounds(version *NuGetVersion) bool {
 		}
 	}
 
-	// Check upper bound
+	// Check upper bound - use CompareNumericOnly to ignore prerelease labels
 	if r.MaxVersion != nil {
-		cmp := version.Compare(r.MaxVersion)
+		cmp := version.CompareNumericOnly(r.MaxVersion)
 		if r.MaxInclusive {
 			if cmp > 0 {
 				return false
@@ -161,6 +161,17 @@ func (r *Range) Satisfies(version *NuGetVersion) bool {
 	// First check numeric bounds
 	if !r.SatisfiesNumericBounds(version) {
 		return false
+	}
+
+	// For exact version ranges (e.g., [1.0.0-alpha]), require exact match including prerelease
+	// An exact version is when MinVersion == MaxVersion and both bounds are inclusive
+	isExactVersion := r.MinVersion != nil && r.MaxVersion != nil &&
+		r.MinInclusive && r.MaxInclusive &&
+		r.MinVersion.Equals(r.MaxVersion)
+
+	if isExactVersion {
+		// Exact version requires exact match using full Compare (including prerelease)
+		return version.Equals(r.MinVersion)
 	}
 
 	// Prerelease filtering: If the version is prerelease AND the range doesn't allow prerelease, reject it

@@ -1,5 +1,3 @@
-using System;
-
 namespace GonugetInterop.Tests.TestHelpers;
 
 /// <summary>

@@ -19,14 +19,13 @@ type NuGetError struct {
 // Error implements the error interface.
 // Formats NU1101 errors with indentation and ANSI colors to match dotnet output.
 func (e *NuGetError) Error() string {
-	// ANSI color codes (use bright red like dotnet)
-	// \033[1;31m = bold + red (bright red)
-	// \033[0m = reset all attributes
-	const (
-		red   = "\033[1;31m"
-		reset = "\033[0m"
-	)
+	return e.FormatError(true) // Default to colorized for backward compatibility
+}
 
+// FormatError formats the error with optional ANSI color codes.
+// When colorize is false, output is plain text (for piped output).
+// When colorize is true, error codes are displayed in bright red (for TTY output).
+func (e *NuGetError) FormatError(colorize bool) string {
 	sourcesStr := ""
 	if len(e.Sources) > 0 {
 		// Reverse source order to match dotnet's display order
@@ -37,8 +36,21 @@ func (e *NuGetError) Error() string {
 		sourcesStr = " in source(s): " + strings.Join(reversedSources, ", ")
 	}
 
-	// Add 4-space indentation and ANSI red color for error code (matches dotnet)
-	return fmt.Sprintf("    %s : %serror %s%s: %s%s", e.ProjectPath, red, e.Code, reset, e.Message, sourcesStr)
+	// Add ANSI red color for error code only if colorize is enabled (TTY output)
+	if colorize {
+		// ANSI color codes (use bright red like dotnet)
+		// \033[1;31m = bold + red (bright red)
+		// \033[0m = reset all attributes
+		const (
+			red   = "\033[1;31m"
+			reset = "\033[0m"
+		)
+		// Add 4-space indentation and ANSI red color for error code (matches dotnet)
+		return fmt.Sprintf("    %s : %serror %s%s: %s%s", e.ProjectPath, red, e.Code, reset, e.Message, sourcesStr)
+	}
+
+	// Plain text (no colors) for piped output
+	return fmt.Sprintf("    %s : error %s: %s%s", e.ProjectPath, e.Code, e.Message, sourcesStr)
 }
 
 // Common NuGet error codes (matching NuGet.Client)
@@ -191,17 +203,11 @@ func formatVersionConstraintForDisplay(constraint string) string {
 }
 
 // FormatVersionNotFoundError formats multi-line version-not-found errors (NU1102 and NU1103)
-// with per-source version information. Matches dotnet's exact formatting: indentation, line breaks, and ANSI color codes.
-func FormatVersionNotFoundError(projectPath, packageID, versionConstraint string, versionInfos []VersionInfo, errorCode string) string {
+// with per-source version information. Matches dotnet's exact formatting where each line has full project path prefix.
+// When colorize is true (TTY output), error codes are displayed in bright red.
+// When colorize is false (piped output), output is plain text.
+func FormatVersionNotFoundError(projectPath, packageID, versionConstraint string, versionInfos []VersionInfo, errorCode string, colorize bool) string {
 	var sb strings.Builder
-
-	// ANSI color codes (use bright red like dotnet)
-	// \033[1;31m = bold + red (bright red)
-	// \033[0m = reset all attributes
-	const (
-		red   = "\033[1;31m"
-		reset = "\033[0m"
-	)
 
 	// Determine error message based on error code
 	var message string
@@ -212,17 +218,30 @@ func FormatVersionNotFoundError(projectPath, packageID, versionConstraint string
 		message = fmt.Sprintf("Unable to find package %s with version (%s)", packageID, versionConstraint)
 	}
 
-	// First line: 4 spaces + project path + " : " + colored "error CODE" + ":"
-	// dotnet format: "    /path : error NU1103: " (with newline after)
-	sb.WriteString(fmt.Sprintf("    %s : %serror %s%s: \n", projectPath, red, errorCode, reset))
+	// Dotnet uses prefix format for NU1102/NU1103: each line has full project path prefix
+	// First line: project path + error code + message (all on one line)
+	if colorize {
+		// TTY output with ANSI colors
+		const (
+			red   = "\033[1;31m"
+			reset = "\033[0m"
+		)
+		sb.WriteString(fmt.Sprintf("%s : %serror %s%s: %s\n", projectPath, red, errorCode, reset, message))
 
-	// Second line: 6 spaces + main message
-	sb.WriteString(fmt.Sprintf("      %s\n", message))
+		// Per-source lines: project path + colored error code + "  - Found..." (2 spaces before dash)
+		for _, info := range versionInfos {
+			sb.WriteString(fmt.Sprintf("%s : %serror %s%s:   - Found %d version(s) in %s [ Nearest version: %s ]\n",
+				projectPath, red, errorCode, reset, info.VersionCount, info.Source, info.NearestVersion))
+		}
+	} else {
+		// Piped output without colors
+		sb.WriteString(fmt.Sprintf("%s : error %s: %s\n", projectPath, errorCode, message))
 
-	// Per-source lines: 8 spaces + "- Found..."
-	for _, info := range versionInfos {
-		sb.WriteString(fmt.Sprintf("        - Found %d version(s) in %s [ Nearest version: %s ]\n",
-			info.VersionCount, info.Source, info.NearestVersion))
+		// Per-source lines: project path + error code + "  - Found..." (2 spaces before dash)
+		for _, info := range versionInfos {
+			sb.WriteString(fmt.Sprintf("%s : error %s:   - Found %d version(s) in %s [ Nearest version: %s ]\n",
+				projectPath, errorCode, info.VersionCount, info.Source, info.NearestVersion))
+		}
 	}
 
 	// Remove trailing newline

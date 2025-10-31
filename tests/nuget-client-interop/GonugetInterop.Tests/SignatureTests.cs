@@ -1,10 +1,8 @@
 using System;
 using System.IO;
-using System.Linq;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using GonugetInterop.Tests.TestHelpers;
-using NuGet.Packaging.Signing;
 using Xunit;
 
 namespace GonugetInterop.Tests;

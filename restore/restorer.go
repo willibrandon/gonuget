@@ -27,6 +27,7 @@ func Run(ctx context.Context, args []string, opts *Options, console Console) err
 	// Show detailed summary messages for both detailed and diagnostic verbosity
 	isDetailed := opts.Verbosity == "detailed" || opts.Verbosity == "diagnostic"
 	isQuiet := opts.Verbosity == "quiet" || opts.Verbosity == "q"
+	isMinimal := !isQuiet // minimal includes minimal, normal, detailed, diagnostic
 
 	// 1. Find project file
 	projectPath, err := findProjectFile(args)
@@ -84,7 +85,7 @@ func Run(ctx context.Context, args []string, opts *Options, console Console) err
 	// 5. Execute restore (track separate timing for per-project message)
 	// Start terminal status updater (30Hz right-aligned status)
 	projectName := filepath.Base(proj.Path)
-	termStatus := NewTerminalStatus(console.Output(), projectName)
+	termStatus := NewTerminalStatus(console.Output(), projectName, nil)
 	defer termStatus.Stop()
 
 	restoreStart := time.Now()
@@ -97,38 +98,58 @@ func Run(ctx context.Context, args []string, opts *Options, console Console) err
 		// Print NuGet errors in correct format (if any)
 		// DON'T print "Determining projects to restore..." on error path (matches dotnet)
 		if result != nil && len(result.Errors) > 0 {
+			// Detect TTY for colorization (dotnet doesn't colorize when piped)
+			isTTY := termStatus.IsTTY()
+
 			for _, nugetErr := range result.Errors {
 				// NU1102 and NU1103 require multi-line format with per-source version info
 				if nugetErr.Code == ErrorCodePackageVersionNotFound || nugetErr.Code == ErrorCodePackageDownloadFailed {
-					// Format version-not-found errors (NU1102/NU1103) with multi-line output
-					console.Printf("%s\n", FormatVersionNotFoundError(
+					// Format version-not-found errors (NU1102/NU1103)
+					// Dotnet always uses prefix format (each line with full path)
+					errorMsg := FormatVersionNotFoundError(
 						nugetErr.ProjectPath,
 						nugetErr.PackageID,
 						nugetErr.Constraint,
 						nugetErr.VersionInfos,
 						nugetErr.Code,
-					))
+						isTTY, // Colorize only for TTY output
+					)
+					console.Printf("%s\n", errorMsg)
 				} else {
 					// Use single-line format for other errors (NU1101)
-					console.Printf("%s\n", nugetErr.Error())
+					errorMsg := nugetErr.FormatError(isTTY) // Colorize only for TTY output
+					// In quiet mode, remove indent from error messages (dotnet doesn't indent in quiet mode)
+					if isQuiet {
+						errorMsg = strings.TrimPrefix(errorMsg, "    ")
+					}
+					console.Printf("%s\n", errorMsg)
 				}
 			}
-			// Print "Restore failed" summary (matches dotnet format)
-			elapsed := time.Since(start)
-			errorCount := len(result.Errors)
 
-			// ANSI color codes (use bright red like error codes)
-			const (
-				red   = "\033[1;31m"
-				reset = "\033[0m"
-			)
+			// In non-quiet mode, print "Restore failed" summary (dotnet doesn't show this in quiet mode)
+			if !isQuiet {
+				elapsed := time.Since(start)
+				errorCount := len(result.Errors)
 
-			// Add blank line before summary (dotnet has spacing)
-			console.Printf("\n")
+				// Add blank line before summary (dotnet has spacing)
+				console.Printf("\n")
 
-			// Format: "Restore failed with N error(s) in X.Xs" with red on "failed with N error(s)"
-			console.Printf("Restore %sfailed with %d error(s)%s in %.1fs\n",
-				red, errorCount, reset, elapsed.Seconds())
+				// Format: "Restore failed with N error(s) in X.Xs" with red on "failed with N error(s)"
+				// Colorize only for TTY output (dotnet doesn't colorize when piped)
+				if isTTY {
+					// ANSI color codes (use bright red like error codes)
+					const (
+						red   = "\033[1;31m"
+						reset = "\033[0m"
+					)
+					console.Printf("Restore %sfailed with %d error(s)%s in %.1fs\n",
+						red, errorCount, reset, elapsed.Seconds())
+				} else {
+					// Plain text for piped output
+					console.Printf("Restore failed with %d error(s) in %.1fs\n",
+						errorCount, elapsed.Seconds())
+				}
+			}
 
 			// Return a clean error without wrapping (main.go will add "Error: " prefix)
 			return fmt.Errorf("")
@@ -206,7 +227,13 @@ func Run(ctx context.Context, args []string, opts *Options, console Console) err
 		// Skip in diagnostic mode - we already have comprehensive diagnostic output
 		if isDetailed && !isDiagnostic {
 			console.Printf("    Determining projects to restore...\n")
-			console.Printf("    Restored %s (in %d ms).\n", proj.Path, restoreElapsed.Milliseconds())
+			// Terminal Logger: Show "All projects are up-to-date" for cache hits
+			// Show "Restored /path (in X ms)" only for actual restores
+			if result.CacheHit {
+				console.Printf("    All projects are up-to-date for restore.\n")
+			} else {
+				console.Printf("    Restored %s (in %d ms).\n", proj.Path, restoreElapsed.Milliseconds())
+			}
 		}
 
 		// Add blank line and success message (matches dotnet's "Build succeeded" but says "Restore succeeded")
@@ -218,16 +245,23 @@ func Run(ctx context.Context, args []string, opts *Options, console Console) err
 		console.Printf("\nRestore %ssucceeded%s in %.1fs\n", green, reset, elapsed.Seconds())
 	} else {
 		// Console Logger (piped) - matches dotnet when output is redirected
-		// Format: "  Determining projects to restore..."
-		//         "  Restored /path/to/project.csproj (in X ms)."
-		console.Printf("  Determining projects to restore...\n")
-		console.Printf("  Restored %s (in %d ms).\n", proj.Path, restoreElapsed.Milliseconds())
+
+		// Minimal mode: Show basic restore status (matches dotnet minimal verbosity)
+		if isMinimal && !isDetailed && !isDiagnostic {
+			console.Printf("  Determining projects to restore...\n")
+			if result.CacheHit {
+				console.Printf("  All projects are up-to-date for restore.\n")
+			} else {
+				console.Printf("  Restored %s (in %d ms).\n", proj.Path, restoreElapsed.Milliseconds())
+			}
+		}
 
 		// Detailed mode: Show verbose restore details (matches dotnet Console Logger detailed verbosity)
 		if isDetailed && !isDiagnostic {
-			console.Printf("\n")
+			// Show "Committing restore..." at LogVerbose level (detailed only)
+			console.Printf("  Committing restore...\n")
 
-			// Show file write operations or cache status (BEFORE config files section)
+			// Show file write operations or cache status
 			objDir := filepath.Join(filepath.Dir(proj.Path), "obj")
 			assetsPath := filepath.Join(objDir, "project.assets.json")
 			cachePath := GetCacheFilePath(proj.Path)
@@ -243,6 +277,11 @@ func Run(ctx context.Context, args []string, opts *Options, console Console) err
 				console.Printf("  Assets file has not changed. Skipping assets file writing. Path: %s\n", assetsPath)
 				console.Printf("  No-Op restore. The cache will not be updated. Path: %s\n", cachePath)
 			}
+
+			// Always show "Restored /path (in X ms)." for successful restores
+			// For cache hits: logged at LogLevel.Information (normal/detailed/diagnostic)
+			// For actual restores: logged at LogLevel.Minimal (minimal/normal/detailed/diagnostic)
+			console.Printf("  Restored %s (in %d ms).\n", proj.Path, restoreElapsed.Milliseconds())
 
 			console.Printf("\n")
 
@@ -266,7 +305,20 @@ func Run(ctx context.Context, args []string, opts *Options, console Console) err
 				}
 			}
 
-			console.Printf("  All projects are up-to-date for restore.\n")
+			// Show "All projects are up-to-date" only for cache hits (no-op restores)
+			// This matches NuGet.Client's RestoreSummary.cs behavior
+			if result.CacheHit {
+				console.Printf("  All projects are up-to-date for restore.\n")
+			}
+		}
+
+		// Diagnostic mode: Always show completion status (after all diagnostic output)
+		if isDiagnostic {
+			if result.CacheHit {
+				console.Printf("  All projects are up-to-date for restore.\n")
+			} else {
+				console.Printf("  Restored %s (in %d ms).\n", proj.Path, restoreElapsed.Milliseconds())
+			}
 		}
 	}
 
@@ -397,8 +449,7 @@ func (r *Restorer) writeCacheFileOnError(proj *project.Project, dgSpecHash, cach
 		Success:              false, // Restore failed
 		ProjectFilePath:      proj.Path,
 		ExpectedPackageFiles: []string{}, // No packages resolved
-		DirectPackageFiles:   []string{},
-		Logs:                 r.logs, // Collected error logs
+		Logs:                 r.logs,     // Collected error logs
 	}
 
 	// Don't fail if cache write fails (just log warning)
@@ -522,10 +573,12 @@ func (r *Restorer) Restore(
 			}
 
 			// Build result from cache
-			// Build map of direct package file paths for fast lookup
-			directPackagePaths := make(map[string]bool)
-			for _, path := range cachedFile.DirectPackageFiles {
-				directPackagePaths[path] = true
+			// Build map of direct package IDs from project file PackageReferences
+			// This matches dotnet behavior: check project file, not cache extensions
+			directPackageIDs := make(map[string]bool)
+			for _, pkgRef := range packageRefs {
+				normalizedID := strings.ToLower(pkgRef.Include)
+				directPackageIDs[normalizedID] = true
 			}
 
 			// Parse package info from cache paths
@@ -540,9 +593,9 @@ func (r *Restorer) Restore(
 				version := parts[len(parts)-2]
 				id := parts[len(parts)-3]
 
-				// Check if this specific package path is in directPackageFiles
+				// Check if this package ID is in project file PackageReferences
 				normalizedID := strings.ToLower(id)
-				isDirect := directPackagePaths[pkgPath]
+				isDirect := directPackageIDs[normalizedID]
 
 				info := PackageInfo{
 					ID:       id,
@@ -861,15 +914,6 @@ fullRestore:
 			expectedPackageFiles = append(expectedPackageFiles, sha512Path)
 		}
 
-		// Build direct package file paths (only direct dependencies)
-		directPackageFiles := make([]string, 0, len(result.DirectPackages))
-		for _, pkg := range result.DirectPackages {
-			normalizedID := strings.ToLower(pkg.ID)
-			sha512Path := filepath.Join(packagesFolder, normalizedID, pkg.Version,
-				fmt.Sprintf("%s.%s.nupkg.sha512", normalizedID, pkg.Version))
-			directPackageFiles = append(directPackageFiles, sha512Path)
-		}
-
 		// Create cache file
 		cacheFile := &CacheFile{
 			Version:              CacheFileVersion,
@@ -877,7 +921,6 @@ fullRestore:
 			Success:              true,
 			ProjectFilePath:      proj.Path,
 			ExpectedPackageFiles: expectedPackageFiles,
-			DirectPackageFiles:   directPackageFiles,
 			Logs:                 r.logs, // Collected warnings/errors during restore
 		}
 
@@ -1196,9 +1239,90 @@ type versionQueryResult struct {
 	packageFound bool
 }
 
+// getBestMatch finds the best matching version from available versions based on a version range.
+// Matches NuGet.Client's GetBestMatch algorithm in UnresolvedMessages.cs.
+//
+// Algorithm:
+// 1. If no versions available, return empty string
+// 2. Find pivot point from range (MinVersion or MaxVersion)
+// 3. For ranges with bounds, find first version above pivot that is closest
+// 4. If no match, return highest version
+//
+// Examples:
+//   - Range [1.0.0, ), Available [0.7.0, 0.9.0] → 0.7.0 (closest below lower bound)
+//   - Range (0.5.0, 1.0.0), Available [0.1.0, 1.0.0] → 1.0.0 (closest to upper bound)
+//   - Range (, 1.0.0), Available [2.0.0, 3.0.0] → 2.0.0 (closest above upper bound)
+//   - Range [1.*,), Available [0.0.1, 0.9.0] → 0.9.0 (highest below lower bound)
+func getBestMatch(versions []string, vr *version.Range) string {
+	if len(versions) == 0 {
+		return ""
+	}
+
+	// Parse all versions
+	parsedVersions := make([]*version.NuGetVersion, 0, len(versions))
+	for _, v := range versions {
+		parsed, err := version.Parse(v)
+		if err == nil {
+			parsedVersions = append(parsedVersions, parsed)
+		}
+	}
+
+	if len(parsedVersions) == 0 {
+		return ""
+	}
+
+	// If no range provided, return highest version
+	if vr == nil {
+		return parsedVersions[len(parsedVersions)-1].String()
+	}
+
+	// Find pivot point (prefer MinVersion, fallback to MaxVersion)
+	var ideal *version.NuGetVersion
+	switch {
+	case vr.MinVersion != nil:
+		ideal = vr.MinVersion
+	case vr.MaxVersion != nil:
+		ideal = vr.MaxVersion
+	default:
+		// No bounds, return highest version
+		return parsedVersions[len(parsedVersions)-1].String()
+	}
+
+	var bestMatch *version.NuGetVersion
+
+	// If range has bounds, find first version above pivot that is closest
+	if vr.MinVersion != nil || vr.MaxVersion != nil {
+		for _, v := range parsedVersions {
+			if v.Compare(ideal) == 0 {
+				return v.String()
+			}
+
+			if v.Compare(ideal) > 0 {
+				if bestMatch == nil || v.Compare(bestMatch) < 0 {
+					bestMatch = v
+				}
+			}
+		}
+	}
+
+	if bestMatch == nil {
+		// Take the highest possible version
+		bestMatch = parsedVersions[len(parsedVersions)-1]
+	}
+
+	return bestMatch.String()
+}
+
 // tryGetVersionInfo attempts to query available versions for a package to distinguish NU1101 vs NU1102 vs NU1103.
 // Returns version information per source, all version strings, and a boolean indicating if package was found.
 func (r *Restorer) tryGetVersionInfo(ctx context.Context, packageID, versionConstraint string) versionQueryResult {
+	// Parse version range for best match calculation
+	vr, err := version.ParseVersionRange(versionConstraint)
+	if err != nil {
+		// If parsing fails, use nil range (will fall back to highest version)
+		vr = nil
+	}
+
 	// Get all repositories from the client
 	repos := r.client.GetRepositoryManager().ListRepositories()
 	versionInfos := make([]VersionInfo, 0, len(repos))
@@ -1216,8 +1340,8 @@ func (r *Restorer) tryGetVersionInfo(ctx context.Context, packageID, versionCons
 		// Package exists! Collect all versions for NU1103 detection
 		allVersions = append(allVersions, versions...)
 
-		// Use latest (highest) version as "nearest" for error display
-		nearestVersion := versions[len(versions)-1]
+		// Calculate nearest version based on version range (matches NuGet.Client's GetBestMatch)
+		nearestVersion := getBestMatch(versions, vr)
 
 		// Format source name (check V2 first since it also contains "nuget.org")
 		sourceName := repo.SourceURL()
@@ -1255,6 +1379,12 @@ func hasPrereleaseVersionsOnly(versionRangeStr string, versions []string) bool {
 		return false
 	}
 
+	// Check if this is an exact version range (e.g., [1.0.0-alpha])
+	// Exact version ranges require exact match including prerelease labels
+	isExactVersion := vr.MinVersion != nil && vr.MaxVersion != nil &&
+		vr.MinInclusive && vr.MaxInclusive &&
+		vr.MinVersion.Equals(vr.MaxVersion)
+
 	hasPrereleaseInRange := false
 	hasStableInRange := false
 
@@ -1264,8 +1394,16 @@ func hasPrereleaseVersionsOnly(versionRangeStr string, versions []string) bool {
 			continue
 		}
 
-		// Check numeric bounds only (ignore prerelease restriction)
-		if vr.SatisfiesNumericBounds(v) {
+		// For exact version ranges, require exact match (including prerelease)
+		// For other ranges, check numeric bounds only (ignore prerelease restriction)
+		satisfies := false
+		if isExactVersion {
+			satisfies = vr.Satisfies(v)
+		} else {
+			satisfies = vr.SatisfiesNumericBounds(v)
+		}
+
+		if satisfies {
 			if v.IsPrerelease() {
 				hasPrereleaseInRange = true
 			} else {
