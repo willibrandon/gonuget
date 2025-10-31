@@ -3,8 +3,10 @@ package restore
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"github.com/willibrandon/gonuget/cmd/gonuget/config"
 	"github.com/willibrandon/gonuget/cmd/gonuget/project"
@@ -73,8 +75,91 @@ func DefaultDgSpecConfig() *DgSpecConfig {
 			"https://api.nuget.org/v3/index.json",
 		},
 		ConfigPaths:   []string{},
-		RuntimeIDPath: "/usr/local/share/dotnet/sdk/9.0.306/PortableRuntimeIdentifierGraph.json",
+		RuntimeIDPath: detectRuntimeIDGraphPath(),
 	}
+}
+
+// detectRuntimeIDGraphPath finds the actual SDK path from dotnet.
+// Matches dotnet's behavior of using the highest installed SDK version.
+func detectRuntimeIDGraphPath() string {
+	// Try to get SDK path from dotnet --list-sdks
+	cmd := exec.Command("dotnet", "--list-sdks")
+	output, err := cmd.Output()
+	if err != nil {
+		// Fallback to common paths if dotnet command fails
+		return getDefaultRuntimeIDPath()
+	}
+
+	// Parse output to find highest SDK version
+	// Output format: "9.0.100 [/usr/share/dotnet/sdk]"
+	lines := strings.Split(string(output), "\n")
+	var highestVersion string
+	var sdkBase string
+
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+
+		// Parse: "version [path]"
+		parts := strings.Fields(line)
+		if len(parts) >= 2 {
+			version := parts[0]
+			path := strings.Trim(parts[1], "[]")
+
+			if highestVersion == "" || version > highestVersion {
+				highestVersion = version
+				sdkBase = path
+			}
+		}
+	}
+
+	if highestVersion != "" && sdkBase != "" {
+		return filepath.Join(sdkBase, highestVersion, "PortableRuntimeIdentifierGraph.json")
+	}
+
+	return getDefaultRuntimeIDPath()
+}
+
+// getDefaultRuntimeIDPath returns platform-specific default SDK path.
+func getDefaultRuntimeIDPath() string {
+	// Try common SDK locations by platform
+	homeDir, _ := os.UserHomeDir()
+
+	possiblePaths := []string{
+		// macOS Homebrew
+		"/usr/local/share/dotnet/sdk",
+		// macOS Apple Silicon
+		"/opt/homebrew/share/dotnet/sdk",
+		// Linux
+		"/usr/share/dotnet/sdk",
+		// Windows
+		filepath.Join(os.Getenv("ProgramFiles"), "dotnet", "sdk"),
+		// User-local installation
+		filepath.Join(homeDir, ".dotnet", "sdk"),
+	}
+
+	for _, basePath := range possiblePaths {
+		if entries, err := os.ReadDir(basePath); err == nil {
+			// Find highest version directory
+			var highest string
+			for _, entry := range entries {
+				if entry.IsDir() {
+					version := entry.Name()
+					if highest == "" || version > highest {
+						highest = version
+					}
+				}
+			}
+			if highest != "" {
+				return filepath.Join(basePath, highest, "PortableRuntimeIdentifierGraph.json")
+			}
+		}
+	}
+
+	// Last resort fallback (won't match any real hash but won't crash)
+	return ""
 }
 
 // DiscoverDgSpecConfig discovers configuration from project directory.
@@ -146,6 +231,6 @@ func DiscoverDgSpecConfig(proj *project.Project) (*DgSpecConfig, error) {
 		PackagesPath:  packagesPath,
 		Sources:       allSources,
 		ConfigPaths:   configPaths,
-		RuntimeIDPath: "/usr/local/share/dotnet/sdk/9.0.306/PortableRuntimeIdentifierGraph.json",
+		RuntimeIDPath: detectRuntimeIDGraphPath(),
 	}, nil
 }
