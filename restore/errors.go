@@ -1,8 +1,13 @@
 package restore
 
 import (
+	"context"
 	"fmt"
 	"strings"
+
+	"github.com/willibrandon/gonuget/core"
+	"github.com/willibrandon/gonuget/core/resolver"
+	"github.com/willibrandon/gonuget/version"
 )
 
 // NuGetError represents a NuGet-specific error with an error code.
@@ -247,4 +252,448 @@ func FormatVersionNotFoundError(projectPath, packageID, versionConstraint string
 	// Remove trailing newline
 	result := sb.String()
 	return strings.TrimSuffix(result, "\n")
+}
+
+// buildUnresolvedError converts unresolved nodes into NuGet errors (NU1101, NU1102, NU1103).
+// Matches NuGet.Client's error detection in RestoreCommand.
+func (r *Restorer) buildUnresolvedError(ctx context.Context, unresolvedNodes []*resolver.GraphNode, projectPath string) []*NuGetError {
+	if len(unresolvedNodes) == 0 {
+		return nil
+	}
+
+	errors := make([]*NuGetError, 0, len(unresolvedNodes))
+	for _, node := range unresolvedNodes {
+		// Try to detect if this is NU1101, NU1102, or NU1103
+		queryResult := r.tryGetVersionInfo(ctx, node.Item.ID, node.Item.Version)
+
+		if queryResult.packageFound && len(queryResult.versionInfos) > 0 {
+			// Package exists but no compatible version found
+			// Check if this is NU1103 (only prerelease versions satisfy the range when stable requested)
+			// Matches NuGet.Client logic: !IsPrereleaseAllowed(range) && HasPrereleaseVersionsOnly(range, allVersions)
+			if !isPrereleaseAllowed(node.Item.Version) && hasPrereleaseVersionsOnly(node.Item.Version, queryResult.allVersions) {
+				// NU1103: Only prerelease versions satisfy the range, but stable requested
+				err := NewPackageDownloadFailedError(
+					projectPath,
+					node.Item.ID,
+					node.Item.Version,
+					queryResult.versionInfos,
+				)
+				errors = append(errors, err)
+			} else {
+				// NU1102: Package exists but no compatible version
+				err := NewPackageVersionNotFoundError(
+					projectPath,
+					node.Item.ID,
+					node.Item.Version,
+					queryResult.versionInfos,
+				)
+				errors = append(errors, err)
+			}
+		} else {
+			// NU1101: Package doesn't exist at all
+			err := NewPackageNotFoundError(
+				projectPath,
+				node.Item.ID,
+				node.Item.Version,
+				r.opts.Sources,
+			)
+			errors = append(errors, err)
+		}
+	}
+
+	return errors
+}
+
+// checkVersionAvailability checks if any version satisfying the constraint exists across all sources.
+// This is an optimization to fail fast for NU1102/NU1103 cases without running expensive dependency walk.
+// Returns version information per source, all versions, all queried source names, and a boolean indicating if constraint can be satisfied.
+func (r *Restorer) checkVersionAvailability(ctx context.Context, packageID, versionConstraint string) ([]VersionInfo, []string, []string, bool) {
+	// Parse version range constraint
+	versionRange, err := version.ParseVersionRange(versionConstraint)
+	if err != nil {
+		// If we can't parse the constraint, let the walk handle it
+		return nil, nil, nil, true
+	}
+
+	// Get all repositories from the client
+	repos := r.client.GetRepositoryManager().ListRepositories()
+
+	// Parallel source queries for 2x faster error reporting (critical for NU1101/NU1102/NU1103)
+	type sourceResult struct {
+		index          int
+		sourceName     string
+		versions       []string
+		nearestVersion string
+		canSatisfy     bool
+		hasVersions    bool
+	}
+
+	results := make(chan sourceResult, len(repos))
+
+	// Query all sources in parallel - network I/O is the bottleneck
+	for idx, repo := range repos {
+		go func(idx int, repo *core.SourceRepository) {
+			// Format source name (check V2 first since it also contains "nuget.org")
+			sourceName := repo.SourceURL()
+			if strings.Contains(sourceName, "/api/v2") {
+				sourceName = "NuGet V2"
+			} else if strings.Contains(sourceName, "nuget.org") {
+				sourceName = "nuget.org"
+			}
+
+			// Try to list all versions of this package from this repository
+			versions, err := repo.ListVersions(ctx, nil, packageID)
+
+			if err != nil || len(versions) == 0 {
+				// Package doesn't exist in this source
+				results <- sourceResult{index: idx, sourceName: sourceName, hasVersions: false}
+				return
+			}
+
+			// Package exists! Optimize by checking max version first for early rejection
+			var nearestVersion string
+			var maxVersion *version.NuGetVersion
+
+			// Find max version (versions are typically sorted, so check last first)
+			// For NU1102 error display: use HIGHEST version (nearest to requested version)
+			// For NU1103 error display: use LOWEST prerelease (will be updated later)
+			if len(versions) > 0 {
+				// Try last version first (usually the highest) for optimization
+				if maxV, err := version.Parse(versions[len(versions)-1]); err == nil {
+					maxVersion = maxV
+					nearestVersion = versions[len(versions)-1]
+				}
+
+				// Verify it's actually the max by checking a few more
+				for i := len(versions) - 2; i >= 0 && i >= len(versions)-5; i-- {
+					if v, err := version.Parse(versions[i]); err == nil {
+						if maxVersion == nil || v.Compare(maxVersion) > 0 {
+							maxVersion = v
+							nearestVersion = versions[i]
+						}
+					}
+				}
+			}
+
+			// OPTIMIZATION: If constraint minimum > max version, no version can satisfy
+			// This provides fast rejection for NU1102 cases like "99.99.99" > "13.0.4"
+			canSatisfy := false
+			if maxVersion != nil && versionRange.MinVersion != nil {
+				cmp := versionRange.MinVersion.Compare(maxVersion)
+				switch {
+				case !versionRange.MinInclusive && cmp == 0:
+					// Constraint requires > maxVersion, which is impossible
+					// Don't set canSatisfy, use nearestVersion = maxVersion
+				case cmp > 0:
+					// Constraint requires higher than any available version - fast fail
+					// Don't set canSatisfy, use nearestVersion = maxVersion
+				default:
+					// Constraint might be satisfiable - check if max version satisfies
+					if versionRange.Satisfies(maxVersion) {
+						canSatisfy = true
+					} else {
+						// Max doesn't satisfy, need to check other versions
+						for _, v := range versions {
+							nv, err := version.Parse(v)
+							if err != nil {
+								continue
+							}
+							if versionRange.Satisfies(nv) {
+								canSatisfy = true
+								nearestVersion = v
+								break
+							}
+						}
+					}
+				}
+			}
+
+			results <- sourceResult{
+				index:          idx,
+				sourceName:     sourceName,
+				versions:       versions,
+				nearestVersion: nearestVersion,
+				canSatisfy:     canSatisfy,
+				hasVersions:    true,
+			}
+		}(idx, repo)
+	}
+
+	// Collect results from parallel queries and preserve original order
+	resultsByIndex := make([]sourceResult, len(repos))
+	for range len(repos) {
+		result := <-results
+		resultsByIndex[result.index] = result
+	}
+
+	// Process results in original source order (critical for source name display order)
+	versionInfos := make([]VersionInfo, 0, len(repos))
+	allVersions := make([]string, 0)
+	allSourceNames := make([]string, 0, len(repos))
+	canSatisfy := false
+
+	for _, result := range resultsByIndex {
+		// Track all sources queried (for NU1101 error reporting)
+		allSourceNames = append(allSourceNames, result.sourceName)
+
+		if !result.hasVersions {
+			continue
+		}
+
+		// Collect all versions for NU1103 detection
+		allVersions = append(allVersions, result.versions...)
+
+		if result.canSatisfy {
+			canSatisfy = true
+		}
+
+		versionInfos = append(versionInfos, VersionInfo{
+			Source:         result.sourceName,
+			VersionCount:   len(result.versions),
+			NearestVersion: result.nearestVersion,
+		})
+	}
+
+	return versionInfos, allVersions, allSourceNames, canSatisfy
+}
+
+// updateNearestVersionForNU1103 updates versionInfos to show the LOWEST prerelease version
+// for NU1103 errors (dotnet shows lowest, not highest, for prerelease-only scenarios)
+func (r *Restorer) updateNearestVersionForNU1103(versionInfos []VersionInfo, allVersions []string, versionRange *version.Range) []VersionInfo {
+	// Parse all versions once
+	parsedVersions := make([]*version.NuGetVersion, 0, len(allVersions))
+	versionStrings := make([]string, 0, len(allVersions))
+
+	for _, vStr := range allVersions {
+		if v, err := version.Parse(vStr); err == nil {
+			parsedVersions = append(parsedVersions, v)
+			versionStrings = append(versionStrings, vStr)
+		}
+	}
+
+	// Find lowest prerelease that satisfies numeric bounds
+	var lowestPrerelease *version.NuGetVersion
+	var lowestPrereleaseStr string
+
+	for i, v := range parsedVersions {
+		// Check if it's prerelease and satisfies numeric bounds
+		if v.IsPrerelease() && versionRange.SatisfiesNumericBounds(v) {
+			if lowestPrerelease == nil || v.LessThan(lowestPrerelease) {
+				lowestPrerelease = v
+				lowestPrereleaseStr = versionStrings[i]
+			}
+		}
+	}
+
+	// Update all versionInfos to use the lowest prerelease
+	if lowestPrereleaseStr != "" {
+		updatedInfos := make([]VersionInfo, len(versionInfos))
+		for i, info := range versionInfos {
+			updatedInfos[i] = VersionInfo{
+				Source:         info.Source,
+				VersionCount:   info.VersionCount,
+				NearestVersion: lowestPrereleaseStr,
+			}
+		}
+		return updatedInfos
+	}
+
+	// Fallback: return original if no prerelease found
+	return versionInfos
+}
+
+// getBestMatch finds the best matching version from available versions based on a version range.
+// Matches NuGet.Client's GetBestMatch algorithm in UnresolvedMessages.cs.
+//
+// Algorithm:
+// 1. If no versions available, return empty string
+// 2. Find pivot point from range (MinVersion or MaxVersion)
+// 3. For ranges with bounds, find first version above pivot that is closest
+// 4. If no match, return highest version
+//
+// Examples:
+//   - Range [1.0.0, ), Available [0.7.0, 0.9.0] → 0.7.0 (closest below lower bound)
+//   - Range (0.5.0, 1.0.0), Available [0.1.0, 1.0.0] → 1.0.0 (closest to upper bound)
+//   - Range (, 1.0.0), Available [2.0.0, 3.0.0] → 2.0.0 (closest above upper bound)
+//   - Range [1.*,), Available [0.0.1, 0.9.0] → 0.9.0 (highest below lower bound)
+func getBestMatch(versions []string, vr *version.Range) string {
+	if len(versions) == 0 {
+		return ""
+	}
+
+	// Parse all versions
+	parsedVersions := make([]*version.NuGetVersion, 0, len(versions))
+	for _, v := range versions {
+		parsed, err := version.Parse(v)
+		if err == nil {
+			parsedVersions = append(parsedVersions, parsed)
+		}
+	}
+
+	if len(parsedVersions) == 0 {
+		return ""
+	}
+
+	// If no range provided, return highest version
+	if vr == nil {
+		return parsedVersions[len(parsedVersions)-1].String()
+	}
+
+	// Find pivot point (prefer MinVersion, fallback to MaxVersion)
+	var ideal *version.NuGetVersion
+	switch {
+	case vr.MinVersion != nil:
+		ideal = vr.MinVersion
+	case vr.MaxVersion != nil:
+		ideal = vr.MaxVersion
+	default:
+		// No bounds, return highest version
+		return parsedVersions[len(parsedVersions)-1].String()
+	}
+
+	var bestMatch *version.NuGetVersion
+
+	// If range has bounds, find first version above pivot that is closest
+	if vr.MinVersion != nil || vr.MaxVersion != nil {
+		for _, v := range parsedVersions {
+			if v.Compare(ideal) == 0 {
+				return v.String()
+			}
+
+			if v.Compare(ideal) > 0 {
+				if bestMatch == nil || v.Compare(bestMatch) < 0 {
+					bestMatch = v
+				}
+			}
+		}
+	}
+
+	if bestMatch == nil {
+		// Take the highest possible version
+		bestMatch = parsedVersions[len(parsedVersions)-1]
+	}
+
+	return bestMatch.String()
+}
+
+// tryGetVersionInfo attempts to query available versions for a package to distinguish NU1101 vs NU1102 vs NU1103.
+// Returns version information per source, all version strings, and a boolean indicating if package was found.
+func (r *Restorer) tryGetVersionInfo(ctx context.Context, packageID, versionConstraint string) versionQueryResult {
+	// Parse version range for best match calculation
+	vr, err := version.ParseVersionRange(versionConstraint)
+	if err != nil {
+		// If parsing fails, use nil range (will fall back to highest version)
+		vr = nil
+	}
+
+	// Get all repositories from the client
+	repos := r.client.GetRepositoryManager().ListRepositories()
+	versionInfos := make([]VersionInfo, 0, len(repos))
+	allVersions := make([]string, 0)
+
+	for _, repo := range repos {
+		// Try to list all versions of this package from this repository
+		versions, err := repo.ListVersions(ctx, nil, packageID)
+
+		if err != nil || len(versions) == 0 {
+			// Package doesn't exist in this source
+			continue
+		}
+
+		// Package exists! Collect all versions for NU1103 detection
+		allVersions = append(allVersions, versions...)
+
+		// Calculate nearest version based on version range (matches NuGet.Client's GetBestMatch)
+		nearestVersion := getBestMatch(versions, vr)
+
+		// Format source name (check V2 first since it also contains "nuget.org")
+		sourceName := repo.SourceURL()
+		if strings.Contains(sourceName, "/api/v2") {
+			sourceName = "NuGet V2"
+		} else if strings.Contains(sourceName, "nuget.org") {
+			sourceName = "nuget.org"
+		}
+
+		versionInfos = append(versionInfos, VersionInfo{
+			Source:         sourceName,
+			VersionCount:   len(versions),
+			NearestVersion: nearestVersion,
+		})
+	}
+
+	return versionQueryResult{
+		versionInfos: versionInfos,
+		allVersions:  allVersions,
+		packageFound: len(versionInfos) > 0,
+	}
+}
+
+// hasPrereleaseVersionsOnly checks if prerelease versions satisfy the range but no stable versions do.
+// Matches NuGet.Client's HasPrereleaseVersionsOnly logic.
+// Returns true if:
+//  1. There exists at least one prerelease version that satisfies the range (numeric bounds only)
+//  2. There exists NO stable version that satisfies the range (numeric bounds only)
+//
+// Note: Uses SatisfiesNumericBounds instead of Satisfies to check if versions WOULD satisfy
+// the range if the prerelease restriction were lifted. This is necessary for NU1103 detection.
+func hasPrereleaseVersionsOnly(versionRangeStr string, versions []string) bool {
+	vr, err := version.ParseVersionRange(versionRangeStr)
+	if err != nil {
+		return false
+	}
+
+	// Check if this is an exact version range (e.g., [1.0.0-alpha])
+	// Exact version ranges require exact match including prerelease labels
+	isExactVersion := vr.MinVersion != nil && vr.MaxVersion != nil &&
+		vr.MinInclusive && vr.MaxInclusive &&
+		vr.MinVersion.Equals(vr.MaxVersion)
+
+	hasPrereleaseInRange := false
+	hasStableInRange := false
+
+	for _, versionStr := range versions {
+		v, err := version.Parse(versionStr)
+		if err != nil {
+			continue
+		}
+
+		// For exact version ranges, require exact match (including prerelease)
+		// For other ranges, check numeric bounds only (ignore prerelease restriction)
+		satisfies := false
+		if isExactVersion {
+			satisfies = vr.Satisfies(v)
+		} else {
+			satisfies = vr.SatisfiesNumericBounds(v)
+		}
+
+		if satisfies {
+			if v.IsPrerelease() {
+				hasPrereleaseInRange = true
+			} else {
+				hasStableInRange = true
+			}
+		}
+	}
+
+	// True if prerelease versions satisfy the range but no stable versions do
+	return hasPrereleaseInRange && !hasStableInRange
+}
+
+// isPrereleaseAllowed checks if the version range allows prerelease versions.
+// Matches NuGet.Client's IsPrereleaseAllowed logic.
+// Returns true if the min or max version of the range has a prerelease label.
+func isPrereleaseAllowed(versionRangeStr string) bool {
+	vr, err := version.ParseVersionRange(versionRangeStr)
+	if err != nil {
+		return false
+	}
+
+	if vr.MinVersion != nil && vr.MinVersion.IsPrerelease() {
+		return true
+	}
+	if vr.MaxVersion != nil && vr.MaxVersion.IsPrerelease() {
+		return true
+	}
+
+	return false
 }

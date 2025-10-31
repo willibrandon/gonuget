@@ -113,8 +113,8 @@ func detectLibraryPacksPath() string {
 
 	// Parse output to find SDK path
 	// Output format: "9.0.100 [/usr/share/dotnet/sdk]" or "9.0.100 [C:\Program Files\dotnet\sdk]"
-	lines := strings.Split(string(output), "\n")
-	for _, line := range lines {
+	lines := strings.SplitSeq(string(output), "\n")
+	for line := range lines {
 		line = strings.TrimSpace(line)
 		if line == "" {
 			continue
@@ -167,7 +167,7 @@ func detectSdkFeatureBand(sdkVersion string) string {
 
 	// Parse patch and round down to hundreds
 	var patchNum int
-	fmt.Sscanf(patch, "%d", &patchNum)
+	_, _ = fmt.Sscanf(patch, "%d", &patchNum) // Ignore error, default to 0
 	featureBand := patchNum / 100 * 100
 
 	return fmt.Sprintf("%s.%s.%d", major, minor, featureBand)
@@ -399,8 +399,8 @@ func DiscoverDgSpecConfig(proj *project.Project) (*DgSpecConfig, error) {
 		// Extract feature band from SDK version
 		cmd := exec.Command("dotnet", "--list-sdks")
 		if output, err := cmd.Output(); err == nil {
-			lines := strings.Split(string(output), "\n")
-			for _, line := range lines {
+			lines := strings.SplitSeq(string(output), "\n")
+			for line := range lines {
 				line = strings.TrimSpace(line)
 				if line == "" {
 					continue
@@ -443,31 +443,31 @@ func extractRuntimeIDPathFromDgSpec(projectPath string) string {
 
 	// Parse JSON to extract runtimeIdentifierGraphPath
 	// Structure: {"projects": {"<projectPath>": {"frameworks": {"<tfm>": {"runtimeIdentifierGraphPath": "..."}}}}}
-	var dgspec map[string]interface{}
+	var dgspec map[string]any
 	if err := json.Unmarshal(data, &dgspec); err != nil {
 		return ""
 	}
 
-	projects, ok := dgspec["projects"].(map[string]interface{})
+	projects, ok := dgspec["projects"].(map[string]any)
 	if !ok {
 		return ""
 	}
 
 	// Get the project entry (should be only one, but we take the first)
 	for _, projectData := range projects {
-		projectMap, ok := projectData.(map[string]interface{})
+		projectMap, ok := projectData.(map[string]any)
 		if !ok {
 			continue
 		}
 
-		frameworks, ok := projectMap["frameworks"].(map[string]interface{})
+		frameworks, ok := projectMap["frameworks"].(map[string]any)
 		if !ok {
 			continue
 		}
 
 		// Get first framework entry
 		for _, frameworkData := range frameworks {
-			frameworkMap, ok := frameworkData.(map[string]interface{})
+			frameworkMap, ok := frameworkData.(map[string]any)
 			if !ok {
 				continue
 			}
@@ -498,24 +498,24 @@ func extractSdkAnalysisLevelFromDgSpec(projectPath string) string {
 
 	// Parse JSON to extract SdkAnalysisLevel
 	// Structure: {"projects": {"<projectPath>": {"restore": {"SdkAnalysisLevel": "..."}}}}
-	var dgspec map[string]interface{}
+	var dgspec map[string]any
 	if err := json.Unmarshal(data, &dgspec); err != nil {
 		return ""
 	}
 
-	projects, ok := dgspec["projects"].(map[string]interface{})
+	projects, ok := dgspec["projects"].(map[string]any)
 	if !ok {
 		return ""
 	}
 
 	// Get the project entry (should be only one, but we take the first)
 	for _, projectData := range projects {
-		projectMap, ok := projectData.(map[string]interface{})
+		projectMap, ok := projectData.(map[string]any)
 		if !ok {
 			continue
 		}
 
-		restore, ok := projectMap["restore"].(map[string]interface{})
+		restore, ok := projectMap["restore"].(map[string]any)
 		if !ok {
 			continue
 		}
@@ -545,35 +545,35 @@ func extractDownloadDependenciesFromDgSpec(projectPath, tfm string) map[string]s
 
 	// Parse JSON to extract downloadDependencies
 	// Structure: {"projects": {"<projectPath>": {"frameworks": {"<tfm>": {"downloadDependencies": [...]}}}}}
-	var dgspec map[string]interface{}
+	var dgspec map[string]any
 	if err := json.Unmarshal(data, &dgspec); err != nil {
 		return nil
 	}
 
-	projects, ok := dgspec["projects"].(map[string]interface{})
+	projects, ok := dgspec["projects"].(map[string]any)
 	if !ok {
 		return nil
 	}
 
 	// Get the project entry (should be only one, but we take the first)
 	for _, projectData := range projects {
-		projectMap, ok := projectData.(map[string]interface{})
+		projectMap, ok := projectData.(map[string]any)
 		if !ok {
 			continue
 		}
 
-		frameworks, ok := projectMap["frameworks"].(map[string]interface{})
+		frameworks, ok := projectMap["frameworks"].(map[string]any)
 		if !ok {
 			continue
 		}
 
 		// Get the framework entry for the specified TFM
-		frameworkData, ok := frameworks[tfm].(map[string]interface{})
+		frameworkData, ok := frameworks[tfm].(map[string]any)
 		if !ok {
 			continue
 		}
 
-		downloadDeps, ok := frameworkData["downloadDependencies"].([]interface{})
+		downloadDeps, ok := frameworkData["downloadDependencies"].([]any)
 		if !ok {
 			return nil
 		}
@@ -581,7 +581,7 @@ func extractDownloadDependenciesFromDgSpec(projectPath, tfm string) map[string]s
 		// Build map of name -> version
 		result := make(map[string]string)
 		for _, dep := range downloadDeps {
-			depMap, ok := dep.(map[string]interface{})
+			depMap, ok := dep.(map[string]any)
 			if !ok {
 				continue
 			}
