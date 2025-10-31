@@ -38,6 +38,16 @@ func CalculateDgSpecHashWithConfig(proj *project.Project, config *DgSpecConfig) 
 		config = DefaultDgSpecConfig()
 	}
 
+	// Extract downloadDependencies from existing dgspec (if it exists)
+	downloadDepsMap := make(map[string]map[string]string)
+	frameworks := proj.GetTargetFrameworks()
+	for _, tfm := range frameworks {
+		deps := extractDownloadDependenciesFromDgSpec(proj.Path, tfm)
+		if deps != nil {
+			downloadDepsMap[tfm] = deps
+		}
+	}
+
 	// Build the JSON structure
 	hasher := NewDgSpecHasher(proj).
 		WithPackagesPath(config.PackagesPath).
@@ -46,6 +56,11 @@ func CalculateDgSpecHashWithConfig(proj *project.Project, config *DgSpecConfig) 
 		WithConfigPaths(config.ConfigPaths).
 		WithRuntimeIDPath(config.RuntimeIDPath).
 		WithSdkAnalysisLevel(config.SdkAnalysisLevel)
+
+	// Only set downloadDependencies if we found any
+	if len(downloadDepsMap) > 0 {
+		hasher = hasher.WithDownloadDependencies(downloadDepsMap)
+	}
 
 	jsonBytes, err := hasher.GenerateJSON()
 	if err != nil {
@@ -130,6 +145,7 @@ func detectLibraryPacksPath() string {
 // Examples:
 //   - "10.0.100-rc.2.25502.107" -> "10.0.100"
 //   - "9.0.300" -> "9.0.300"
+//
 // The feature band is always the hundreds-value: major.minor.patch where patch ends in 00.
 func detectSdkFeatureBand(sdkVersion string) string {
 	// Parse version to extract major.minor.patch
@@ -510,4 +526,78 @@ func extractSdkAnalysisLevelFromDgSpec(projectPath string) string {
 	}
 
 	return ""
+}
+
+// extractDownloadDependenciesFromDgSpec reads the downloadDependencies from
+// an existing dgspec.json file that dotnet created. Returns nil if
+// the file doesn't exist or can't be parsed.
+func extractDownloadDependenciesFromDgSpec(projectPath, tfm string) map[string]string {
+	// Construct dgspec.json path: {projectDir}/obj/{projectFileName}.nuget.dgspec.json
+	projectDir := filepath.Dir(projectPath)
+	projectFileName := filepath.Base(projectPath)
+	dgspecPath := filepath.Join(projectDir, "obj", projectFileName+".nuget.dgspec.json")
+
+	// Read the file
+	data, err := os.ReadFile(dgspecPath)
+	if err != nil {
+		return nil // File doesn't exist or can't be read
+	}
+
+	// Parse JSON to extract downloadDependencies
+	// Structure: {"projects": {"<projectPath>": {"frameworks": {"<tfm>": {"downloadDependencies": [...]}}}}}
+	var dgspec map[string]interface{}
+	if err := json.Unmarshal(data, &dgspec); err != nil {
+		return nil
+	}
+
+	projects, ok := dgspec["projects"].(map[string]interface{})
+	if !ok {
+		return nil
+	}
+
+	// Get the project entry (should be only one, but we take the first)
+	for _, projectData := range projects {
+		projectMap, ok := projectData.(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		frameworks, ok := projectMap["frameworks"].(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		// Get the framework entry for the specified TFM
+		frameworkData, ok := frameworks[tfm].(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		downloadDeps, ok := frameworkData["downloadDependencies"].([]interface{})
+		if !ok {
+			return nil
+		}
+
+		// Build map of name -> version
+		result := make(map[string]string)
+		for _, dep := range downloadDeps {
+			depMap, ok := dep.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			name, ok := depMap["name"].(string)
+			if !ok {
+				continue
+			}
+			version, ok := depMap["version"].(string)
+			if !ok {
+				continue
+			}
+			result[name] = version
+		}
+
+		return result
+	}
+
+	return nil
 }

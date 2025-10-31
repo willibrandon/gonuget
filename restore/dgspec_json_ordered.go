@@ -409,6 +409,10 @@ func (w *OrderedJSONWriter) writeFrameworkInfo(hasher *DgSpecHasher, tfm string)
 		w.writeString(",")
 		w.writeBoolField("warn", true)
 
+		// downloadDependencies (framework reference packs)
+		w.writeString(",")
+		w.writeDownloadDependencies(hasher, tfm)
+
 		// frameworkReferences
 		w.writeString(",")
 		w.writeFrameworkReferences()
@@ -419,6 +423,48 @@ func (w *OrderedJSONWriter) writeFrameworkInfo(hasher *DgSpecHasher, tfm string)
 			w.writeStringField("runtimeIdentifierGraphPath", hasher.runtimeIDPath)
 		}
 	}
+}
+
+// writeDownloadDependencies writes download dependencies (framework reference packs).
+// These are automatically added by the SDK based on the target framework.
+// Reference: Microsoft.NET.Sdk targets add KnownFrameworkReference items
+func (w *OrderedJSONWriter) writeDownloadDependencies(hasher *DgSpecHasher, tfm string) {
+	// Get download dependencies from hasher
+	if hasher.downloadDependenciesMap == nil {
+		return
+	}
+
+	deps, ok := hasher.downloadDependenciesMap[tfm]
+	if !ok || len(deps) == 0 {
+		return
+	}
+
+	// Write downloadDependencies array
+	w.writeEscapedString("downloadDependencies")
+	w.writeString(":[")
+
+	// Sort keys for consistent order (dotnet sorts by name)
+	names := make([]string, 0, len(deps))
+	for name := range deps {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	for i, name := range names {
+		version := deps[name]
+
+		w.writeString("{")
+		w.writeStringField("name", name)
+		w.writeString(",")
+		w.writeStringField("version", version)
+		w.writeString("}")
+
+		if i < len(names)-1 {
+			w.writeString(",")
+		}
+	}
+
+	w.writeString("]")
 }
 
 // writeFrameworkReferences writes framework references.

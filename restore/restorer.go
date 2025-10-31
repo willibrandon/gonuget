@@ -605,8 +605,14 @@ func (r *Restorer) Restore(
 				version := parts[len(parts)-2]
 				id := parts[len(parts)-3]
 
-				// Check if this package ID is in project file PackageReferences
+				// Skip framework reference packs (these are not regular NuGet packages)
+				// These are download dependencies added by the SDK for targeting packs
 				normalizedID := strings.ToLower(id)
+				if isFrameworkReferencePack(normalizedID) {
+					continue
+				}
+
+				// Check if this package ID is in project file PackageReferences
 				isDirect := directPackageIDs[normalizedID]
 
 				info := PackageInfo{
@@ -1770,4 +1776,21 @@ func (c *localFirstMetadataClient) GetPackageMetadata(
 	// This will fetch from nuget.org using V3 registration API
 	// Matches NuGet.Client: RemoteLibraryProviders fallback
 	return c.remoteMetadataClient.GetPackageMetadata(ctx, source, packageID, versionRange)
+}
+
+// isFrameworkReferencePack checks if a package ID is a framework reference pack.
+// These are special packages downloaded by the SDK for targeting packs and should
+// not be included in the regular package dependency lists.
+func isFrameworkReferencePack(packageID string) bool {
+	// Normalize to lowercase for comparison
+	id := strings.ToLower(packageID)
+
+	// Framework reference packs follow the pattern *.app.ref
+	return strings.HasSuffix(id, ".app.ref") ||
+		strings.HasSuffix(id, ".app.runtime.linux-x64") ||
+		strings.HasSuffix(id, ".app.runtime.win-x64") ||
+		strings.HasSuffix(id, ".app.runtime.osx-x64") ||
+		strings.HasPrefix(id, "microsoft.netcore.app.runtime.") ||
+		strings.HasPrefix(id, "microsoft.aspnetcore.app.runtime.") ||
+		strings.HasPrefix(id, "microsoft.windowsdesktop.app.runtime.")
 }
