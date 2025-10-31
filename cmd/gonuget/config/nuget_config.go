@@ -45,7 +45,7 @@ type DisabledPackageSource struct {
 
 // PackageSources contains package source definitions
 type PackageSources struct {
-	Clear bool            `xml:"clear"`
+	Clear *bool           `xml:"clear"`
 	Add   []PackageSource `xml:"add"`
 }
 

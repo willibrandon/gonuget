@@ -7,7 +7,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"sort"
 	"strings"
 
 	"github.com/willibrandon/gonuget/cmd/gonuget/config"
@@ -270,24 +269,30 @@ func DiscoverDgSpecConfig(proj *project.Project) (*DgSpecConfig, error) {
 	}
 
 	// Load and merge all configs to get sources
+	// NuGet processes configs from least specific to most specific,
+	// and <clear /> clears all previously accumulated sources.
 	var allSources []string
 	sourceSet := make(map[string]bool)
 
-	for _, configPath := range configPaths {
+	// Process configs in reverse order (least specific first)
+	for i := len(configPaths) - 1; i >= 0; i-- {
+		configPath := configPaths[i]
 		cfg, err := config.LoadNuGetConfig(configPath)
 		if err != nil {
 			continue // Skip invalid configs
 		}
 
+		// Check if this config clears all parent sources
+		// In NuGet, any <clear> element (even <clear>false</clear>) triggers a clear
+		if cfg.PackageSources != nil && cfg.PackageSources.Clear != nil {
+			// Clear all previously accumulated sources
+			allSources = nil
+			sourceSet = make(map[string]bool)
+		}
+
 		// Get enabled sources from this config
 		for _, src := range cfg.GetEnabledPackageSources() {
 			sourceValue := src.Value
-
-			// TEMPORARY: Skip VS Offline source (dotnet seems to exclude it)
-			// TODO: Investigate why dotnet excludes this
-			if strings.Contains(sourceValue, "Microsoft SDKs\\NuGetPackages") {
-				continue
-			}
 
 			// Normalize local file paths to use native separators
 			// (URLs should be left as-is)
@@ -312,9 +317,6 @@ func DiscoverDgSpecConfig(proj *project.Project) (*DgSpecConfig, error) {
 			allSources = append(allSources, libraryPacksPath)
 		}
 	}
-
-	// Sort sources for determinism (dotnet sorts them)
-	sort.Strings(allSources)
 
 	// If no sources found, use default
 	if len(allSources) == 0 {
