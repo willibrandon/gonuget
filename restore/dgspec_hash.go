@@ -1,6 +1,7 @@
 package restore
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -227,10 +228,73 @@ func DiscoverDgSpecConfig(proj *project.Project) (*DgSpecConfig, error) {
 		}
 	}
 
+	// Try to read runtimeIdentifierGraphPath from existing dgspec.json
+	// This ensures we use the exact same path dotnet used
+	runtimeIDPath := extractRuntimeIDPathFromDgSpec(proj.Path)
+	if runtimeIDPath == "" {
+		// Fallback to detection if dgspec doesn't exist
+		runtimeIDPath = detectRuntimeIDGraphPath()
+	}
+
 	return &DgSpecConfig{
 		PackagesPath:  packagesPath,
 		Sources:       allSources,
 		ConfigPaths:   configPaths,
-		RuntimeIDPath: detectRuntimeIDGraphPath(),
+		RuntimeIDPath: runtimeIDPath,
 	}, nil
+}
+
+// extractRuntimeIDPathFromDgSpec reads the runtimeIdentifierGraphPath from
+// an existing dgspec.json file that dotnet created. Returns empty string if
+// the file doesn't exist or can't be parsed.
+func extractRuntimeIDPathFromDgSpec(projectPath string) string {
+	// Construct dgspec.json path: {projectDir}/obj/{projectFileName}.nuget.dgspec.json
+	projectDir := filepath.Dir(projectPath)
+	projectFileName := filepath.Base(projectPath)
+	dgspecPath := filepath.Join(projectDir, "obj", projectFileName+".nuget.dgspec.json")
+
+	// Read the file
+	data, err := os.ReadFile(dgspecPath)
+	if err != nil {
+		return "" // File doesn't exist or can't be read
+	}
+
+	// Parse JSON to extract runtimeIdentifierGraphPath
+	// Structure: {"projects": {"<projectPath>": {"frameworks": {"<tfm>": {"runtimeIdentifierGraphPath": "..."}}}}}
+	var dgspec map[string]interface{}
+	if err := json.Unmarshal(data, &dgspec); err != nil {
+		return ""
+	}
+
+	projects, ok := dgspec["projects"].(map[string]interface{})
+	if !ok {
+		return ""
+	}
+
+	// Get the project entry (should be only one, but we take the first)
+	for _, projectData := range projects {
+		projectMap, ok := projectData.(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		frameworks, ok := projectMap["frameworks"].(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		// Get first framework entry
+		for _, frameworkData := range frameworks {
+			frameworkMap, ok := frameworkData.(map[string]interface{})
+			if !ok {
+				continue
+			}
+
+			if ridPath, ok := frameworkMap["runtimeIdentifierGraphPath"].(string); ok {
+				return ridPath
+			}
+		}
+	}
+
+	return ""
 }
