@@ -798,3 +798,74 @@ type GetDgSpecHashResponse struct {
 	// DgSpecJSON is the dgspec.json file content for comparison (hashing: false).
 	DgSpecJSON string `json:"dgSpecJson"`
 }
+
+// RestoreTransitiveRequest represents a request to restore with transitive resolution.
+type RestoreTransitiveRequest struct {
+	ProjectPath    string   `json:"projectPath"`
+	PackagesFolder string   `json:"packagesFolder"`
+	Sources        []string `json:"sources"`
+	NoCache        bool     `json:"noCache"`
+	Force          bool     `json:"force"`
+}
+
+// RestoreTransitiveResponse contains the results with direct vs transitive categorization.
+type RestoreTransitiveResponse struct {
+	Success             bool                      `json:"success"`
+	DirectPackages      []RestoredPackageInfo     `json:"directPackages"`
+	TransitivePackages  []RestoredPackageInfo     `json:"transitivePackages"`
+	UnresolvedPackages  []UnresolvedPackage       `json:"unresolvedPackages"`
+	LockFilePath        string                    `json:"lockFilePath"`
+	ElapsedMs           int64                     `json:"elapsedMs"`
+	ErrorMessages       []string                  `json:"errorMessages"`
+}
+
+// RestoredPackageInfo represents a successfully resolved package with path and categorization.
+type RestoredPackageInfo struct {
+	PackageID string `json:"packageId"`
+	Version   string `json:"version"`
+	Path      string `json:"path"`
+	IsDirect  bool   `json:"isDirect"`
+}
+
+// UnresolvedPackage represents a package that could not be resolved.
+type UnresolvedPackage struct {
+	PackageID         string   `json:"packageId"`
+	VersionRange      string   `json:"versionRange"`
+	TargetFramework   string   `json:"targetFramework"`
+	ErrorCode         string   `json:"errorCode"`
+	Message           string   `json:"message"`
+	Sources           []string `json:"sources"`
+	AvailableVersions []string `json:"availableVersions"`
+	NearestVersion    string   `json:"nearestVersion"`
+}
+
+// CompareProjectAssetsRequest represents a request to compare lock files.
+type CompareProjectAssetsRequest struct {
+	GonugetLockFilePath string `json:"gonugetLockFilePath"`
+	NugetLockFilePath   string `json:"nugetLockFilePath"`
+}
+
+// CompareProjectAssetsResponse contains the comparison results.
+type CompareProjectAssetsResponse struct {
+	AreEqual                        bool     `json:"areEqual"`
+	LibrariesMatch                  bool     `json:"librariesMatch"`
+	ProjectFileDependencyGroupsMatch bool     `json:"projectFileDependencyGroupsMatch"`
+	VersionsMatch                   bool     `json:"versionsMatch"`
+	PathsMatch                      bool     `json:"pathsMatch"`
+	Differences                     []string `json:"differences"`
+}
+
+// ValidateErrorMessagesRequest represents a request to validate error messages.
+type ValidateErrorMessagesRequest struct {
+	GonugetError string `json:"gonugetError"`
+	NugetError   string `json:"nugetError"`
+}
+
+// ValidateErrorMessagesResponse contains the validation results.
+type ValidateErrorMessagesResponse struct {
+	ErrorCode         string   `json:"errorCode"`
+	GonugetMessage    string   `json:"gonugetMessage"`
+	NuGetClientMessage string   `json:"nuGetClientMessage"`
+	Match             bool     `json:"match"`
+	Differences       []string `json:"differences"`
+}

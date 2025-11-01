@@ -227,9 +227,15 @@ fullRestore:
 	allResolvedPackages := make(map[string]*resolver.PackageDependencyInfo)
 	unresolvedPackages := make([]*resolver.GraphNode, 0)
 
-	// Track direct package ID+version combinations (key format: "packageid|version")
-	// This is used to properly categorize packages when multiple versions of same ID exist
-	directPackageKeys := make(map[string]bool)
+	// Track direct package IDs (normalized to lowercase)
+	// Matches cache hit path behavior: categorize by package ID, not ID+version
+	// This ensures packages are categorized as direct if they're explicitly referenced in .csproj,
+	// regardless of which version gets resolved (e.g., direct ref to 13.0.1 that resolves to 13.0.3)
+	directPackageIDs := make(map[string]bool)
+	for _, pkgRef := range packageRefs {
+		normalizedID := strings.ToLower(pkgRef.Include)
+		directPackageIDs[normalizedID] = true
+	}
 
 	// Diagnostic: Start resolution trace
 	isDiagnostic = r.opts.Verbosity == "diagnostic" || r.opts.Verbosity == "diag"
@@ -237,7 +243,7 @@ fullRestore:
 		r.console.Printf("\nResolving dependencies for %s:\n", targetFrameworkStr)
 	}
 
-	// Phase 1: Walk dependency graph for each direct dependency
+	// Phase 1: Validate all package versions exist, then resolve dependency graph
 	// Start timing dependency resolution
 	resolutionStart := time.Now()
 
@@ -245,13 +251,11 @@ fullRestore:
 	// Matches NuGet.Client's LocalLibraryProviders approach (RestoreCommand.cs line 2037-2056)
 	localProvider := NewLocalDependencyProvider(packagesFolder)
 
-	// Create dependency walker with local-first metadata client
-	// Matches NuGet.Client's RemoteWalkContext with LocalLibraryProviders + RemoteLibraryProviders
-	walker, err := r.createLocalFirstWalker(localProvider, targetFramework)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create dependency walker: %w", err)
-	}
+	// Build list of package dependencies for multi-root resolution
+	// This ensures all direct references are resolved together with proper conflict detection
+	packageDependencies := make([]resolver.PackageDependency, 0, len(packageRefs))
 
+	// First pass: Validate all package versions exist (early failure optimization)
 	for _, pkgRef := range packageRefs {
 		// Use version as-is from PackageReference
 		// ParseVersionRange will handle conversion correctly:
@@ -314,52 +318,50 @@ fullRestore:
 			return result, fmt.Errorf("restore failed due to package version not found")
 		}
 
-		// Walk dependency graph (matches RemoteDependencyWalker.WalkAsync line 28)
-		pkgResolutionStart := time.Now()
-		graphNode, err := walker.Walk(
-			ctx,
-			pkgRef.Include,
-			versionRange,
-			targetFrameworkStr,
-			true, // recursive=true for transitive resolution
-		)
-		pkgResolutionDuration := time.Since(pkgResolutionStart)
+		// Add to package dependencies list for multi-root resolution
+		packageDependencies = append(packageDependencies, resolver.PackageDependency{
+			ID:           pkgRef.Include,
+			VersionRange: versionRange,
+		})
+	}
 
-		// Record per-package resolution timing
-		if isDiagnostic && result.PerformanceTiming != nil {
-			result.PerformanceTiming.ResolutionTimings[pkgRef.Include] = pkgResolutionDuration
-		}
+	// Phase 2: Resolve all dependencies together using multi-root resolution
+	// This ensures conflicts between different package trees are properly detected and resolved
+	// Matches NuGet.Client's approach of creating a synthetic project root
 
-		if err != nil {
-			return nil, fmt.Errorf("failed to walk dependencies for %s: %w", pkgRef.Include, err)
-		}
+	// Create metadata client for resolver
+	metadataClient, err := r.createLocalFirstMetadataClient(localProvider, targetFramework)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create metadata client: %w", err)
+	}
 
-		// Track this as a direct dependency (the root node from walker.Walk)
-		if graphNode != nil && graphNode.Item != nil {
-			key := fmt.Sprintf("%s|%s", strings.ToLower(graphNode.Item.ID), graphNode.Item.Version)
-			directPackageKeys[key] = true
-		}
+	// Create resolver with conflict detection and resolution
+	res := resolver.NewResolver(metadataClient, r.opts.Sources, targetFrameworkStr)
+	transitiveResolver := resolver.NewTransitiveResolver(res)
 
-		// Diagnostic: Show selected version and dependencies
-		if isDiagnostic && graphNode != nil && graphNode.Item != nil {
-			r.console.Printf("    Selected: %s (highest matching)\n", graphNode.Item.Version)
-			r.console.Printf("    Framework: compatible with %s\n", targetFrameworkStr)
+	// Resolve all dependencies together (creates synthetic project root internally)
+	resolutionResult, err := transitiveResolver.ResolveMultipleRoots(ctx, packageDependencies)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve dependencies: %w", err)
+	}
 
-			// Show dependencies for this package
-			deps := r.getDependenciesForFramework(graphNode.Item, targetFrameworkStr)
-			if len(deps) > 0 {
-				r.console.Printf("    Dependencies:\n")
-				for _, dep := range deps {
-					r.console.Printf("      → %s %s\n", dep.ID, dep.VersionRange)
-				}
+	// Extract resolved packages from resolution result
+	// The resolver has already applied conflict resolution (nearest wins)
+	for _, pkg := range resolutionResult.Packages {
+		key := pkg.Key()
+		allResolvedPackages[key] = pkg
+	}
+
+	// Handle unresolved packages (packages that couldn't be found)
+	// These will be reported as NU1101 errors
+	for _, pkg := range resolutionResult.Packages {
+		if pkg.IsUnresolved {
+			// Create synthetic graph node for unresolved package (needed for error reporting)
+			unresolvedNode := &resolver.GraphNode{
+				Key:  pkg.Key(),
+				Item: pkg,
 			}
-			r.console.Printf("\n")
-		}
-
-		// Collect all packages from graph (breadth-first)
-		// Matches NuGet.Client: collect both resolved and unresolved packages
-		if err := r.collectPackagesFromGraph(graphNode, allResolvedPackages, &unresolvedPackages); err != nil {
-			return nil, err
+			unresolvedPackages = append(unresolvedPackages, unresolvedNode)
 		}
 	}
 
@@ -373,6 +375,18 @@ fullRestore:
 		directCount := len(packageRefs)
 		transitiveCount := max(0, len(allResolvedPackages)-directCount) // Safety check
 		r.tracer.TraceDependencyGraph(directCount, transitiveCount)
+	}
+
+	// Get downgrades from resolution result
+	// TransitiveResolver has already detected downgrades during conflict resolution
+	// Matches NuGet.Client: RestoreCommand.GetDowngradeErrors (line 985-1029)
+	// NU1605 is treated as error by default (in warnAsError)
+	downgrades := resolutionResult.Downgrades
+
+	// If downgrades detected, fail restore with NU1605 errors
+	if len(downgrades) > 0 {
+		result.Errors = r.buildDowngradeErrors(downgrades, proj.Path)
+		return result, fmt.Errorf("restore failed due to package downgrades")
 	}
 
 	// Check for unresolved packages and fail restore if any found
@@ -423,14 +437,14 @@ fullRestore:
 	}
 
 	// Phase 3: Categorize packages as direct vs transitive
-	// Use directPackageKeys that was built during resolution (tracks ID+version, not just ID)
+	// Check if package ID (not ID+version) is in directPackageIDs
+	// This matches NuGet.Client behavior and cache hit path
 	for _, pkgInfo := range allResolvedPackages {
 		normalizedID := strings.ToLower(pkgInfo.ID)
 		packagePath := filepath.Join(packagesFolder, normalizedID, pkgInfo.Version)
 
-		// Check if this specific package ID+version is direct
-		key := fmt.Sprintf("%s|%s", normalizedID, pkgInfo.Version)
-		isDirect := directPackageKeys[key]
+		// Check if this package ID was directly referenced in project file
+		isDirect := directPackageIDs[normalizedID]
 
 		info := PackageInfo{
 			ID:       pkgInfo.ID,
@@ -489,47 +503,4 @@ fullRestore:
 	}
 
 	return result, nil
-}
-
-// collectPackagesFromGraph traverses graph and collects resolved and unresolved packages.
-// Matches NuGet.Client's graph flattening in BuildAssetsFile.
-func (r *Restorer) collectPackagesFromGraph(
-	node *resolver.GraphNode,
-	collected map[string]*resolver.PackageDependencyInfo,
-	unresolved *[]*resolver.GraphNode,
-) error {
-	if node == nil || node.Item == nil {
-		return nil
-	}
-
-	key := node.Key
-
-	// Collect unresolved packages separately
-	if node.Item.IsUnresolved {
-		// Add to unresolved list (avoid duplicates)
-		alreadyCollected := false
-		for _, u := range *unresolved {
-			if u.Key == key {
-				alreadyCollected = true
-				break
-			}
-		}
-		if !alreadyCollected {
-			*unresolved = append(*unresolved, node)
-		}
-	} else {
-		// Add resolved package
-		if _, exists := collected[key]; !exists {
-			collected[key] = node.Item
-		}
-	}
-
-	// Recursively collect children (depth-first)
-	for _, child := range node.InnerNodes {
-		if err := r.collectPackagesFromGraph(child, collected, unresolved); err != nil {
-			return err
-		}
-	}
-
-	return nil
 }

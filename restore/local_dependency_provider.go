@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/willibrandon/gonuget/core/resolver"
+	"github.com/willibrandon/gonuget/frameworks"
 	"github.com/willibrandon/gonuget/packaging"
 	"github.com/willibrandon/gonuget/version"
 )
@@ -154,7 +155,10 @@ func (p *LocalDependencyProvider) extractAllDependencyGroups(
 
 		// Set target framework string (empty for "any" framework)
 		if parsedGroup.TargetFramework != nil {
-			group.TargetFramework = parsedGroup.TargetFramework.String()
+			// Get short folder name (TFM format) instead of full framework name
+			// This matches what we get from V3 API after normalization
+			provider := frameworks.DefaultFrameworkNameProvider()
+			group.TargetFramework = parsedGroup.TargetFramework.GetShortFolderName(provider)
 		}
 
 		// Convert dependencies

@@ -318,6 +318,57 @@ func Run(ctx context.Context, args []string, opts *Options, console Console) err
 	return nil
 }
 
+// RunWithResult executes the restore operation and returns detailed results.
+// This is used by interop tests to validate direct vs transitive package categorization.
+func RunWithResult(ctx context.Context, args []string, opts *Options, console Console) (*Result, error) {
+	// 1. Find project file
+	projectPath, err := findProjectFile(args)
+	if err != nil {
+		return nil, err
+	}
+
+	// 2. Load project
+	proj, err := project.LoadProject(projectPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load project: %w", err)
+	}
+
+	// 3. Get package references
+	packageRefs := proj.GetPackageReferences()
+
+	if len(packageRefs) == 0 {
+		// Return empty result for projects with no packages
+		return &Result{
+			DirectPackages:     []PackageInfo{},
+			TransitivePackages: []PackageInfo{},
+			CacheHit:           false,
+			Errors:             []*NuGetError{},
+		}, nil
+	}
+
+	// 4. Create restorer and execute restore
+	restorer := NewRestorer(opts, console)
+	result, err := restorer.Restore(ctx, proj, packageRefs)
+
+	// 5. Generate lock file (project.assets.json) - even on error for partial results
+	if result != nil && !result.CacheHit {
+		lockFile := NewLockFileBuilder().Build(proj, result)
+		objDir := filepath.Join(filepath.Dir(proj.Path), "obj")
+		assetsPath := filepath.Join(objDir, "project.assets.json")
+
+		if saveErr := lockFile.Save(assetsPath); saveErr != nil {
+			// If we already have an error, append the save error to the message
+			if err != nil {
+				return result, fmt.Errorf("%w; additionally failed to save project.assets.json: %v", err, saveErr)
+			}
+			return result, fmt.Errorf("failed to save project.assets.json: %w", saveErr)
+		}
+	}
+
+	// Return result even on error (it may contain partial results and errors)
+	return result, err
+}
+
 func findProjectFile(args []string) (string, error) {
 	var projectPath string
 	var err error

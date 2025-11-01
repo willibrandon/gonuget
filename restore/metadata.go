@@ -9,26 +9,20 @@ import (
 	"github.com/willibrandon/gonuget/frameworks"
 )
 
-// createLocalFirstWalker creates a dependency walker that checks local cache first before HTTP.
+// createLocalFirstMetadataClient creates a metadata client that checks local cache first before HTTP.
+// Returns a resolver.PackageMetadataClient for use with Resolver/TransitiveResolver.
 // Matches NuGet.Client's provider list prioritization: LocalLibraryProviders -> RemoteLibraryProviders
-func (r *Restorer) createLocalFirstWalker(
+func (r *Restorer) createLocalFirstMetadataClient(
 	localProvider *LocalDependencyProvider,
 	targetFramework *frameworks.NuGetFramework,
-) (*resolver.DependencyWalker, error) {
-	// Wrap with local-first metadata client
+) (resolver.PackageMetadataClient, error) {
+	// Create local-first metadata client
 	// Remote metadata client is created lazily only when needed (when local provider returns nil)
-	localFirstClient := &localFirstMetadataClient{
+	return &localFirstMetadataClient{
 		localProvider:   localProvider,
 		restorer:        r,
 		targetFramework: targetFramework,
-	}
-
-	// Create walker with local-first client
-	return resolver.NewDependencyWalker(
-		localFirstClient,
-		r.opts.Sources,
-		targetFramework.String(),
-	), nil
+	}, nil
 }
 
 // getRemoteMetadataClient creates a metadata client that implements resolver.PackageMetadataClient.
@@ -37,29 +31,6 @@ func (r *Restorer) getRemoteMetadataClient() (resolver.PackageMetadataClient, er
 	// Use the client's new CreateMetadataClient method
 	// This creates the efficient V3 metadata adapter that fetches all versions in a single HTTP call
 	return r.client.CreateMetadataClient(r.opts.Sources)
-}
-
-// getDependenciesForFramework extracts dependencies for a specific target framework.
-// This helper is used for diagnostic output to show which dependencies are active for the resolved package.
-// Returns the dependencies from the matching dependency group, or the first group if no exact match.
-func (r *Restorer) getDependenciesForFramework(info *resolver.PackageDependencyInfo, framework string) []resolver.PackageDependency {
-	if info == nil {
-		return nil
-	}
-
-	// Find matching dependency group for the target framework
-	for _, group := range info.DependencyGroups {
-		if group.TargetFramework == framework {
-			return group.Dependencies
-		}
-	}
-
-	// Fallback: return first group if no exact match (shouldn't normally happen)
-	if len(info.DependencyGroups) > 0 {
-		return info.DependencyGroups[0].Dependencies
-	}
-
-	return nil
 }
 
 // localFirstMetadataClient implements resolver.PackageMetadataClient.

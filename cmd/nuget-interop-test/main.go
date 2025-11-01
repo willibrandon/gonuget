@@ -137,6 +137,12 @@ func main() {
 		handler = &ParseLockFileHandler{}
 	case "restore_direct_dependencies":
 		handler = &RestoreDirectDependenciesHandler{}
+	case "restore_transitive":
+		handler = &RestoreTransitiveHandler{}
+	case "compare_project_assets":
+		handler = &CompareProjectAssetsHandler{}
+	case "validate_error_messages":
+		handler = &ValidateErrorMessagesHandler{}
 
 	default:
 		sendError("ACT_001", "Unknown action", fmt.Sprintf("action=%s", req.Action))

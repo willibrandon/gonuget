@@ -392,8 +392,11 @@ func (a *clientMetadataAdapter) getPackageMetadataV3(ctx context.Context, provid
 
 				// Convert dependency groups
 				for _, v3Group := range leaf.CatalogEntry.DependencyGroups {
+					// Normalize framework name from V3 format (".NETStandard2.0") to TFM format ("netstandard2.0")
+					normalizedFw := frameworks.NormalizeFrameworkName(v3Group.TargetFramework)
+
 					group := resolver.DependencyGroup{
-						TargetFramework: v3Group.TargetFramework,
+						TargetFramework: normalizedFw,
 						Dependencies:    make([]resolver.PackageDependency, 0, len(v3Group.Dependencies)),
 					}
 

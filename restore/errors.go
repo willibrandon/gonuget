@@ -68,6 +68,9 @@ const (
 
 	// NU1103: Unable to download package
 	ErrorCodePackageDownloadFailed = "NU1103"
+
+	// NU1605: Detected package downgrade
+	ErrorCodePackageDowngrade = "NU1605"
 )
 
 // VersionInfo holds version information for NU1102 errors.
@@ -299,6 +302,42 @@ func (r *Restorer) buildUnresolvedError(ctx context.Context, unresolvedNodes []*
 			)
 			errors = append(errors, err)
 		}
+	}
+
+	return errors
+}
+
+// buildDowngradeErrors converts downgrade warnings into NU1605 errors.
+// Matches NuGet.Client's RestoreCommand.GetDowngradeErrors behavior.
+func (r *Restorer) buildDowngradeErrors(downgrades []resolver.DowngradeWarning, projectPath string) []*NuGetError {
+	if len(downgrades) == 0 {
+		return nil
+	}
+
+	errors := make([]*NuGetError, 0, len(downgrades))
+	for _, downgrade := range downgrades {
+		// Format message to match NuGet.Client:
+		// "Detected package downgrade: PackageID from CurrentVersion to TargetVersion.
+		//  Reference the package directly from the project to select a different version."
+		message := fmt.Sprintf("Detected package downgrade: %s from %s to %s. Reference the package directly from the project to select a different version",
+			downgrade.PackageID,
+			downgrade.CurrentVersion,
+			downgrade.TargetVersion)
+
+		// Add path information if available (shows dependency chain)
+		if len(downgrade.Path) > 0 {
+			// Format: " project -> PackageA 1.0.0 -> PackageB (>= 2.0.0)"
+			pathStr := strings.Join(downgrade.Path, " -> ")
+			message = fmt.Sprintf("%s. \n %s", message, pathStr)
+		}
+
+		err := &NuGetError{
+			Code:        ErrorCodePackageDowngrade,
+			Message:     message,
+			ProjectPath: projectPath,
+			PackageID:   downgrade.PackageID,
+		}
+		errors = append(errors, err)
 	}
 
 	return errors

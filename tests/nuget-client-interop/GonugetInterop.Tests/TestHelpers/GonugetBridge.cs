@@ -821,6 +821,84 @@ public static class GonugetBridge
         return Execute<RestoreDirectDependenciesResponse>(request);
     }
 
+    /// <summary>
+    /// Restores a project with full transitive dependency resolution and categorization.
+    /// </summary>
+    /// <param name="projectPath">Absolute path to .csproj file</param>
+    /// <param name="packagesFolder">Optional custom packages folder path</param>
+    /// <param name="sources">Optional list of package sources</param>
+    /// <param name="noCache">Disable cache usage</param>
+    /// <param name="force">Force re-download of packages</param>
+    /// <returns>Restore result with direct and transitive packages categorized</returns>
+    public static RestoreTransitiveResponse RestoreTransitive(
+        string projectPath,
+        string? packagesFolder = null,
+        string[]? sources = null,
+        bool noCache = false,
+        bool force = false)
+    {
+        var request = new
+        {
+            action = "restore_transitive",
+            data = new
+            {
+                projectPath,
+                packagesFolder,
+                sources = sources ?? Array.Empty<string>(),
+                noCache,
+                force
+            }
+        };
+
+        return Execute<RestoreTransitiveResponse>(request);
+    }
+
+    /// <summary>
+    /// Compares two project.assets.json files semantically (gonuget vs NuGet.Client).
+    /// </summary>
+    /// <param name="gonugetLockFilePath">Path to gonuget-generated project.assets.json</param>
+    /// <param name="nugetLockFilePath">Path to NuGet.Client-generated project.assets.json</param>
+    /// <returns>Comparison result with detailed differences if files don't match</returns>
+    public static CompareProjectAssetsResponse CompareProjectAssets(
+        string gonugetLockFilePath,
+        string nugetLockFilePath)
+    {
+        var request = new
+        {
+            action = "compare_project_assets",
+            data = new
+            {
+                gonugetLockFilePath,
+                nugetLockFilePath
+            }
+        };
+
+        return Execute<CompareProjectAssetsResponse>(request);
+    }
+
+    /// <summary>
+    /// Validates error message format between gonuget and NuGet.Client.
+    /// </summary>
+    /// <param name="gonugetError">Error message from gonuget</param>
+    /// <param name="nugetError">Error message from NuGet.Client</param>
+    /// <returns>Validation result with differences if messages don't match</returns>
+    public static ValidateErrorMessagesResponse ValidateErrorMessages(
+        string gonugetError,
+        string nugetError)
+    {
+        var request = new
+        {
+            action = "validate_error_messages",
+            data = new
+            {
+                gonugetError,
+                nugetError
+            }
+        };
+
+        return Execute<ValidateErrorMessagesResponse>(request);
+    }
+
     // Internal response envelope types
     private sealed class ResponseEnvelope
     {

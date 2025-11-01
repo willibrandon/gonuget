@@ -247,7 +247,11 @@ func (n *Nuspec) GetDependencyGroups() ([]ParsedDependencyGroup, error) {
 		var targetFramework *frameworks.NuGetFramework
 
 		if group.TargetFramework != "" {
-			fw, err := frameworks.ParseFramework(group.TargetFramework)
+			// Normalize framework name from nuspec format (".NETStandard2.0") to TFM format ("netstandard2.0")
+			// This handles both V3 API format and .nuspec file format
+			normalizedFw := frameworks.NormalizeFrameworkName(group.TargetFramework)
+
+			fw, err := frameworks.ParseFramework(normalizedFw)
 			if err != nil {
 				// Skip groups with unparseable frameworks instead of failing
 				// Some nuspecs have malformed framework strings (e.g., ".NETFramework4.5" without comma and Version=)
