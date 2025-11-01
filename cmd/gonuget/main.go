@@ -50,23 +50,21 @@ func main() {
 	// Setup version after variables are set
 	cli.SetupVersion()
 
-	// Register commands
+	// Setup custom error handler for verb-first pattern detection
+	commands.SetupCustomErrorHandler(cli.GetRootCommand())
+
+	// Register top-level commands (exceptions to noun-first hierarchy)
 	cli.AddCommand(commands.NewVersionCommand(cli.Console))
 	cli.AddCommand(commands.NewConfigCommand(cli.Console))
-
-	// Register parent "add" command with "source" and "package" subcommands
-	// This matches the dotnet structure where "dotnet add" has subcommands
-	cli.AddCommand(commands.NewAddCommand(cli.Console))
-
-	// Register other source management commands
-	cli.AddCommand(commands.NewListCommand(cli.Console))
-	cli.AddCommand(commands.NewRemoveCommand(cli.Console))
-	cli.AddCommand(commands.NewEnableCommand(cli.Console))
-	cli.AddCommand(commands.NewDisableCommand(cli.Console))
-	cli.AddCommand(commands.NewUpdateCommand(cli.Console))
-
-	// Register restore command
 	cli.AddCommand(commands.NewRestoreCommand(cli.Console))
+
+	// Register noun-first parent commands with subcommands
+	// Package namespace: gonuget package add|list|remove|search
+	cli.AddCommand(commands.GetPackageCommand())
+
+	// Source namespace: gonuget source add|list|remove|enable|disable|update
+	cli.AddCommand(commands.GetSourceCommand())
+	commands.RegisterSourceSubcommands(cli.Console)
 
 	// Handle signals for graceful shutdown
 	sigChan := make(chan os.Signal, 1)

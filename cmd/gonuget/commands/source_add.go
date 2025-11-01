@@ -10,21 +10,21 @@ import (
 	"github.com/willibrandon/gonuget/cmd/gonuget/output"
 )
 
-// NewAddSourceCommand creates the "add source" subcommand
-func NewAddSourceCommand(console *output.Console) *cobra.Command {
+// NewSourceAddCommand creates the "source add" subcommand
+func NewSourceAddCommand(console *output.Console) *cobra.Command {
 	opts := &sourceOptions{}
 
 	cmd := &cobra.Command{
-		Use:   "source <PACKAGE_SOURCE_PATH>",
-		Short: "Add a NuGet source.",
+		Use:   "add <PACKAGE_SOURCE_PATH>",
+		Short: "Add a NuGet source",
 		Long: `Add a new package source to NuGet.config.
 
 This command matches: dotnet nuget add source <URL>
 
 Examples:
-  gonuget add source https://api.nuget.org/v3/index.json --name "MyFeed"
-  gonuget add source https://pkgs.dev.azure.com/org/_packaging/feed/nuget/v3/index.json --name "Azure" --username user --password pass
-  gonuget add source https://private.feed.com/v3/index.json --name "Private" --store-password-in-clear-text`,
+  gonuget source add https://api.nuget.org/v3/index.json --name "MyFeed"
+  gonuget source add https://pkgs.dev.azure.com/org/_packaging/feed/nuget/v3/index.json --name "Azure" --username user --password pass
+  gonuget source add https://private.feed.com/v3/index.json --name "Private" --store-password-in-clear-text`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			opts.source = args[0]

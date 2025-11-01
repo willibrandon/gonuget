@@ -27,12 +27,12 @@ type AddPackageOptions struct {
 	Interactive      bool
 }
 
-// NewAddPackageCommand creates the 'add package' subcommand.
-func NewAddPackageCommand() *cobra.Command {
+// NewPackageAddCommand creates the 'package add' subcommand.
+func NewPackageAddCommand() *cobra.Command {
 	opts := &AddPackageOptions{}
 
 	cmd := &cobra.Command{
-		Use:   "package <PACKAGE_ID>",
+		Use:   "add <PACKAGE_ID>",
 		Short: "Add a NuGet package reference to a project file",
 		Long: `Add a NuGet package reference to a project file.
 
@@ -40,10 +40,10 @@ This command adds or updates a package reference in a .NET project file (.csproj
 If no version is specified, the latest stable version is resolved from the package source.
 
 Examples:
-  gonuget add package Newtonsoft.Json
-  gonuget add package Newtonsoft.Json --version 13.0.3
-  gonuget add package Newtonsoft.Json --framework net8.0
-  gonuget add package Newtonsoft.Json --prerelease`,
+  gonuget package add Newtonsoft.Json
+  gonuget package add Newtonsoft.Json --version 13.0.3
+  gonuget package add Newtonsoft.Json --framework net8.0
+  gonuget package add Newtonsoft.Json --prerelease`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			packageID := args[0]
@@ -389,4 +389,12 @@ func resolveLatestVersion(ctx context.Context, packageID string, opts *AddPackag
 		Source:     source,
 		Prerelease: opts.Prerelease,
 	})
+}
+
+// init registers the package add subcommand with the package parent command
+func init() {
+	// Register this subcommand with the package parent
+	// This will be called when the package is initialized
+	packageCmd := GetPackageCommand()
+	packageCmd.AddCommand(NewPackageAddCommand())
 }

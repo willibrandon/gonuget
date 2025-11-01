@@ -1,0 +1,15 @@
+NuGet Command Line dev
+
+Usage: gonuget [options] [command]
+
+Options:
+  -h|--help  Show help information
+  --version  Show version information
+
+Commands:
+  config   NuGet configuration CLI
+  package  Manage package references
+  restore  Restore NuGet packages
+  source   Manage package sources
+
+Use "gonuget [command] --help" for more information about a command.

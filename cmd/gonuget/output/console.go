@@ -52,6 +52,11 @@ func DefaultConsole() *Console {
 	return NewConsole(os.Stdout, os.Stderr, VerbosityNormal)
 }
 
+// NewTestConsole creates a console for testing that discards output
+func NewTestConsole() *Console {
+	return NewConsole(io.Discard, io.Discard, VerbosityNormal)
+}
+
 // SetVerbosity sets the verbosity level
 func (c *Console) SetVerbosity(v Verbosity) {
 	c.mu.Lock()

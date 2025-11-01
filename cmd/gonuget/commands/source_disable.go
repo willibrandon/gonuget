@@ -8,26 +8,23 @@ import (
 	"github.com/willibrandon/gonuget/cmd/gonuget/output"
 )
 
-// NewDisableCommand creates the "disable source" command matching dotnet nuget
-func NewDisableCommand(console *output.Console) *cobra.Command {
+// NewSourceDisableCommand creates the "source disable" command matching dotnet nuget
+func NewSourceDisableCommand(console *output.Console) *cobra.Command {
 	opts := &sourceOptions{}
 
 	cmd := &cobra.Command{
-		Use:   "disable source <name>",
-		Short: "Disable a NuGet source.",
+		Use:   "disable <NAME>",
+		Short: "Disable a NuGet source",
 		Long: `Disable an enabled package source.
 
 This command matches: dotnet nuget disable source
 
 Examples:
-  gonuget disable source "MyFeed"
-  gonuget disable source "Azure" --configfile /path/to/NuGet.config`,
-		Args: cobra.ExactArgs(2),
+  gonuget source disable "MyFeed"
+  gonuget source disable "Azure" --configfile /path/to/NuGet.config`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if args[0] != "source" {
-				return fmt.Errorf("unknown command %q for \"disable\"", args[0])
-			}
-			opts.name = args[1]
+			opts.name = args[0]
 			return runDisableSource(console, opts)
 		},
 	}

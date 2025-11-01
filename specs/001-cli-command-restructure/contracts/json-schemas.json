@@ -1,0 +1,406 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "gonuget CLI JSON Output Schemas",
+  "description": "JSON schema definitions for gonuget CLI commands that support --format json",
+  "version": "1.0.0",
+  "schemas": {
+    "packageList": {
+      "$id": "#/schemas/packageList",
+      "type": "object",
+      "title": "Package List Output Schema",
+      "description": "JSON output for 'gonuget package list --format json'",
+      "required": [
+        "schemaVersion",
+        "project",
+        "framework",
+        "packages",
+        "warnings",
+        "elapsedMs"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "type": "string",
+          "pattern": "^\\d+\\.\\d+\\.\\d+$",
+          "description": "Schema version using semantic versioning (MAJOR.MINOR.PATCH)",
+          "example": "1.0.0"
+        },
+        "project": {
+          "type": "string",
+          "description": "Absolute path to the .NET project file",
+          "example": "/path/to/project/MyApp.csproj"
+        },
+        "framework": {
+          "type": "string",
+          "description": "Target framework moniker (TFM)",
+          "pattern": "^net(\\d+\\.\\d+|\\d+\\.\\d+-[a-z]+\\d+\\.\\d+|standard\\d+\\.\\d+|coreapp\\d+\\.\\d+|framework\\d+\\.\\d+)$",
+          "example": "net8.0"
+        },
+        "packages": {
+          "type": "array",
+          "description": "List of package references",
+          "items": {
+            "$ref": "#/definitions/packageReference"
+          }
+        },
+        "warnings": {
+          "type": "array",
+          "description": "Warning messages (empty array if no warnings)",
+          "items": {
+            "type": "string"
+          },
+          "example": []
+        },
+        "elapsedMs": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Execution time in milliseconds",
+          "example": 42
+        }
+      }
+    },
+    "packageSearch": {
+      "$id": "#/schemas/packageSearch",
+      "type": "object",
+      "title": "Package Search Output Schema",
+      "description": "JSON output for 'gonuget package search <term> --format json'",
+      "required": [
+        "schemaVersion",
+        "searchTerm",
+        "sources",
+        "items",
+        "total",
+        "elapsedMs"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "type": "string",
+          "pattern": "^\\d+\\.\\d+\\.\\d+$",
+          "description": "Schema version using semantic versioning",
+          "example": "1.0.0"
+        },
+        "searchTerm": {
+          "type": "string",
+          "description": "Original search term provided by user",
+          "example": "Serilog"
+        },
+        "sources": {
+          "type": "array",
+          "description": "URLs of package sources that were searched",
+          "items": {
+            "type": "string",
+            "format": "uri"
+          },
+          "example": [
+            "https://api.nuget.org/v3/index.json"
+          ]
+        },
+        "items": {
+          "type": "array",
+          "description": "Search results (may be subset of total)",
+          "items": {
+            "$ref": "#/definitions/searchResult"
+          }
+        },
+        "total": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Total number of matching packages (may exceed items.length)",
+          "example": 147
+        },
+        "elapsedMs": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Execution time in milliseconds",
+          "example": 156
+        }
+      }
+    },
+    "sourceList": {
+      "$id": "#/schemas/sourceList",
+      "type": "object",
+      "title": "Source List Output Schema",
+      "description": "JSON output for 'gonuget source list --format json'",
+      "required": [
+        "schemaVersion",
+        "configFile",
+        "sources",
+        "elapsedMs"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "type": "string",
+          "pattern": "^\\d+\\.\\d+\\.\\d+$",
+          "example": "1.0.0"
+        },
+        "configFile": {
+          "type": "string",
+          "description": "Absolute path to NuGet.config file",
+          "example": "/path/to/project/NuGet.config"
+        },
+        "sources": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/packageSource"
+          }
+        },
+        "elapsedMs": {
+          "type": "integer",
+          "minimum": 0,
+          "example": 8
+        }
+      }
+    }
+  },
+  "definitions": {
+    "packageReference": {
+      "$id": "#/definitions/packageReference",
+      "type": "object",
+      "title": "Package Reference",
+      "description": "A NuGet package reference in a project",
+      "required": [
+        "id",
+        "version",
+        "type",
+        "resolvedVersion"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Package identifier (case-insensitive)",
+          "example": "Newtonsoft.Json"
+        },
+        "version": {
+          "type": "string",
+          "description": "Version constraint from project file",
+          "pattern": "^[\\d\\.]+(-.+)?$",
+          "example": "13.0.3"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "direct",
+            "transitive"
+          ],
+          "description": "Reference type: direct (explicit in .csproj) or transitive (dependency of dependency)"
+        },
+        "resolvedVersion": {
+          "type": "string",
+          "description": "Actual resolved version from package resolution",
+          "pattern": "^[\\d\\.]+(-.+)?$",
+          "example": "13.0.3"
+        },
+        "framework": {
+          "type": "string",
+          "description": "Framework-specific reference (optional)",
+          "example": "net8.0"
+        }
+      }
+    },
+    "searchResult": {
+      "$id": "#/definitions/searchResult",
+      "type": "object",
+      "title": "Package Search Result",
+      "description": "A package matching the search criteria",
+      "required": [
+        "id",
+        "version",
+        "description",
+        "authors"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Package identifier",
+          "example": "Serilog"
+        },
+        "version": {
+          "type": "string",
+          "description": "Latest version (or latest stable if --prerelease not specified)",
+          "example": "3.1.1"
+        },
+        "description": {
+          "type": "string",
+          "description": "Package description from .nuspec",
+          "example": "Simple .NET logging with fully-structured events"
+        },
+        "authors": {
+          "type": "string",
+          "description": "Comma-separated author names",
+          "example": "Serilog Contributors"
+        },
+        "totalDownloads": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Total download count across all versions",
+          "example": 500000000
+        },
+        "verified": {
+          "type": "boolean",
+          "description": "Whether package is verified by NuGet.org",
+          "example": true
+        },
+        "iconUrl": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL to package icon",
+          "example": "https://nuget.org/Content/gallery/img/default-package-icon.svg"
+        },
+        "projectUrl": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL to project homepage",
+          "example": "https://serilog.net"
+        },
+        "tags": {
+          "type": "array",
+          "description": "Package tags for categorization",
+          "items": {
+            "type": "string"
+          },
+          "example": [
+            "logging",
+            "serilog",
+            "structured"
+          ]
+        }
+      }
+    },
+    "packageSource": {
+      "$id": "#/definitions/packageSource",
+      "type": "object",
+      "title": "Package Source",
+      "description": "A NuGet package source configuration",
+      "required": [
+        "name",
+        "source",
+        "enabled"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Source name (unique identifier)",
+          "example": "nuget.org"
+        },
+        "source": {
+          "type": "string",
+          "format": "uri",
+          "description": "Source URL",
+          "example": "https://api.nuget.org/v3/index.json"
+        },
+        "enabled": {
+          "type": "boolean",
+          "description": "Whether source is enabled",
+          "example": true
+        },
+        "protocolVersion": {
+          "type": "string",
+          "enum": [
+            "2",
+            "3"
+          ],
+          "description": "Detected NuGet protocol version",
+          "example": "3"
+        }
+      }
+    }
+  },
+  "examples": [
+    {
+      "name": "packageListExample",
+      "description": "Example output for 'gonuget package list --format json'",
+      "data": {
+        "schemaVersion": "1.0.0",
+        "project": "/path/to/project/MyApp.csproj",
+        "framework": "net8.0",
+        "packages": [
+          {
+            "id": "Newtonsoft.Json",
+            "version": "13.0.3",
+            "type": "direct",
+            "resolvedVersion": "13.0.3"
+          },
+          {
+            "id": "System.Text.Json",
+            "version": "8.0.0",
+            "type": "transitive",
+            "resolvedVersion": "8.0.0"
+          }
+        ],
+        "warnings": [],
+        "elapsedMs": 42
+      }
+    },
+    {
+      "name": "packageSearchExample",
+      "description": "Example output for 'gonuget package search <term> --format json'",
+      "data": {
+        "schemaVersion": "1.0.0",
+        "searchTerm": "Serilog",
+        "sources": [
+          "https://api.nuget.org/v3/index.json"
+        ],
+        "items": [
+          {
+            "id": "Serilog",
+            "version": "3.1.1",
+            "description": "Simple .NET logging with fully-structured events",
+            "authors": "Serilog Contributors",
+            "totalDownloads": 500000000,
+            "verified": true,
+            "projectUrl": "https://serilog.net",
+            "tags": [
+              "logging",
+              "serilog",
+              "structured"
+            ]
+          }
+        ],
+        "total": 147,
+        "elapsedMs": 156
+      }
+    },
+    {
+      "name": "packageSearchEmptyExample",
+      "description": "Example output for search with no results",
+      "data": {
+        "schemaVersion": "1.0.0",
+        "searchTerm": "NonexistentPackage12345",
+        "sources": [
+          "https://api.nuget.org/v3/index.json"
+        ],
+        "items": [],
+        "total": 0,
+        "elapsedMs": 89
+      }
+    },
+    {
+      "name": "sourceListExample",
+      "description": "Example output for 'gonuget source list --format json'",
+      "data": {
+        "schemaVersion": "1.0.0",
+        "configFile": "/path/to/project/NuGet.config",
+        "sources": [
+          {
+            "name": "nuget.org",
+            "source": "https://api.nuget.org/v3/index.json",
+            "enabled": true,
+            "protocolVersion": "3"
+          },
+          {
+            "name": "local-cache",
+            "source": "./packages",
+            "enabled": false,
+            "protocolVersion": "2"
+          }
+        ],
+        "elapsedMs": 8
+      }
+    }
+  ],
+  "notes": {
+    "versioningPolicy": "Schema versions follow semantic versioning (MAJOR.MINOR.PATCH). MAJOR increments for breaking changes (field removal, type change), MINOR for additive changes (new optional fields), PATCH for documentation/clarification only.",
+    "stdoutStderrSeparation": "When --format json is specified, ALL JSON output goes to stdout, ALL human-readable messages (warnings, errors) go to stderr. This allows piping JSON to jq or other tools without contamination.",
+    "emptyResults": "Empty search results return exit code 0 with valid JSON containing empty arrays. This is NOT an error condition - it simply means no packages matched the criteria.",
+    "schemaValidation": "All JSON output MUST validate against these schemas. Unit tests enforce schema compliance for every command that supports --format json."
+  }
+}
