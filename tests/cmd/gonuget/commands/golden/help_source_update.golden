@@ -1,31 +1,25 @@
-Manage NuGet package sources in NuGet.config files.
+Update properties of an existing package source.
 
-This command provides operations for adding, listing, removing, enabling,
-disabling, and updating package sources. All operations modify NuGet.config
-XML files following Microsoft's schema.
-
-Usage:
+This command matches: dotnet nuget update source
 
 Examples:
-  # Add a package source
-  gonuget source add https://api.nuget.org/v3/index.json --name nuget.org
+  gonuget source update MyFeed --source https://new.url/v3/index.json
+  gonuget source update Azure --username newuser --password newpass
+  gonuget source update Private --store-password-in-clear-text
 
-  # List all sources
-  gonuget source list
-
-  # Remove a source
-  gonuget source remove nuget.org
-
-  # Enable/disable a source
-  gonuget source enable nuget.org
-  gonuget source disable nuget.org
-
-  # Update a source
-  gonuget source update nuget.org --source https://new-url.org/v3/index.json
+Usage:
+  gonuget source update <NAME> [flags]
 
 Flags:
-      --configfile string   Path to NuGet.config file
-  -h, --help                help for source
+      --allow-insecure-connections          Allows HTTP connections for adding or updating packages. Note: This method is not secure. For secure options, see https://aka.ms/nuget-https-everywhere for more information.
+      --configfile string                   The NuGet configuration file. If specified, only the settings from this file will be used. If not specified, the hierarchy of configuration files from the current directory will be used.
+  -h, --help                                help for update
+  -p, --password string                     Password to be used when connecting to an authenticated source.
+      --protocol-version string             The NuGet server protocol version to be used. Currently supported versions are 2 and 3. See https://learn.microsoft.com/nuget/api/overview for information about the version 3 protocol. Defaults to 2 if not specified.
+  -s, --source string                       Path to the package source.
+      --store-password-in-clear-text        Enables storing portable package source credentials by disabling password encryption.
+  -u, --username string                     Username to be used when connecting to an authenticated source.
+      --valid-authentication-types string   Comma-separated list of valid authentication types for this source. Set this to basic if the server advertises NTLM or Negotiate and your credentials must be sent using the Basic mechanism, for instance when using a PAT with on-premises Azure DevOps Server. Other valid values include negotiate, kerberos, ntlm, and digest, but these values are unlikely to be useful.
 
 Global Flags:
       --non-interactive    Do not prompt for user input or confirmations

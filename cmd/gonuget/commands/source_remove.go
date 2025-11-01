@@ -22,7 +22,8 @@ This command matches: dotnet nuget remove source
 Examples:
   gonuget source remove "MyFeed"
   gonuget source remove "Azure" --configfile /path/to/NuGet.config`,
-		Args: cobra.ExactArgs(1),
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: completeSourceNames,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			opts.name = args[0]
 			return runRemoveSource(console, opts)
@@ -49,6 +50,10 @@ func runRemoveSource(console *output.Console, opts *sourceOptions) error {
 	if !cfg.RemovePackageSource(opts.name) {
 		return fmt.Errorf("failed to remove source: %s", opts.name)
 	}
+
+	// Remove password from keychain if it exists
+	// Ignore errors - password might not be in keychain (could be cleartext or base64)
+	_ = deletePasswordFromKeychain(opts.name)
 
 	// Save config
 	if err := config.SaveNuGetConfig(configPath, cfg); err != nil {

@@ -13,9 +13,9 @@ import (
 )
 
 func TestNewAddPackageCmd(t *testing.T) {
-	cmd := NewAddPackageCommand()
+	cmd := NewPackageAddCommand()
 	assert.NotNil(t, cmd)
-	assert.Equal(t, "package <PACKAGE_ID>", cmd.Use)
+	assert.Equal(t, "add <PACKAGE_ID>", cmd.Use)
 	assert.Contains(t, cmd.Short, "Add a NuGet package reference")
 
 	// Verify flags are registered
@@ -327,14 +327,14 @@ func TestResolveLatestVersion_InvalidSource(t *testing.T) {
 
 func TestNewAddPackageCmd_ExecuteWithArgs(t *testing.T) {
 	// Test that the command can be executed with args
-	cmd := NewAddPackageCommand()
+	cmd := NewPackageAddCommand()
 
 	// Test with no args - should fail
 	err := cmd.Execute()
 	assert.Error(t, err)
 
 	// Verify the command structure
-	assert.Equal(t, "package <PACKAGE_ID>", cmd.Use)
+	assert.Equal(t, "add <PACKAGE_ID>", cmd.Use)
 	assert.NotEmpty(t, cmd.Long)
 	assert.NotEmpty(t, cmd.Short)
 }

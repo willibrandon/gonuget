@@ -5,8 +5,10 @@ import (
 	"encoding/xml"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/willibrandon/gonuget/cmd/gonuget/config"
+	"github.com/zalando/go-keyring"
 )
 
 // sourceOptions holds common options for all source commands
@@ -31,16 +33,64 @@ func statusString(enabled string) string {
 	return "Disabled"
 }
 
-// encodePassword provides basic password encoding (placeholder for future OS keychain integration)
-func encodePassword(password string) string {
-	// TODO: Use proper encryption with OS keychain in Phase 8
-	// For now, use base64 encoding as placeholder
-	encoded := base64.StdEncoding.EncodeToString([]byte(password))
-	return encoded
+const (
+	keychainService = "gonuget"
+	keychainPrefix  = "keychain:"
+)
+
+// encodePassword stores password in OS keychain (macOS Keychain, Windows Credential Manager, Linux Secret Service)
+// Returns a marker string that references the keychain entry
+func encodePassword(sourceName, password string) (string, error) {
+	// Try to store in OS keychain
+	err := keyring.Set(keychainService, sourceName, password)
+	if err != nil {
+		// Keychain not available - fall back to base64 encoding with warning
+		// This can happen in headless environments, CI/CD, or if user denies access
+		encoded := base64.StdEncoding.EncodeToString([]byte(password))
+		return encoded, fmt.Errorf("keychain unavailable, using base64 encoding (less secure): %w", err)
+	}
+
+	// Return marker indicating password is in keychain
+	return keychainPrefix + sourceName, nil
+}
+
+// decodePassword retrieves password from OS keychain or decodes base64-encoded password
+func decodePassword(sourceName, encodedValue string) (string, error) {
+	// Check if this is a keychain reference
+	if keychainKey, found := strings.CutPrefix(encodedValue, keychainPrefix); found {
+		// Validate that the keychain key matches the expected source name
+		if keychainKey != sourceName {
+			return "", fmt.Errorf("keychain key mismatch: expected %s, got %s", sourceName, keychainKey)
+		}
+		password, err := keyring.Get(keychainService, keychainKey)
+		if err != nil {
+			return "", fmt.Errorf("failed to retrieve password from keychain: %w", err)
+		}
+		return password, nil
+	}
+
+	// Fall back to base64 decoding for legacy/fallback passwords
+	decoded, err := base64.StdEncoding.DecodeString(encodedValue)
+	if err != nil {
+		return "", fmt.Errorf("failed to decode password: %w", err)
+	}
+	return string(decoded), nil
+}
+
+// deletePasswordFromKeychain removes password from OS keychain
+func deletePasswordFromKeychain(sourceName string) error {
+	err := keyring.Delete(keychainService, sourceName)
+	if err != nil && err != keyring.ErrNotFound {
+		return fmt.Errorf("failed to delete password from keychain: %w", err)
+	}
+	return nil
 }
 
 // loadSourceConfig loads a config file or creates a new one, returns config and path
 func loadSourceConfig(configPath string) (*config.NuGetConfig, string, error) {
+	// Track if config path was explicitly provided
+	explicitPath := configPath != ""
+
 	// Determine config path
 	if configPath == "" {
 		configPath = config.FindConfigFile()
@@ -57,9 +107,12 @@ func loadSourceConfig(configPath string) (*config.NuGetConfig, string, error) {
 			return nil, "", fmt.Errorf("failed to load config: %w", err)
 		}
 		return cfg, configPath, nil
+	} else if explicitPath {
+		// If user explicitly specified a config file path and it doesn't exist, return error
+		return nil, "", fmt.Errorf("specified config file does not exist: %s", configPath)
 	}
 
-	// Create new config
+	// Create new config (only when no explicit path was provided)
 	cfg := config.NewDefaultConfig()
 	// Clear default sources for fresh config
 	cfg.PackageSources.Add = nil
@@ -86,10 +139,13 @@ func findSourceByName(cfg *config.NuGetConfig, name string) (*config.PackageSour
 }
 
 // addOrUpdateCredential adds or updates credentials for a source
-func addOrUpdateCredential(cfg *config.NuGetConfig, sourceName string, username, password string, clearText bool, authTypes string) {
+// Returns (warning, error) where warning is non-empty if keychain fallback was used
+func addOrUpdateCredential(cfg *config.NuGetConfig, sourceName string, username, password string, clearText bool, authTypes string) (string, error) {
 	if cfg.PackageSourceCredentials == nil {
 		cfg.PackageSourceCredentials = &config.PackageSourceCredentials{}
 	}
+
+	var warning string
 
 	// Create credential items
 	var items []config.Item
@@ -100,7 +156,12 @@ func addOrUpdateCredential(cfg *config.NuGetConfig, sourceName string, username,
 		if clearText {
 			items = append(items, config.Item{Key: "ClearTextPassword", Value: password})
 		} else {
-			items = append(items, config.Item{Key: "Password", Value: encodePassword(password)})
+			encodedPassword, err := encodePassword(sourceName, password)
+			if err != nil {
+				// err contains warning about keychain fallback
+				warning = err.Error()
+			}
+			items = append(items, config.Item{Key: "Password", Value: encodedPassword})
 		}
 	}
 	if authTypes != "" {
@@ -123,4 +184,6 @@ func addOrUpdateCredential(cfg *config.NuGetConfig, sourceName string, username,
 			Add:     items,
 		})
 	}
+
+	return warning, nil
 }

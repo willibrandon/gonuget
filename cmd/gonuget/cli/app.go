@@ -63,10 +63,10 @@ func customHelpFunc(cmd *cobra.Command, args []string) {
 			usage = cmd.Short
 		}
 		if usage != "" {
-			fmt.Fprintln(out, usage)
-			fmt.Fprintln(out, "")
+			_, _ = fmt.Fprintln(out, usage)
+			_, _ = fmt.Fprintln(out, "")
 		}
-		fmt.Fprint(out, cmd.UsageString())
+		_, _ = fmt.Fprint(out, cmd.UsageString())
 		return
 	}
 
@@ -75,15 +75,15 @@ func customHelpFunc(cmd *cobra.Command, args []string) {
 		version = "dev"
 	}
 
-	fmt.Fprintln(out, "NuGet Command Line "+version)
-	fmt.Fprintln(out, "")
-	fmt.Fprintln(out, "Usage: gonuget [options] [command]")
-	fmt.Fprintln(out, "")
-	fmt.Fprintln(out, "Options:")
-	fmt.Fprintln(out, "  -h|--help  Show help information")
-	fmt.Fprintln(out, "  --version  Show version information")
-	fmt.Fprintln(out, "")
-	fmt.Fprintln(out, "Commands:")
+	_, _ = fmt.Fprintln(out, "NuGet Command Line "+version)
+	_, _ = fmt.Fprintln(out, "")
+	_, _ = fmt.Fprintln(out, "Usage: gonuget [options] [command]")
+	_, _ = fmt.Fprintln(out, "")
+	_, _ = fmt.Fprintln(out, "Options:")
+	_, _ = fmt.Fprintln(out, "  -h|--help  Show help information")
+	_, _ = fmt.Fprintln(out, "  --version  Show version information")
+	_, _ = fmt.Fprintln(out, "")
+	_, _ = fmt.Fprintln(out, "Commands:")
 
 	// Commands to hide from help output (match dotnet nuget behavior)
 	hideCommands := map[string]bool{
@@ -101,11 +101,11 @@ func customHelpFunc(cmd *cobra.Command, args []string) {
 		if short == "" {
 			short = subCmd.Long
 		}
-		fmt.Fprintln(out, "  "+padRight(name, 8)+" "+short)
+		_, _ = fmt.Fprintln(out, "  "+padRight(name, 8)+" "+short)
 	}
 
-	fmt.Fprintln(out, "")
-	fmt.Fprintln(out, "Use \"gonuget [command] --help\" for more information about a command.")
+	_, _ = fmt.Fprintln(out, "")
+	_, _ = fmt.Fprintln(out, "Use \"gonuget [command] --help\" for more information about a command.")
 }
 
 // padRight pads a string to the right with spaces

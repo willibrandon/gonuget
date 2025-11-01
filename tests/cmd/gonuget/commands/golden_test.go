@@ -94,6 +94,7 @@ func init() {
 	cli.AddCommand(commands.NewRestoreCommand(cli.Console))
 	cli.AddCommand(commands.GetPackageCommand())
 	cli.AddCommand(commands.GetSourceCommand())
+	commands.RegisterSourceSubcommands(cli.Console)
 
 	// Setup custom error handler
 	commands.SetupCustomErrorHandler(cli.GetRootCommand())

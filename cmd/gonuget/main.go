@@ -57,6 +57,7 @@ func main() {
 	cli.AddCommand(commands.NewVersionCommand(cli.Console))
 	cli.AddCommand(commands.NewConfigCommand(cli.Console))
 	cli.AddCommand(commands.NewRestoreCommand(cli.Console))
+	cli.AddCommand(commands.NewCompletionCommand())
 
 	// Register noun-first parent commands with subcommands
 	// Package namespace: gonuget package add|list|remove|search
@@ -76,6 +77,64 @@ func main() {
 
 	// Execute CLI
 	if err := cli.Execute(); err != nil {
+		// Check for verb-first patterns in unknown commands
+		args := os.Args[1:]
+		if len(args) >= 2 {
+			// Check if this looks like a verb-first pattern
+			firstArg := strings.ToLower(args[0])
+			secondArg := strings.ToLower(args[1])
+			pattern := firstArg + " " + secondArg
+
+			// Check package namespace patterns
+			if pattern == "add package" {
+				fmt.Fprintf(os.Stderr, "Error: the verb-first form is not supported. Try: gonuget package add\n\nRun 'gonuget --help' for usage.\n")
+				os.Exit(1)
+			}
+			if pattern == "list package" {
+				fmt.Fprintf(os.Stderr, "Error: the verb-first form is not supported. Try: gonuget package list\n\nRun 'gonuget --help' for usage.\n")
+				os.Exit(1)
+			}
+			if pattern == "remove package" {
+				fmt.Fprintf(os.Stderr, "Error: the verb-first form is not supported. Try: gonuget package remove\n\nRun 'gonuget --help' for usage.\n")
+				os.Exit(1)
+			}
+			if pattern == "search package" {
+				fmt.Fprintf(os.Stderr, "Error: the verb-first form is not supported. Try: gonuget package search\n\nRun 'gonuget --help' for usage.\n")
+				os.Exit(1)
+			}
+
+			// Check source namespace patterns
+			if pattern == "add source" {
+				fmt.Fprintf(os.Stderr, "Error: the verb-first form is not supported. Try: gonuget source add\n\nRun 'gonuget --help' for usage.\n")
+				os.Exit(1)
+			}
+			if pattern == "list source" {
+				fmt.Fprintf(os.Stderr, "Error: the verb-first form is not supported. Try: gonuget source list\n\nRun 'gonuget --help' for usage.\n")
+				os.Exit(1)
+			}
+			if pattern == "remove source" {
+				fmt.Fprintf(os.Stderr, "Error: the verb-first form is not supported. Try: gonuget source remove\n\nRun 'gonuget --help' for usage.\n")
+				os.Exit(1)
+			}
+		}
+
+		// Check for top-level verbs that imply source
+		if len(args) >= 1 {
+			firstArg := strings.ToLower(args[0])
+			if firstArg == "enable" {
+				fmt.Fprintf(os.Stderr, "Error: the verb-first form is not supported. Try: gonuget source enable\n\nRun 'gonuget --help' for usage.\n")
+				os.Exit(1)
+			}
+			if firstArg == "disable" {
+				fmt.Fprintf(os.Stderr, "Error: the verb-first form is not supported. Try: gonuget source disable\n\nRun 'gonuget --help' for usage.\n")
+				os.Exit(1)
+			}
+			if firstArg == "update" {
+				fmt.Fprintf(os.Stderr, "Error: the verb-first form is not supported. Try: gonuget source update\n\nRun 'gonuget --help' for usage.\n")
+				os.Exit(1)
+			}
+		}
+
 		// Print error to stderr since SilenceErrors is true in rootCmd
 		// Use os.Stderr directly to ensure error goes to stderr for interop testing
 		// Don't print empty errors (used when NuGet errors are already formatted)

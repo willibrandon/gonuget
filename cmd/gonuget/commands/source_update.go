@@ -85,7 +85,13 @@ func runUpdateSource(console *output.Console, opts *sourceOptions) error {
 		if opts.storePasswordInClearText {
 			console.Warning("WARNING: Storing password in clear text is not secure!")
 		}
-		addOrUpdateCredential(cfg, opts.name, opts.username, opts.password, opts.storePasswordInClearText, opts.validAuthenticationTypes)
+		warning, err := addOrUpdateCredential(cfg, opts.name, opts.username, opts.password, opts.storePasswordInClearText, opts.validAuthenticationTypes)
+		if err != nil {
+			return fmt.Errorf("failed to update credentials: %w", err)
+		}
+		if warning != "" {
+			console.Warning("WARNING: %s", warning)
+		}
 	}
 
 	// Save config

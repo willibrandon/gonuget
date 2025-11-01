@@ -65,7 +65,7 @@ func validateCommand(t *testing.T, cmd *cobra.Command, parent *cobra.Command) {
 		if len(words) > 0 {
 			firstWord := words[0]
 			// Check if it starts with a capital letter (verb)
-			if len(firstWord) > 0 && !(firstWord[0] >= 'A' && firstWord[0] <= 'Z') {
+			if len(firstWord) > 0 && (firstWord[0] < 'A' || firstWord[0] > 'Z') {
 				t.Errorf("POLICY VIOLATION (VR-005): Command '%s' Short description doesn't start with capital verb: '%s'",
 					cmd.Use, cmd.Short)
 			}

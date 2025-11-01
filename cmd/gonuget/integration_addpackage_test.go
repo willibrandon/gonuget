@@ -21,7 +21,7 @@ func TestAddPackage_RealPackage_Latest(t *testing.T) {
 	createBasicProject(t, projectPath)
 
 	// Add package (latest version)
-	stdout := env.runExpectSuccess("add", "package", "Serilog",
+	stdout := env.runExpectSuccess("package", "add", "Serilog",
 		"--project", projectPath)
 
 	// Verify output mentions PackageReference
@@ -63,7 +63,7 @@ func TestAddPackage_RealPackage_SpecificVersion(t *testing.T) {
 	createBasicProject(t, projectPath)
 
 	// Add package with specific version
-	stdout := env.runExpectSuccess("add", "package", "Newtonsoft.Json",
+	stdout := env.runExpectSuccess("package", "add", "Newtonsoft.Json",
 		"--version", "13.0.3",
 		"--project", projectPath)
 
@@ -116,7 +116,7 @@ func TestAddPackage_MultiplePackages(t *testing.T) {
 	}
 
 	for _, pkg := range packages {
-		env.runExpectSuccess("add", "package", pkg.id,
+		env.runExpectSuccess("package", "add", pkg.id,
 			"--version", pkg.version,
 			"--project", projectPath)
 	}
@@ -161,7 +161,7 @@ func TestAddPackage_WithRestore(t *testing.T) {
 	createBasicProject(t, projectPath)
 
 	// Add package (restore happens by default)
-	env.runExpectSuccess("add", "package", "Serilog",
+	env.runExpectSuccess("package", "add", "Serilog",
 		"--version", "3.0.0",
 		"--project", projectPath)
 
@@ -200,7 +200,7 @@ func TestAddPackage_NoRestore_Flag(t *testing.T) {
 	createBasicProject(t, projectPath)
 
 	// Add package with --no-restore
-	stdout := env.runExpectSuccess("add", "package", "Serilog",
+	stdout := env.runExpectSuccess("package", "add", "Serilog",
 		"--version", "3.0.0",
 		"--project", projectPath,
 		"--no-restore")

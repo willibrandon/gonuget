@@ -1,6 +1,9 @@
 package commands
 
 import (
+	"os"
+	"time"
+
 	"github.com/spf13/cobra"
 	"github.com/willibrandon/gonuget/cmd/gonuget/output"
 )
@@ -36,11 +39,37 @@ Examples:
 }
 
 func runListSource(console *output.Console, opts *sourceOptions) error {
-	cfg, _, err := loadSourceConfig(opts.configFile)
+	start := time.Now()
+
+	cfg, configPath, err := loadSourceConfig(opts.configFile)
 	if err != nil {
 		return err
 	}
 
+	// Handle JSON output format (VR-018: JSON to stdout, errors/warnings to stderr)
+	if opts.format == "json" {
+		jsonOutput := output.NewSourceListOutput(configPath, start)
+
+		// Build sources list
+		if cfg.PackageSources != nil && len(cfg.PackageSources.Add) > 0 {
+			for _, source := range cfg.PackageSources.Add {
+				enabled := !cfg.IsSourceDisabled(source.Key)
+				jsonOutput.Sources = append(jsonOutput.Sources, output.PackageSource{
+					Name:    source.Key,
+					Source:  source.Value,
+					Enabled: enabled,
+				})
+			}
+		}
+
+		// Update elapsed time
+		jsonOutput.ElapsedMs = output.MeasureElapsed(start)
+
+		// Write JSON to stdout
+		return output.WriteJSON(os.Stdout, jsonOutput)
+	}
+
+	// Console output format
 	if cfg.PackageSources == nil || len(cfg.PackageSources.Add) == 0 {
 		console.Info("No package sources configured.")
 		return nil
@@ -56,9 +85,7 @@ func runListSource(console *output.Console, opts *sourceOptions) error {
 			status = "Disabled"
 		}
 		console.Info("  %d.  %s [%s]", i+1, source.Key, status)
-		if opts.format == "Detailed" {
-			console.Info("      %s", source.Value)
-		}
+		console.Info("      %s", source.Value)
 	}
 
 	return nil

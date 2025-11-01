@@ -237,7 +237,7 @@ func TestConfigCommand(t *testing.T) {
 	defer env.cleanup()
 
 	// Create a NuGet.config by adding a source first
-	env.runExpectSuccess("add", "source", "https://api.nuget.org/v3/index.json", "--name", "nuget.org")
+	env.runExpectSuccess("source", "add", "https://api.nuget.org/v3/index.json", "--name", "nuget.org")
 
 	t.Run("set and get config value", func(t *testing.T) {
 		// Set a value (use valid config key)
@@ -323,7 +323,7 @@ func TestSourceCommands(t *testing.T) {
 	t.Run("add source", func(t *testing.T) {
 		// Add a source
 		// Matches: dotnet nuget add source https://test.example.com/v3/index.json --name TestFeed
-		stdout := env.runExpectSuccess("add", "source",
+		stdout := env.runExpectSuccess("source", "add",
 			"https://test.example.com/v3/index.json",
 			"--name", "TestFeed")
 
@@ -353,12 +353,12 @@ func TestSourceCommands(t *testing.T) {
 
 	t.Run("list source", func(t *testing.T) {
 		// Add multiple sources
-		env.runExpectSuccess("add", "source", "https://feed1.com/v3/index.json", "--name", "Feed1")
-		env.runExpectSuccess("add", "source", "https://feed2.com/v3/index.json", "--name", "Feed2")
+		env.runExpectSuccess("source", "add", "https://feed1.com/v3/index.json", "--name", "Feed1")
+		env.runExpectSuccess("source", "add", "https://feed2.com/v3/index.json", "--name", "Feed2")
 
 		// List sources
 		// Matches: dotnet nuget list source
-		stdout := env.runExpectSuccess("list", "source")
+		stdout := env.runExpectSuccess("source", "list")
 
 		if !strings.Contains(stdout, "Feed1") {
 			t.Errorf("list source should show Feed1, got: %s", stdout)
@@ -375,30 +375,30 @@ func TestSourceCommands(t *testing.T) {
 
 	t.Run("disable and enable source", func(t *testing.T) {
 		// Add a source
-		env.runExpectSuccess("add", "source", "https://toggle.com/v3/index.json", "--name", "ToggleFeed")
+		env.runExpectSuccess("source", "add", "https://toggle.com/v3/index.json", "--name", "ToggleFeed")
 
 		// Disable it
 		// Matches: dotnet nuget disable source ToggleFeed
-		stdout := env.runExpectSuccess("disable", "source", "ToggleFeed")
+		stdout := env.runExpectSuccess("source", "disable", "ToggleFeed")
 		if !strings.Contains(stdout, "disabled successfully") {
 			t.Errorf("disable should report success, got: %s", stdout)
 		}
 
 		// List should show disabled
-		stdout = env.runExpectSuccess("list", "source")
+		stdout = env.runExpectSuccess("source", "list")
 		if !strings.Contains(stdout, "Disabled") {
 			t.Errorf("list source should show Disabled status, got: %s", stdout)
 		}
 
 		// Enable it
 		// Matches: dotnet nuget enable source ToggleFeed
-		stdout = env.runExpectSuccess("enable", "source", "ToggleFeed")
+		stdout = env.runExpectSuccess("source", "enable", "ToggleFeed")
 		if !strings.Contains(stdout, "enabled successfully") {
 			t.Errorf("enable should report success, got: %s", stdout)
 		}
 
 		// List should show enabled
-		stdout = env.runExpectSuccess("list", "source")
+		stdout = env.runExpectSuccess("source", "list")
 		if !strings.Contains(stdout, "Enabled") {
 			t.Errorf("list source should show Enabled status, got: %s", stdout)
 		}
@@ -406,11 +406,11 @@ func TestSourceCommands(t *testing.T) {
 
 	t.Run("update source", func(t *testing.T) {
 		// Add a source
-		env.runExpectSuccess("add", "source", "https://old.com/v3/index.json", "--name", "UpdateFeed")
+		env.runExpectSuccess("source", "add", "https://old.com/v3/index.json", "--name", "UpdateFeed")
 
 		// Update it
 		// Matches: dotnet nuget update source UpdateFeed --source https://new.com/v3/index.json
-		stdout := env.runExpectSuccess("update", "source", "UpdateFeed",
+		stdout := env.runExpectSuccess("source", "update", "UpdateFeed",
 			"--source", "https://new.com/v3/index.json")
 
 		if !strings.Contains(stdout, "updated successfully") {
@@ -418,7 +418,7 @@ func TestSourceCommands(t *testing.T) {
 		}
 
 		// Verify new URL
-		stdout = env.runExpectSuccess("list", "source")
+		stdout = env.runExpectSuccess("source", "list")
 		if !strings.Contains(stdout, "https://new.com/v3/index.json") {
 			t.Errorf("list source should show updated URL, got: %s", stdout)
 		}
@@ -430,17 +430,17 @@ func TestSourceCommands(t *testing.T) {
 
 	t.Run("remove source", func(t *testing.T) {
 		// Add a source
-		env.runExpectSuccess("add", "source", "https://remove.com/v3/index.json", "--name", "RemoveFeed")
+		env.runExpectSuccess("source", "add", "https://remove.com/v3/index.json", "--name", "RemoveFeed")
 
 		// Remove it
 		// Matches: dotnet nuget remove source RemoveFeed
-		stdout := env.runExpectSuccess("remove", "source", "RemoveFeed")
+		stdout := env.runExpectSuccess("source", "remove", "RemoveFeed")
 		if !strings.Contains(stdout, "removed successfully") {
 			t.Errorf("remove should report success, got: %s", stdout)
 		}
 
 		// Verify it's gone
-		stdout = env.runExpectSuccess("list", "source")
+		stdout = env.runExpectSuccess("source", "list")
 		if strings.Contains(stdout, "RemoveFeed") {
 			t.Errorf("list source should not show removed feed, got: %s", stdout)
 		}
@@ -448,20 +448,20 @@ func TestSourceCommands(t *testing.T) {
 
 	t.Run("error cases", func(t *testing.T) {
 		// Add duplicate source
-		env.runExpectSuccess("add", "source", "https://dup.com/v3/index.json", "--name", "DupFeed")
-		stderr := env.runExpectError("add", "source", "https://dup2.com/v3/index.json", "--name", "DupFeed")
+		env.runExpectSuccess("source", "add", "https://dup.com/v3/index.json", "--name", "DupFeed")
+		stderr := env.runExpectError("source", "add", "https://dup2.com/v3/index.json", "--name", "DupFeed")
 		if !strings.Contains(stderr, "already exists") {
 			t.Errorf("duplicate source should error, got: %s", stderr)
 		}
 
 		// Remove non-existent source
-		stderr = env.runExpectError("remove", "source", "NonExistent")
+		stderr = env.runExpectError("source", "remove", "NonExistent")
 		if !strings.Contains(stderr, "not found") {
 			t.Errorf("remove non-existent should error, got: %s", stderr)
 		}
 
 		// Enable non-existent source
-		stderr = env.runExpectError("enable", "source", "NonExistent")
+		stderr = env.runExpectError("source", "enable", "NonExistent")
 		if !strings.Contains(stderr, "not found") {
 			t.Errorf("enable non-existent should error, got: %s", stderr)
 		}
@@ -489,9 +489,9 @@ func TestHelpCommand(t *testing.T) {
 			t.Errorf("help should list config command, got: %s", stdout)
 		}
 
-		// Should list source commands (add, list, remove, etc.)
-		if !strings.Contains(stdout, "add") || !strings.Contains(stdout, "list") {
-			t.Errorf("help should list add and list commands, got: %s", stdout)
+		// Should list parent commands (package, source, etc.)
+		if !strings.Contains(stdout, "package") || !strings.Contains(stdout, "source") {
+			t.Errorf("help should list package and source commands, got: %s", stdout)
 		}
 	})
 
@@ -526,9 +526,9 @@ func TestEndToEndWorkflow(t *testing.T) {
 
 	// 2. Add multiple package sources (this creates NuGet.config)
 	// Matches: dotnet nuget add source <url> --name <name>
-	env.runExpectSuccess("add", "source", "https://api.nuget.org/v3/index.json", "--name", "nuget.org")
-	env.runExpectSuccess("add", "source", "https://www.myget.org/F/myfeed/api/v3/index.json", "--name", "myget")
-	env.runExpectSuccess("add", "source", "/var/packages", "--name", "local")
+	env.runExpectSuccess("source", "add", "https://api.nuget.org/v3/index.json", "--name", "nuget.org")
+	env.runExpectSuccess("source", "add", "https://www.myget.org/F/myfeed/api/v3/index.json", "--name", "myget")
+	env.runExpectSuccess("source", "add", "/var/packages", "--name", "local")
 
 	// 3. Set configuration
 	// Matches: dotnet nuget config set <key> <value>
@@ -537,18 +537,18 @@ func TestEndToEndWorkflow(t *testing.T) {
 
 	// 4. Disable one source
 	// Matches: dotnet nuget disable source <name>
-	env.runExpectSuccess("disable", "source", "local")
+	env.runExpectSuccess("source", "disable", "local")
 
 	// 5. List sources
 	// Matches: dotnet nuget list source
-	stdout = env.runExpectSuccess("list", "source")
+	stdout = env.runExpectSuccess("source", "list")
 	if !strings.Contains(stdout, "nuget.org") || !strings.Contains(stdout, "myget") {
 		t.Fatal("list source failed")
 	}
 
 	// 6. Update a source
 	// Matches: dotnet nuget update source <name> --source <url>
-	env.runExpectSuccess("update", "source", "myget", "--source", "https://www.myget.org/F/newfeed/api/v3/index.json")
+	env.runExpectSuccess("source", "update", "myget", "--source", "https://www.myget.org/F/newfeed/api/v3/index.json")
 
 	// 7. List config values
 	// Matches: dotnet nuget config get all
@@ -566,10 +566,10 @@ func TestEndToEndWorkflow(t *testing.T) {
 
 	// 9. Remove a source
 	// Matches: dotnet nuget remove source <name>
-	env.runExpectSuccess("remove", "source", "local")
+	env.runExpectSuccess("source", "remove", "local")
 
 	// 10. Verify final state
-	stdout = env.runExpectSuccess("list", "source")
+	stdout = env.runExpectSuccess("source", "list")
 	if strings.Contains(stdout, "local") {
 		t.Fatal("source removal failed")
 	}

@@ -9,6 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/willibrandon/gonuget/cmd/gonuget/config"
+	"github.com/willibrandon/gonuget/cmd/gonuget/output"
 	"github.com/willibrandon/gonuget/core"
 )
 
@@ -57,6 +58,8 @@ Examples:
 
 // runPackageSearch implements the package search command logic.
 func runPackageSearch(ctx context.Context, searchTerm string, opts *PackageSearchOptions) error {
+	start := time.Now()
+
 	// Create a client with timeout
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
@@ -77,6 +80,9 @@ func runPackageSearch(ctx context.Context, searchTerm string, opts *PackageSearc
 			return fmt.Errorf("no package sources configured")
 		}
 	}
+
+	// Track sources for JSON output
+	searchedSources := []string{source}
 
 	// Create NuGet client with repository manager
 	repoManager := core.NewRepositoryManager()
@@ -114,7 +120,7 @@ func runPackageSearch(ctx context.Context, searchTerm string, opts *PackageSearc
 
 	// Output based on format
 	if opts.Format == "json" {
-		return outputSearchResultsJSON(allResults)
+		return outputSearchResultsJSON(searchTerm, searchedSources, allResults, start)
 	}
 
 	return outputSearchResultsConsole(searchTerm, source, allResults)
@@ -144,24 +150,41 @@ func outputSearchResultsConsole(searchTerm, source string, results []core.Search
 	return nil
 }
 
-// outputSearchResultsJSON outputs search results in JSON format
-func outputSearchResultsJSON(results []core.SearchResult) error {
-	fmt.Println("{")
-	fmt.Printf("  \"data\": [\n")
+// outputSearchResultsJSON outputs search results in JSON format matching schema
+func outputSearchResultsJSON(searchTerm string, sources []string, results []core.SearchResult, start time.Time) error {
+	jsonOutput := output.NewPackageSearchOutput(searchTerm, sources, start)
 
-	for i, pkg := range results {
-		comma := ","
-		if i == len(results)-1 {
-			comma = ""
+	// Convert core.SearchResult to output.SearchResult
+	for _, pkg := range results {
+		// Convert authors array to comma-separated string
+		authorsStr := ""
+		if len(pkg.Authors) > 0 {
+			authorsStr = pkg.Authors[0]
+			for i := 1; i < len(pkg.Authors); i++ {
+				authorsStr += ", " + pkg.Authors[i]
+			}
 		}
-		fmt.Printf("    {\"id\": \"%s\", \"version\": \"%s\", \"description\": \"%s\", \"downloads\": %d}%s\n",
-			pkg.ID, pkg.Version, pkg.Description, pkg.TotalDownloads, comma)
+
+		jsonOutput.Items = append(jsonOutput.Items, output.SearchResult{
+			ID:             pkg.ID,
+			Version:        pkg.Version,
+			Description:    pkg.Description,
+			Authors:        authorsStr,
+			TotalDownloads: pkg.TotalDownloads,
+			Verified:       pkg.Verified,
+			IconURL:        pkg.IconURL,
+			Tags:           pkg.Tags,
+		})
 	}
 
-	fmt.Println("  ]")
-	fmt.Println("}")
+	// Set total count (Note: For now, same as items length. In future, this could be total available results)
+	jsonOutput.Total = len(results)
 
-	return nil
+	// Update elapsed time
+	jsonOutput.ElapsedMs = output.MeasureElapsed(start)
+
+	// Write JSON to stdout (VR-019: empty results return exit code 0 with valid JSON)
+	return output.WriteJSON(os.Stdout, jsonOutput)
 }
 
 // init registers the package search subcommand with the package parent command

@@ -4,8 +4,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/spf13/cobra"
+	"github.com/willibrandon/gonuget/cmd/gonuget/output"
 	"github.com/willibrandon/gonuget/cmd/gonuget/project"
 )
 
@@ -49,6 +51,8 @@ Examples:
 
 // runPackageList implements the package list command logic.
 func runPackageList(opts *PackageListOptions) error {
+	start := time.Now()
+
 	// Find the project file
 	projectPath := opts.ProjectPath
 	if projectPath == "" {
@@ -64,6 +68,12 @@ func runPackageList(opts *PackageListOptions) error {
 		projectPath = foundPath
 	}
 
+	// Make path absolute for consistent output
+	absPath, err := filepath.Abs(projectPath)
+	if err != nil {
+		absPath = projectPath
+	}
+
 	// Load the project
 	proj, err := project.LoadProject(projectPath)
 	if err != nil {
@@ -73,9 +83,15 @@ func runPackageList(opts *PackageListOptions) error {
 	// Get package references
 	packageRefs := proj.GetPackageReferences()
 
+	// Get target framework
+	framework := proj.TargetFramework
+	if framework == "" {
+		return fmt.Errorf("project does not specify a TargetFramework")
+	}
+
 	// Output based on format
 	if opts.Format == "json" {
-		return outputPackageListJSON(projectPath, packageRefs)
+		return outputPackageListJSON(absPath, framework, packageRefs, start)
 	}
 
 	return outputPackageListConsole(projectPath, packageRefs)
@@ -102,25 +118,25 @@ func outputPackageListConsole(projectPath string, packageRefs []project.PackageR
 	return nil
 }
 
-// outputPackageListJSON outputs package references in JSON format
-func outputPackageListJSON(projectPath string, packageRefs []project.PackageReference) error {
-	fmt.Println("{")
-	fmt.Printf("  \"projectPath\": \"%s\",\n", projectPath)
-	fmt.Printf("  \"packages\": [\n")
+// outputPackageListJSON outputs package references in JSON format matching schema
+func outputPackageListJSON(projectPath, framework string, packageRefs []project.PackageReference, start time.Time) error {
+	jsonOutput := output.NewPackageListOutput(projectPath, framework, start)
 
-	for i, ref := range packageRefs {
-		comma := ","
-		if i == len(packageRefs)-1 {
-			comma = ""
-		}
-		fmt.Printf("    {\"id\": \"%s\", \"version\": \"%s\"}%s\n",
-			ref.Include, ref.Version, comma)
+	// Convert project.PackageReference to output.PackageReference
+	for _, ref := range packageRefs {
+		jsonOutput.Packages = append(jsonOutput.Packages, output.PackageReference{
+			ID:              ref.Include,
+			Version:         ref.Version,
+			Type:            "direct", // All references from .csproj are direct
+			ResolvedVersion: ref.Version,
+		})
 	}
 
-	fmt.Println("  ]")
-	fmt.Println("}")
+	// Update elapsed time
+	jsonOutput.ElapsedMs = output.MeasureElapsed(start)
 
-	return nil
+	// Write JSON to stdout
+	return output.WriteJSON(os.Stdout, jsonOutput)
 }
 
 // init registers the package list subcommand with the package parent command

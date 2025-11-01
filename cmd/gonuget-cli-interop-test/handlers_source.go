@@ -22,7 +22,7 @@ func (h *ExecuteSourceListHandler) Handle(data json.RawMessage) (any, error) {
 		return nil, fmt.Errorf("parse request: %w", err)
 	}
 
-	// Build dotnet nuget command
+	// Build dotnet nuget command (verb-first: list source)
 	dotnetCmd := "list source"
 	if req.ConfigFile != "" {
 		dotnetCmd += fmt.Sprintf(" --configfile %s", req.ConfigFile)
@@ -31,8 +31,14 @@ func (h *ExecuteSourceListHandler) Handle(data json.RawMessage) (any, error) {
 		dotnetCmd += fmt.Sprintf(" --format %s", req.Format)
 	}
 
-	// Build gonuget command (same structure)
-	gonugetCmd := dotnetCmd
+	// Build gonuget command (noun-first: source list)
+	gonugetCmd := "source list"
+	if req.ConfigFile != "" {
+		gonugetCmd += fmt.Sprintf(" --configfile %s", req.ConfigFile)
+	}
+	if req.Format != "" {
+		gonugetCmd += fmt.Sprintf(" --format %s", req.Format)
+	}
 
 	// Execute both commands
 	dotnetResult, err := ExecuteDotnetNuget(dotnetCmd, req.WorkingDir, "", 30)
@@ -104,8 +110,8 @@ func (h *ExecuteSourceAddHandler) Handle(data json.RawMessage) (any, error) {
 		dotnetCmd += " --allow-insecure-connections"
 	}
 
-	// Build gonuget command (same flags but with copied config)
-	gonugetCmd := fmt.Sprintf("add source %s --name %s", req.Source, req.Name)
+	// Build gonuget command (noun-first: source add, with copied config)
+	gonugetCmd := fmt.Sprintf("source add %s --name %s", req.Source, req.Name)
 	if gonugetConfigPath != "" {
 		gonugetCmd += fmt.Sprintf(" --configfile %s", gonugetConfigPath)
 	}
@@ -176,8 +182,8 @@ func (h *ExecuteSourceRemoveHandler) Handle(data json.RawMessage) (any, error) {
 		dotnetCmd += fmt.Sprintf(" --configfile %s", req.ConfigFile)
 	}
 
-	// Build gonuget command (same structure with copied config)
-	gonugetCmd := fmt.Sprintf("remove source %s", req.Name)
+	// Build gonuget command (noun-first: source remove, with copied config)
+	gonugetCmd := fmt.Sprintf("source remove %s", req.Name)
 	if gonugetConfigPath != "" {
 		gonugetCmd += fmt.Sprintf(" --configfile %s", gonugetConfigPath)
 	}
@@ -223,8 +229,11 @@ func (h *ExecuteSourceEnableHandler) Handle(data json.RawMessage) (any, error) {
 		dotnetCmd += fmt.Sprintf(" --configfile %s", req.ConfigFile)
 	}
 
-	// Build gonuget command (same structure, same config for sequential operations)
-	gonugetCmd := dotnetCmd
+	// Build gonuget command (noun-first: source enable)
+	gonugetCmd := fmt.Sprintf("source enable %s", req.Name)
+	if req.ConfigFile != "" {
+		gonugetCmd += fmt.Sprintf(" --configfile %s", req.ConfigFile)
+	}
 
 	// Execute both commands
 	dotnetResult, err := ExecuteDotnetNuget(dotnetCmd, req.WorkingDir, "", 30)
@@ -267,8 +276,11 @@ func (h *ExecuteSourceDisableHandler) Handle(data json.RawMessage) (any, error) 
 		dotnetCmd += fmt.Sprintf(" --configfile %s", req.ConfigFile)
 	}
 
-	// Build gonuget command (same structure, same config for sequential operations)
-	gonugetCmd := dotnetCmd
+	// Build gonuget command (noun-first: source disable)
+	gonugetCmd := fmt.Sprintf("source disable %s", req.Name)
+	if req.ConfigFile != "" {
+		gonugetCmd += fmt.Sprintf(" --configfile %s", req.ConfigFile)
+	}
 
 	// Execute both commands
 	dotnetResult, err := ExecuteDotnetNuget(dotnetCmd, req.WorkingDir, "", 30)
@@ -305,7 +317,7 @@ func (h *ExecuteSourceUpdateHandler) Handle(data json.RawMessage) (any, error) {
 		return nil, fmt.Errorf("parse request: %w", err)
 	}
 
-	// Build dotnet nuget command
+	// Build dotnet nuget command (verb-first: update source)
 	dotnetCmd := fmt.Sprintf("update source %s", req.Name)
 	if req.Source != "" {
 		dotnetCmd += fmt.Sprintf(" --source %s", req.Source)
@@ -332,8 +344,32 @@ func (h *ExecuteSourceUpdateHandler) Handle(data json.RawMessage) (any, error) {
 		dotnetCmd += " --allow-insecure-connections"
 	}
 
-	// Build gonuget command (same structure, same config for sequential operations)
-	gonugetCmd := dotnetCmd
+	// Build gonuget command (noun-first: source update)
+	gonugetCmd := fmt.Sprintf("source update %s", req.Name)
+	if req.Source != "" {
+		gonugetCmd += fmt.Sprintf(" --source %s", req.Source)
+	}
+	if req.ConfigFile != "" {
+		gonugetCmd += fmt.Sprintf(" --configfile %s", req.ConfigFile)
+	}
+	if req.Username != "" {
+		gonugetCmd += fmt.Sprintf(" --username %s", req.Username)
+	}
+	if req.Password != "" {
+		gonugetCmd += fmt.Sprintf(" --password %s", req.Password)
+	}
+	if req.StorePasswordInClearText {
+		gonugetCmd += " --store-password-in-clear-text"
+	}
+	if req.ValidAuthenticationTypes != "" {
+		gonugetCmd += fmt.Sprintf(" --valid-authentication-types %s", req.ValidAuthenticationTypes)
+	}
+	if req.ProtocolVersion != "" {
+		gonugetCmd += fmt.Sprintf(" --protocol-version %s", req.ProtocolVersion)
+	}
+	if req.AllowInsecureConnections {
+		gonugetCmd += " --allow-insecure-connections"
+	}
 
 	// Execute both commands
 	dotnetResult, err := ExecuteDotnetNuget(dotnetCmd, req.WorkingDir, "", 30)
