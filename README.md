@@ -6,7 +6,7 @@ NuGet client library and CLI for Go with protocol parity to the official .NET Nu
 
 **Library**: 77% complete (68/88 milestones)
 
-**CLI**: Phase 2 in progress (add package command implemented)
+**CLI**: Command restructure complete (noun-first hierarchy with `package`, `source`, `config`, `restore`, and `version` namespaces)
 
 Interop tests passing against NuGet.Client for feature parity validation.
 
@@ -80,17 +80,25 @@ See [cmd/gonuget/README.md](cmd/gonuget/README.md) for CLI documentation.
 
 ```bash
 # Add a package source
-gonuget add source https://api.nuget.org/v3/index.json --name "NuGet.org"
+gonuget source add https://api.nuget.org/v3/index.json --name "NuGet.org"
 
 # List configured sources
-gonuget list source
+gonuget source list
 
 # Add a package to a project
-gonuget add package Newtonsoft.Json --version 13.0.3
+gonuget package add Newtonsoft.Json --project MyProject.csproj --version 13.0.3
+
+# Search for packages
+gonuget package search Newtonsoft --format json
 
 # Get configuration value
 gonuget config get repositoryPath
+
+# Enable shell completion (bash, zsh, powershell)
+gonuget completion bash > /etc/bash_completion.d/gonuget
 ```
+
+**Command Structure**: Noun-first hierarchy matching `dotnet` CLI (e.g., `gonuget package add`, `gonuget source list`)
 
 **Performance**: 15-17x faster than dotnet nuget for CLI operations
 
