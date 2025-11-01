@@ -1,36 +1,12 @@
 package commands_test
 
 import (
-	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/willibrandon/gonuget/tests/cmd/gonuget/commands"
 )
-
-// getGonugetPath returns the path to the gonuget binary
-func getGonugetPath() string {
-	// Try GOPATH/bin first
-	gopath := os.Getenv("GOPATH")
-	if gopath != "" {
-		gonugetPath := filepath.Join(gopath, "bin", "gonuget")
-		if _, err := os.Stat(gonugetPath); err == nil {
-			return gonugetPath
-		}
-	}
-
-	// Try HOME/go/bin (default GOPATH)
-	home := os.Getenv("HOME")
-	if home != "" {
-		gonugetPath := filepath.Join(home, "go", "bin", "gonuget")
-		if _, err := os.Stat(gonugetPath); err == nil {
-			return gonugetPath
-		}
-	}
-
-	// Fall back to "gonuget" in PATH
-	return "gonuget"
-}
 
 // TestVerbFirstErrorDetection validates that all verb-first patterns are detected
 // and produce helpful error messages with correct noun-first suggestions
@@ -106,7 +82,7 @@ func TestVerbFirstErrorDetection(t *testing.T) {
 		},
 	}
 
-	gonugetPath := getGonugetPath()
+	gonugetPath := commands.BuildBinary(t)
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -185,9 +161,11 @@ func TestNounFirstCommandsSucceed(t *testing.T) {
 		{"source update help", []string{"source", "update", "--help"}},
 	}
 
+	gonugetPath := commands.BuildBinary(t)
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cmd := exec.Command(getGonugetPath(), tt.args...)
+			cmd := exec.Command(gonugetPath, tt.args...)
 			output, err := cmd.CombinedOutput()
 
 			if err != nil {

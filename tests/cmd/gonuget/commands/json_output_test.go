@@ -6,6 +6,8 @@ import (
 	"os/exec"
 	"strings"
 	"testing"
+
+	"github.com/willibrandon/gonuget/tests/cmd/gonuget/commands"
 )
 
 // TestStdoutStderrSeparation validates that JSON goes to stdout and errors to stderr (T078)
@@ -29,9 +31,11 @@ func TestStdoutStderrSeparation(t *testing.T) {
 		},
 	}
 
+	gonugetPath := commands.BuildBinary(t)
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cmd := exec.Command(getGonugetPath(), tt.args...)
+			cmd := exec.Command(gonugetPath, tt.args...)
 
 			var stdout, stderr bytes.Buffer
 			cmd.Stdout = &stdout
@@ -93,7 +97,8 @@ func TestStdoutStderrSeparation(t *testing.T) {
 
 // TestJSONOutputFormat validates basic JSON output structure
 func TestJSONOutputFormat(t *testing.T) {
-	cmd := exec.Command(getGonugetPath(), "source", "list", "--format", "json")
+	gonugetPath := commands.BuildBinary(t)
+	cmd := exec.Command(gonugetPath, "source", "list", "--format", "json")
 	output, err := cmd.CombinedOutput()
 
 	if err != nil {
@@ -121,7 +126,8 @@ func TestEmptySearchResultsExitCode(t *testing.T) {
 	// This will be implemented when package search JSON output is ready
 	t.Skip("Package search JSON output not yet implemented")
 
-	cmd := exec.Command(getGonugetPath(), "package", "search", "NonexistentPackage12345XYZ", "--format", "json")
+	gonugetPath := commands.BuildBinary(t)
+	cmd := exec.Command(gonugetPath, "package", "search", "NonexistentPackage12345XYZ", "--format", "json")
 	output, err := cmd.CombinedOutput()
 
 	// Should succeed (exit code 0) even with no results

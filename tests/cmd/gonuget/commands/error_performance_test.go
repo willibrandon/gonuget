@@ -4,6 +4,8 @@ import (
 	"os/exec"
 	"testing"
 	"time"
+
+	"github.com/willibrandon/gonuget/tests/cmd/gonuget/commands"
 )
 
 // TestErrorMessageTiming validates that error messages are returned within 50ms
@@ -19,11 +21,13 @@ func TestErrorMessageTiming(t *testing.T) {
 		{"unknown command", []string{"nonexistent", "command"}},
 	}
 
+	gonugetPath := commands.BuildBinary(t)
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			start := time.Now()
 
-			cmd := exec.Command(getGonugetPath(), tt.args...)
+			cmd := exec.Command(gonugetPath, tt.args...)
 			_, _ = cmd.CombinedOutput() // We expect errors, so ignore the error return
 
 			elapsed := time.Since(start)
@@ -50,11 +54,13 @@ func TestHelpOutputTiming(t *testing.T) {
 		{"package add help", []string{"package", "add", "--help"}},
 	}
 
+	gonugetPath := commands.BuildBinary(t)
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			start := time.Now()
 
-			cmd := exec.Command(getGonugetPath(), tt.args...)
+			cmd := exec.Command(gonugetPath, tt.args...)
 			_, err := cmd.CombinedOutput()
 
 			elapsed := time.Since(start)
@@ -74,20 +80,22 @@ func TestHelpOutputTiming(t *testing.T) {
 
 // BenchmarkErrorDetection measures the performance of error detection
 func BenchmarkErrorDetection(b *testing.B) {
+	gonugetPath := commands.BuildBinaryForBenchmark(b)
 	b.ReportAllocs()
 
 	for b.Loop() {
-		cmd := exec.Command(getGonugetPath(), "add", "package", "Test")
+		cmd := exec.Command(gonugetPath, "add", "package", "Test")
 		_, _ = cmd.CombinedOutput()
 	}
 }
 
 // BenchmarkHelpOutput measures the performance of help output
 func BenchmarkHelpOutput(b *testing.B) {
+	gonugetPath := commands.BuildBinaryForBenchmark(b)
 	b.ReportAllocs()
 
 	for b.Loop() {
-		cmd := exec.Command(getGonugetPath(), "package", "--help")
+		cmd := exec.Command(gonugetPath, "package", "--help")
 		_, _ = cmd.CombinedOutput()
 	}
 }

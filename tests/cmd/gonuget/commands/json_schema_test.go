@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/willibrandon/gonuget/tests/cmd/gonuget/commands"
 	"github.com/xeipuuv/gojsonschema"
 )
 
@@ -207,7 +208,8 @@ func TestSourceListJSONSchema(t *testing.T) {
 // TestSourceListJSONOutput tests actual command output (integration test)
 func TestSourceListJSONOutput(t *testing.T) {
 	// This test validates actual JSON output from the source list command
-	cmd := exec.Command(getGonugetPath(), "source", "list", "--format", "json")
+	gonugetPath := commands.BuildBinary(t)
+	cmd := exec.Command(gonugetPath, "source", "list", "--format", "json")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		// Command may fail if JSON output is not yet implemented
