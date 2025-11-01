@@ -539,4 +539,492 @@ public sealed class RestoreTransitiveTests
             }
         }
     }
+
+    // ========================================================================
+    // Phase 4: User Story 2 - Direct vs Transitive Categorization
+    // ========================================================================
+
+    /// <summary>
+    /// T022: Test pure direct dependencies (no transitive).
+    /// Verifies packages with no dependencies are correctly categorized as direct only.
+    /// </summary>
+    [Fact]
+    public void PureDirectDependencies_CorrectlyCategorized()
+    {
+        // Arrange: Create test project with package that has no dependencies
+        var projectDir = Path.Combine(Path.GetTempPath(), $"pure-direct-{Guid.NewGuid()}");
+        Directory.CreateDirectory(projectDir);
+
+        var projectPath = Path.Combine(projectDir, "PureDirect.csproj");
+        var projectContent = @"<Project Sdk=""Microsoft.NET.Sdk"">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include=""System.Memory"" Version=""4.5.5"" />
+  </ItemGroup>
+</Project>";
+
+        File.WriteAllText(projectPath, projectContent);
+
+        var objDir = Path.Combine(projectDir, "obj");
+        Directory.CreateDirectory(objDir);
+
+        try
+        {
+            // Act: Run gonuget restore
+            var gonugetResult = GonugetBridge.RestoreTransitive(
+                projectPath: projectPath,
+                packagesFolder: null,
+                sources: _testSources,
+                noCache: false,
+                force: true
+            );
+
+            var gonugetLockFilePath = Path.Combine(objDir, "project.assets.json");
+
+            // Assert: Restore succeeded
+            Assert.True(gonugetResult.Success, $"gonuget restore failed: {string.Join(", ", gonugetResult.ErrorMessages)}");
+            Assert.True(File.Exists(gonugetLockFilePath), "Lock file should exist");
+
+            // Assert: Only direct package, no transitive
+            Assert.Single(gonugetResult.DirectPackages);
+            Assert.Equal("System.Memory", gonugetResult.DirectPackages[0].PackageId, ignoreCase: true);
+
+            // Assert: ProjectFileDependencyGroups contains only System.Memory
+            var format = new LockFileFormat();
+            var lockFile = format.Read(gonugetLockFilePath);
+            var net80Group = lockFile.ProjectFileDependencyGroups.FirstOrDefault(g =>
+                g.FrameworkName == "net8.0" || g.FrameworkName == ".NETCoreApp,Version=v8.0");
+            Assert.NotNull(net80Group);
+            Assert.Contains(net80Group.Dependencies, dep => dep.Contains("System.Memory"));
+
+            // Assert: Libraries map contains System.Memory
+            Assert.Contains(lockFile.Libraries, lib => lib.Name.Equals("System.Memory", StringComparison.OrdinalIgnoreCase));
+        }
+        finally
+        {
+            if (Directory.Exists(projectDir))
+            {
+                Directory.Delete(projectDir, recursive: true);
+            }
+        }
+    }
+
+    /// <summary>
+    /// T023: Test pure transitive dependencies.
+    /// Verifies packages pulled only by other packages are categorized as transitive.
+    /// </summary>
+    [Fact]
+    public void PureTransitiveDependencies_CorrectlyCategorized()
+    {
+        // Arrange: Create test project with package that has transitive dependencies
+        var projectDir = Path.Combine(Path.GetTempPath(), $"pure-transitive-{Guid.NewGuid()}");
+        Directory.CreateDirectory(projectDir);
+
+        var projectPath = Path.Combine(projectDir, "PureTransitive.csproj");
+        var projectContent = @"<Project Sdk=""Microsoft.NET.Sdk"">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include=""Serilog.Sinks.File"" Version=""5.0.0"" />
+  </ItemGroup>
+</Project>";
+
+        File.WriteAllText(projectPath, projectContent);
+
+        var objDir = Path.Combine(projectDir, "obj");
+        Directory.CreateDirectory(objDir);
+
+        try
+        {
+            // Act: Run gonuget restore
+            var gonugetResult = GonugetBridge.RestoreTransitive(
+                projectPath: projectPath,
+                packagesFolder: null,
+                sources: _testSources,
+                noCache: false,
+                force: true
+            );
+
+            var gonugetLockFilePath = Path.Combine(objDir, "project.assets.json");
+
+            // Assert: Restore succeeded
+            Assert.True(gonugetResult.Success, $"gonuget restore failed: {string.Join(", ", gonugetResult.ErrorMessages)}");
+            Assert.True(File.Exists(gonugetLockFilePath), "Lock file should exist");
+
+            // Assert: Has direct and transitive packages
+            Assert.Single(gonugetResult.DirectPackages);
+            Assert.NotEmpty(gonugetResult.TransitivePackages);
+
+            // Assert: Serilog should be transitive (pulled by Serilog.Sinks.File)
+            var serilogTransitive = gonugetResult.TransitivePackages.FirstOrDefault(p =>
+                p.PackageId.Equals("Serilog", StringComparison.OrdinalIgnoreCase));
+            Assert.NotNull(serilogTransitive);
+
+            // Assert: ProjectFileDependencyGroups contains only Serilog.Sinks.File (direct)
+            var format = new LockFileFormat();
+            var lockFile = format.Read(gonugetLockFilePath);
+            var net80Group = lockFile.ProjectFileDependencyGroups.FirstOrDefault(g =>
+                g.FrameworkName == "net8.0" || g.FrameworkName == ".NETCoreApp,Version=v8.0");
+            Assert.NotNull(net80Group);
+            Assert.Contains(net80Group.Dependencies, dep => dep.Contains("Serilog.Sinks.File"));
+            Assert.DoesNotContain(net80Group.Dependencies, dep => dep.Contains("Serilog") && !dep.Contains("Serilog.Sinks.File"));
+
+            // Assert: Libraries map contains both direct and transitive
+            Assert.Contains(lockFile.Libraries, lib => lib.Name.Equals("Serilog.Sinks.File", StringComparison.OrdinalIgnoreCase));
+            Assert.Contains(lockFile.Libraries, lib => lib.Name.Equals("Serilog", StringComparison.OrdinalIgnoreCase));
+        }
+        finally
+        {
+            if (Directory.Exists(projectDir))
+            {
+                Directory.Delete(projectDir, recursive: true);
+            }
+        }
+    }
+
+    /// <summary>
+    /// T024: Test mixed scenario (package is both direct and transitive).
+    /// When a package is both directly referenced and pulled transitively, it should be categorized as direct.
+    /// </summary>
+    [Fact]
+    public void MixedDirectAndTransitive_CategorizedAsDirect()
+    {
+        // Arrange: Create test project where Newtonsoft.Json is both direct and transitive
+        var projectDir = Path.Combine(Path.GetTempPath(), $"mixed-{Guid.NewGuid()}");
+        Directory.CreateDirectory(projectDir);
+
+        var projectPath = Path.Combine(projectDir, "Mixed.csproj");
+        var projectContent = @"<Project Sdk=""Microsoft.NET.Sdk"">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include=""Newtonsoft.Json"" Version=""13.0.3"" />
+    <PackageReference Include=""Microsoft.AspNetCore.Mvc.NewtonsoftJson"" Version=""8.0.0"" />
+  </ItemGroup>
+</Project>";
+
+        File.WriteAllText(projectPath, projectContent);
+
+        var objDir = Path.Combine(projectDir, "obj");
+        Directory.CreateDirectory(objDir);
+
+        try
+        {
+            // Act: Run gonuget restore
+            var gonugetResult = GonugetBridge.RestoreTransitive(
+                projectPath: projectPath,
+                packagesFolder: null,
+                sources: _testSources,
+                noCache: false,
+                force: true
+            );
+
+            var gonugetLockFilePath = Path.Combine(objDir, "project.assets.json");
+
+            // Assert: Restore succeeded
+            Assert.True(gonugetResult.Success, $"gonuget restore failed: {string.Join(", ", gonugetResult.ErrorMessages)}");
+            Assert.True(File.Exists(gonugetLockFilePath), "Lock file should exist");
+
+            // Assert: Newtonsoft.Json should be in direct packages (not transitive)
+            Assert.Contains(gonugetResult.DirectPackages, p => p.PackageId.Equals("Newtonsoft.Json", StringComparison.OrdinalIgnoreCase));
+            Assert.DoesNotContain(gonugetResult.TransitivePackages, p => p.PackageId.Equals("Newtonsoft.Json", StringComparison.OrdinalIgnoreCase));
+
+            // Assert: Both direct packages present
+            Assert.Equal(2, gonugetResult.DirectPackages.Count);
+
+            // Assert: ProjectFileDependencyGroups contains both direct packages
+            var format = new LockFileFormat();
+            var lockFile = format.Read(gonugetLockFilePath);
+            var net80Group = lockFile.ProjectFileDependencyGroups.FirstOrDefault(g =>
+                g.FrameworkName == "net8.0" || g.FrameworkName == ".NETCoreApp,Version=v8.0");
+            Assert.NotNull(net80Group);
+            Assert.Contains(net80Group.Dependencies, dep => dep.Contains("Newtonsoft.Json"));
+            Assert.Contains(net80Group.Dependencies, dep => dep.Contains("Microsoft.AspNetCore.Mvc.NewtonsoftJson"));
+        }
+        finally
+        {
+            if (Directory.Exists(projectDir))
+            {
+                Directory.Delete(projectDir, recursive: true);
+            }
+        }
+    }
+
+    /// <summary>
+    /// T025: Test ProjectFileDependencyGroups contains only direct dependencies.
+    /// Validates that lock file ProjectFileDependencyGroups section lists only packages from PackageReference.
+    /// </summary>
+    [Fact]
+    public void ProjectFileDependencyGroups_ContainsOnlyDirect()
+    {
+        // Arrange: Create test project with known direct and transitive packages
+        var projectDir = Path.Combine(Path.GetTempPath(), $"dependency-groups-{Guid.NewGuid()}");
+        Directory.CreateDirectory(projectDir);
+
+        var projectPath = Path.Combine(projectDir, "DependencyGroups.csproj");
+        var projectContent = @"<Project Sdk=""Microsoft.NET.Sdk"">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include=""Microsoft.Extensions.Logging"" Version=""8.0.0"" />
+    <PackageReference Include=""Microsoft.Extensions.Configuration"" Version=""8.0.0"" />
+  </ItemGroup>
+</Project>";
+
+        File.WriteAllText(projectPath, projectContent);
+
+        var objDir = Path.Combine(projectDir, "obj");
+        Directory.CreateDirectory(objDir);
+
+        try
+        {
+            // Act: Run gonuget restore
+            var gonugetResult = GonugetBridge.RestoreTransitive(
+                projectPath: projectPath,
+                packagesFolder: null,
+                sources: _testSources,
+                noCache: false,
+                force: true
+            );
+
+            var gonugetLockFilePath = Path.Combine(objDir, "project.assets.json");
+
+            // Assert: Restore succeeded
+            Assert.True(gonugetResult.Success, $"gonuget restore failed: {string.Join(", ", gonugetResult.ErrorMessages)}");
+            Assert.True(File.Exists(gonugetLockFilePath), "Lock file should exist");
+
+            // Assert: Verify ProjectFileDependencyGroups
+            var format = new LockFileFormat();
+            var lockFile = format.Read(gonugetLockFilePath);
+            var net80Group = lockFile.ProjectFileDependencyGroups.FirstOrDefault(g =>
+                g.FrameworkName == "net8.0" || g.FrameworkName == ".NETCoreApp,Version=v8.0");
+            Assert.NotNull(net80Group);
+
+            // Assert: Contains both direct dependencies
+            Assert.Contains(net80Group.Dependencies, dep => dep.Contains("Microsoft.Extensions.Logging"));
+            Assert.Contains(net80Group.Dependencies, dep => dep.Contains("Microsoft.Extensions.Configuration"));
+
+            // Assert: Does NOT contain transitive dependencies (e.g., Microsoft.Extensions.DependencyInjection.Abstractions)
+            Assert.DoesNotContain(net80Group.Dependencies, dep =>
+                dep.Contains("Microsoft.Extensions.DependencyInjection.Abstractions"));
+        }
+        finally
+        {
+            if (Directory.Exists(projectDir))
+            {
+                Directory.Delete(projectDir, recursive: true);
+            }
+        }
+    }
+
+    /// <summary>
+    /// T026: Test Libraries map contains all packages (direct + transitive).
+    /// Validates that lock file Libraries section contains every resolved package.
+    /// </summary>
+    [Fact]
+    public void LibrariesMap_ContainsAllPackages()
+    {
+        // Arrange: Create test project with known direct and transitive packages
+        var projectDir = Path.Combine(Path.GetTempPath(), $"libraries-map-{Guid.NewGuid()}");
+        Directory.CreateDirectory(projectDir);
+
+        var projectPath = Path.Combine(projectDir, "LibrariesMap.csproj");
+        var projectContent = @"<Project Sdk=""Microsoft.NET.Sdk"">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include=""Serilog.Sinks.File"" Version=""5.0.0"" />
+  </ItemGroup>
+</Project>";
+
+        File.WriteAllText(projectPath, projectContent);
+
+        var objDir = Path.Combine(projectDir, "obj");
+        Directory.CreateDirectory(objDir);
+
+        try
+        {
+            // Act: Run gonuget restore
+            var gonugetResult = GonugetBridge.RestoreTransitive(
+                projectPath: projectPath,
+                packagesFolder: null,
+                sources: _testSources,
+                noCache: false,
+                force: true
+            );
+
+            var gonugetLockFilePath = Path.Combine(objDir, "project.assets.json");
+
+            // Assert: Restore succeeded
+            Assert.True(gonugetResult.Success, $"gonuget restore failed: {string.Join(", ", gonugetResult.ErrorMessages)}");
+            Assert.True(File.Exists(gonugetLockFilePath), "Lock file should exist");
+
+            // Assert: Verify Libraries map
+            var format = new LockFileFormat();
+            var lockFile = format.Read(gonugetLockFilePath);
+
+            // Assert: Contains direct package
+            Assert.Contains(lockFile.Libraries, lib => lib.Name.Equals("Serilog.Sinks.File", StringComparison.OrdinalIgnoreCase));
+
+            // Assert: Contains transitive package
+            Assert.Contains(lockFile.Libraries, lib => lib.Name.Equals("Serilog", StringComparison.OrdinalIgnoreCase));
+
+            // Assert: Libraries count matches total packages (direct + transitive)
+            var totalPackages = gonugetResult.DirectPackages.Count + gonugetResult.TransitivePackages.Count;
+            Assert.Equal(totalPackages, lockFile.Libraries.Count);
+        }
+        finally
+        {
+            if (Directory.Exists(projectDir))
+            {
+                Directory.Delete(projectDir, recursive: true);
+            }
+        }
+    }
+
+    /// <summary>
+    /// T027: Test multi-framework project categorization.
+    /// Verifies correct categorization when project targets multiple frameworks.
+    /// </summary>
+    [Fact]
+    public void MultiFrameworkProject_CorrectCategorization()
+    {
+        // Arrange: Create test project targeting multiple frameworks
+        var projectDir = Path.Combine(Path.GetTempPath(), $"multi-framework-{Guid.NewGuid()}");
+        Directory.CreateDirectory(projectDir);
+
+        var projectPath = Path.Combine(projectDir, "MultiFramework.csproj");
+        var projectContent = @"<Project Sdk=""Microsoft.NET.Sdk"">
+  <PropertyGroup>
+    <TargetFrameworks>net6.0;net8.0</TargetFrameworks>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include=""Newtonsoft.Json"" Version=""13.0.3"" />
+  </ItemGroup>
+</Project>";
+
+        File.WriteAllText(projectPath, projectContent);
+
+        var objDir = Path.Combine(projectDir, "obj");
+        Directory.CreateDirectory(objDir);
+
+        try
+        {
+            // Act: Run gonuget restore
+            var gonugetResult = GonugetBridge.RestoreTransitive(
+                projectPath: projectPath,
+                packagesFolder: null,
+                sources: _testSources,
+                noCache: false,
+                force: true
+            );
+
+            var gonugetLockFilePath = Path.Combine(objDir, "project.assets.json");
+
+            // Assert: Restore succeeded
+            Assert.True(gonugetResult.Success, $"gonuget restore failed: {string.Join(", ", gonugetResult.ErrorMessages)}");
+            Assert.True(File.Exists(gonugetLockFilePath), "Lock file should exist");
+
+            // Assert: Verify lock file has both targets
+            var format = new LockFileFormat();
+            var lockFile = format.Read(gonugetLockFilePath);
+            Assert.Contains(lockFile.Targets, t => t.TargetFramework.GetShortFolderName() == "net6.0");
+            Assert.Contains(lockFile.Targets, t => t.TargetFramework.GetShortFolderName() == "net8.0");
+
+            // Assert: ProjectFileDependencyGroups has entries for both frameworks
+            var net60Group = lockFile.ProjectFileDependencyGroups.FirstOrDefault(g =>
+                g.FrameworkName == "net6.0" || g.FrameworkName == ".NETCoreApp,Version=v6.0");
+            var net80Group = lockFile.ProjectFileDependencyGroups.FirstOrDefault(g =>
+                g.FrameworkName == "net8.0" || g.FrameworkName == ".NETCoreApp,Version=v8.0");
+
+            Assert.NotNull(net60Group);
+            Assert.NotNull(net80Group);
+
+            // Assert: Both groups contain Newtonsoft.Json
+            Assert.Contains(net60Group.Dependencies, dep => dep.Contains("Newtonsoft.Json"));
+            Assert.Contains(net80Group.Dependencies, dep => dep.Contains("Newtonsoft.Json"));
+        }
+        finally
+        {
+            if (Directory.Exists(projectDir))
+            {
+                Directory.Delete(projectDir, recursive: true);
+            }
+        }
+    }
+
+    /// <summary>
+    /// T028: Test framework-specific transitive dependencies categorization.
+    /// Verifies packages pulled transitively are correctly categorized per framework.
+    /// </summary>
+    [Fact]
+    public void FrameworkSpecificTransitive_CorrectCategorization()
+    {
+        // Arrange: Create test project with framework-specific dependencies
+        var projectDir = Path.Combine(Path.GetTempPath(), $"framework-transitive-{Guid.NewGuid()}");
+        Directory.CreateDirectory(projectDir);
+
+        var projectPath = Path.Combine(projectDir, "FrameworkTransitive.csproj");
+        var projectContent = @"<Project Sdk=""Microsoft.NET.Sdk"">
+  <PropertyGroup>
+    <TargetFramework>net6.0</TargetFramework>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include=""Microsoft.Extensions.Configuration"" Version=""8.0.0"" />
+  </ItemGroup>
+</Project>";
+
+        File.WriteAllText(projectPath, projectContent);
+
+        var objDir = Path.Combine(projectDir, "obj");
+        Directory.CreateDirectory(objDir);
+
+        try
+        {
+            // Act: Run gonuget restore
+            var gonugetResult = GonugetBridge.RestoreTransitive(
+                projectPath: projectPath,
+                packagesFolder: null,
+                sources: _testSources,
+                noCache: false,
+                force: true
+            );
+
+            var gonugetLockFilePath = Path.Combine(objDir, "project.assets.json");
+
+            // Assert: Restore succeeded
+            Assert.True(gonugetResult.Success, $"gonuget restore failed: {string.Join(", ", gonugetResult.ErrorMessages)}");
+            Assert.True(File.Exists(gonugetLockFilePath), "Lock file should exist");
+
+            // Assert: Has transitive packages for net6.0
+            Assert.NotEmpty(gonugetResult.TransitivePackages);
+
+            // Assert: Verify lock file structure
+            var format = new LockFileFormat();
+            var lockFile = format.Read(gonugetLockFilePath);
+
+            // Assert: ProjectFileDependencyGroups contains only direct (Microsoft.Extensions.Configuration)
+            var net60Group = lockFile.ProjectFileDependencyGroups.FirstOrDefault(g =>
+                g.FrameworkName == "net6.0" || g.FrameworkName == ".NETCoreApp,Version=v6.0");
+            Assert.NotNull(net60Group);
+            Assert.Contains(net60Group.Dependencies, dep => dep.Contains("Microsoft.Extensions.Configuration"));
+
+            // Assert: Libraries map contains both direct and transitive packages
+            Assert.Contains(lockFile.Libraries, lib => lib.Name.Equals("Microsoft.Extensions.Configuration", StringComparison.OrdinalIgnoreCase));
+            Assert.True(lockFile.Libraries.Count > 1, "Should have transitive dependencies");
+        }
+        finally
+        {
+            if (Directory.Exists(projectDir))
+            {
+                Directory.Delete(projectDir, recursive: true);
+            }
+        }
+    }
 }

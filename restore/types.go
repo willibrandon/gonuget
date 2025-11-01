@@ -1,6 +1,10 @@
 package restore
 
-import "time"
+import (
+	"time"
+
+	"github.com/willibrandon/gonuget/core/resolver"
+)
 
 // Result holds restore results.
 type Result struct {
@@ -9,6 +13,10 @@ type Result struct {
 
 	// TransitivePackages contains packages pulled in as dependencies
 	TransitivePackages []PackageInfo
+
+	// FrameworkResults contains per-framework package lists (for multi-TFM projects)
+	// Maps framework string (e.g., "net6.0") to the packages resolved for that framework
+	FrameworkResults map[string]*FrameworkResult
 
 	// Graph contains full dependency graph (optional, for debugging)
 	Graph any // *resolver.GraphNode, but avoid import cycle
@@ -21,6 +29,14 @@ type Result struct {
 
 	// PerformanceTiming holds detailed timing metrics (diagnostic mode only)
 	PerformanceTiming *PerformanceTiming
+}
+
+// FrameworkResult holds restore results for a specific target framework.
+type FrameworkResult struct {
+	Framework            string                                   // Target framework string (e.g., "net6.0")
+	DirectPackages       []PackageInfo                            // Packages explicitly listed for this framework
+	TransitivePackages   []PackageInfo                            // Transitive dependencies for this framework
+	allResolvedPackages  map[string]*resolver.PackageDependencyInfo // Internal: all resolved packages for this framework
 }
 
 // PerformanceTiming holds detailed timing metrics for diagnostic output.

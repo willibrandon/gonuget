@@ -23,10 +23,15 @@ func (b *LockFileBuilder) Build(proj *project.Project, result *Result) *LockFile
 	home, _ := os.UserHomeDir()
 	packagesPath := filepath.Join(home, ".nuget", "packages")
 
-	// Get target framework
-	tfm := proj.TargetFramework
-	if tfm == "" && len(proj.TargetFrameworks) > 0 {
-		tfm = proj.TargetFrameworks[0]
+	// Get all target frameworks
+	targetFrameworks := proj.GetTargetFrameworks()
+	if len(targetFrameworks) == 0 {
+		// Fallback to single TFM if none found
+		if proj.TargetFramework != "" {
+			targetFrameworks = []string{proj.TargetFramework}
+		} else if len(proj.TargetFrameworks) > 0 {
+			targetFrameworks = proj.TargetFrameworks
+		}
 	}
 
 	// Build lock file
@@ -50,37 +55,55 @@ func (b *LockFileBuilder) Build(proj *project.Project, result *Result) *LockFile
 				Sources:                  make(map[string]SourceInfo),
 				FallbackFolders:          []string{},
 				ConfigFilePaths:          []string{},
-				OriginalTargetFrameworks: []string{tfm},
-				Frameworks: map[string]FrameworkInfo{
-					tfm: {
-						TargetAlias:       tfm,
-						ProjectReferences: make(map[string]any),
-					},
-				},
+				OriginalTargetFrameworks: targetFrameworks,
+				Frameworks:               make(map[string]FrameworkInfo),
 			},
-			Frameworks: map[string]ProjectFrameworkInfo{
-				tfm: {
-					TargetAlias:  tfm,
-					Dependencies: make(map[string]DependencyInfo),
-				},
-			},
+			Frameworks: make(map[string]ProjectFrameworkInfo),
 		},
 	}
 
-	// Add package references to project dependencies
+	// Get package references once
 	packageRefs := proj.GetPackageReferences()
+
+	// Build dependencies list for ProjectFileDependencyGroups
 	dependencies := make([]string, 0, len(packageRefs))
 	for _, pkgRef := range packageRefs {
 		dependencies = append(dependencies, pkgRef.Include+" >= "+pkgRef.Version)
-		lf.Project.Frameworks[tfm].Dependencies[pkgRef.Include] = DependencyInfo{
-			Target:  "Package",
-			Version: pkgRef.Version,
-		}
 	}
-	lf.ProjectFileDependencyGroups[tfm] = dependencies
+
+	// Add entries for each target framework
+	for _, tfm := range targetFrameworks {
+		// Add to Restore.Frameworks
+		lf.Project.Restore.Frameworks[tfm] = FrameworkInfo{
+			TargetAlias:       tfm,
+			ProjectReferences: make(map[string]any),
+		}
+
+		// Add to Project.Frameworks
+		frameworkDeps := make(map[string]DependencyInfo)
+		for _, pkgRef := range packageRefs {
+			frameworkDeps[pkgRef.Include] = DependencyInfo{
+				Target:  "Package",
+				Version: pkgRef.Version,
+			}
+		}
+		lf.Project.Frameworks[tfm] = ProjectFrameworkInfo{
+			TargetAlias:  tfm,
+			Dependencies: frameworkDeps,
+		}
+
+		// Add to ProjectFileDependencyGroups (per-framework)
+		lf.ProjectFileDependencyGroups[tfm] = dependencies
+
+		// Add target for this framework
+		// For multi-TFM, each framework gets its own target section
+		lf.Targets[tfm] = Target{}
+	}
+
+	// Add global ProjectFileDependencyGroups entry (for all frameworks)
 	lf.ProjectFileDependencyGroups[""] = dependencies
 
-	// Add libraries (direct + transitive)
+	// Add libraries (direct + transitive) - this is the UNION across all frameworks
 	// Matches NuGet.Client BuildAssetsFile line 265
 	allPackages := result.AllPackages()
 	for _, pkg := range allPackages {
@@ -91,9 +114,6 @@ func (b *LockFileBuilder) Build(proj *project.Project, result *Result) *LockFile
 			Files: []string{},
 		}
 	}
-
-	// Add target
-	lf.Targets[tfm] = Target{}
 
 	return lf
 }

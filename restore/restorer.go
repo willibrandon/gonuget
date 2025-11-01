@@ -210,22 +210,18 @@ fullRestore:
 		return nil, fmt.Errorf("failed to create packages folder: %w", err)
 	}
 
-	// Get target framework
+	// Get target frameworks
 	targetFrameworkStrings := proj.GetTargetFrameworks()
 	if len(targetFrameworkStrings) == 0 {
 		return nil, fmt.Errorf("project has no target frameworks")
 	}
-	targetFrameworkStr := targetFrameworkStrings[0] // Use first TFM
 
-	// Parse target framework
-	targetFramework, err := frameworks.ParseFramework(targetFrameworkStr)
-	if err != nil {
-		return nil, fmt.Errorf("parse target framework: %w", err)
-	}
+	// Initialize FrameworkResults for multi-TFM support
+	result.FrameworkResults = make(map[string]*FrameworkResult)
 
-	// Track all resolved packages (direct + transitive)
-	allResolvedPackages := make(map[string]*resolver.PackageDependencyInfo)
-	unresolvedPackages := make([]*resolver.GraphNode, 0)
+	// Track all resolved packages across ALL frameworks (union)
+	// This will be used for backward compat (DirectPackages, TransitivePackages)
+	allResolvedPackagesUnion := make(map[string]*resolver.PackageDependencyInfo)
 
 	// Track direct package IDs (normalized to lowercase)
 	// Matches cache hit path behavior: categorize by package ID, not ID+version
@@ -237,165 +233,43 @@ fullRestore:
 		directPackageIDs[normalizedID] = true
 	}
 
-	// Diagnostic: Start resolution trace
+	// Loop through ALL target frameworks and restore each
+	// Matches NuGet.Client RestoreCommand.GenerateRestoreGraphsAsync (creates one graph per framework)
 	isDiagnostic = r.opts.Verbosity == "diagnostic" || r.opts.Verbosity == "diag"
-	if isDiagnostic {
-		r.console.Printf("\nResolving dependencies for %s:\n", targetFrameworkStr)
-	}
-
-	// Phase 1: Validate all package versions exist, then resolve dependency graph
-	// Start timing dependency resolution
-	resolutionStart := time.Now()
-
-	// Create local dependency provider for cached packages (NO HTTP!)
-	// Matches NuGet.Client's LocalLibraryProviders approach (RestoreCommand.cs line 2037-2056)
-	localProvider := NewLocalDependencyProvider(packagesFolder)
-
-	// Build list of package dependencies for multi-root resolution
-	// This ensures all direct references are resolved together with proper conflict detection
-	packageDependencies := make([]resolver.PackageDependency, 0, len(packageRefs))
-
-	// First pass: Validate all package versions exist (early failure optimization)
-	for _, pkgRef := range packageRefs {
-		// Use version as-is from PackageReference
-		// ParseVersionRange will handle conversion correctly:
-		// - Plain versions like "13.0.1" are interpreted as ">= 13.0.1" (minimum version)
-		// - Bracketed versions like "[13.0.1]" are exact matches
-		// - Ranges like "[1.0,2.0)" are preserved
-		// This matches NuGet.Client's VersionRange.Parse behavior
-		versionRange := pkgRef.Version
-		if versionRange == "" {
-			versionRange = "0.0.0" // Empty means any version >= 0.0.0
+	for _, targetFrameworkStr := range targetFrameworkStrings {
+		// Parse target framework
+		targetFramework, err := frameworks.ParseFramework(targetFrameworkStr)
+		if err != nil {
+			return nil, fmt.Errorf("parse target framework %s: %w", targetFrameworkStr, err)
 		}
 
-		// Diagnostic: Trace package resolution start
-		if isDiagnostic {
-			r.console.Printf("  %s %s (direct reference)\n", pkgRef.Include, versionRange)
-			r.console.Printf("    Constraint: %s\n", versionRange)
+		// Restore this framework (dependency resolution only, no downloads yet)
+		frameworkResult, err := r.restoreFramework(
+			ctx,
+			packageRefs,
+			targetFrameworkStr,
+			targetFramework,
+			packagesFolder,
+			directPackageIDs,
+			isDiagnostic,
+			result.PerformanceTiming,
+		)
+		if err != nil {
+			return result, err
 		}
 
-		// OPTIMIZATION: Early version availability check (matches NuGet.Client's SourceRepositoryDependencyProvider)
-		// Check if any version satisfying the constraint exists BEFORE running expensive dependency walk
-		// This provides massive speedup for NU1102/NU1103 error cases (version not found)
-		versionInfos, allVersions, allSourceNames, canSatisfy := r.checkVersionAvailability(ctx, pkgRef.Include, versionRange)
+		// Store framework-specific result
+		result.FrameworkResults[targetFrameworkStr] = frameworkResult
 
-		// Diagnostic: Show available versions (limit to last 10 for readability)
-		if isDiagnostic && len(allVersions) > 0 {
-			displayVersions := allVersions
-			if len(displayVersions) > 10 {
-				displayVersions = displayVersions[len(displayVersions)-10:]
-			}
-			r.console.Printf("    Available versions: %s\n", strings.Join(displayVersions, ", "))
-		}
-
-		if !canSatisfy {
-			// Version not found - immediately return NU1101/NU1102/NU1103 error without dependency walk
-			// This saves ~160-195ms by skipping graph traversal
-			var nugetErr *NuGetError
-			switch {
-			case len(versionInfos) == 0:
-				// Package doesn't exist at all - NU1101
-				nugetErr = NewPackageNotFoundError(proj.Path, pkgRef.Include, versionRange, allSourceNames)
-			case !isPrereleaseAllowed(versionRange) && hasPrereleaseVersionsOnly(versionRange, allVersions):
-				// Only prerelease versions satisfy the range when stable requested - NU1103
-				// For NU1103, dotnet shows the LOWEST prerelease version (not highest)
-				parsedRange, _ := version.ParseVersionRange(versionRange)
-				versionInfosNU1103 := r.updateNearestVersionForNU1103(versionInfos, allVersions, parsedRange)
-				nugetErr = NewPackageDownloadFailedError(proj.Path, pkgRef.Include, versionRange, versionInfosNU1103)
-			default:
-				// Package exists but no compatible version - NU1102
-				nugetErr = NewPackageVersionNotFoundError(proj.Path, pkgRef.Include, versionRange, versionInfos)
-			}
-
-			// Add error to result and collect for cache file
-			result.Errors = []*NuGetError{nugetErr}
-			r.addErrorLog(nugetErr, targetFrameworkStr)
-
-			// Write cache file with error before returning (matches NuGet.Client behavior)
-			// Cache file is written even on failure so errors can be replayed on cache hit
-			r.writeCacheFileOnError(proj, currentHash, cachePath)
-
-			return result, fmt.Errorf("restore failed due to package version not found")
-		}
-
-		// Add to package dependencies list for multi-root resolution
-		packageDependencies = append(packageDependencies, resolver.PackageDependency{
-			ID:           pkgRef.Include,
-			VersionRange: versionRange,
-		})
-	}
-
-	// Phase 2: Resolve all dependencies together using multi-root resolution
-	// This ensures conflicts between different package trees are properly detected and resolved
-	// Matches NuGet.Client's approach of creating a synthetic project root
-
-	// Create metadata client for resolver
-	metadataClient, err := r.createLocalFirstMetadataClient(localProvider, targetFramework)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create metadata client: %w", err)
-	}
-
-	// Create resolver with conflict detection and resolution
-	res := resolver.NewResolver(metadataClient, r.opts.Sources, targetFrameworkStr)
-	transitiveResolver := resolver.NewTransitiveResolver(res)
-
-	// Resolve all dependencies together (creates synthetic project root internally)
-	resolutionResult, err := transitiveResolver.ResolveMultipleRoots(ctx, packageDependencies)
-	if err != nil {
-		return nil, fmt.Errorf("failed to resolve dependencies: %w", err)
-	}
-
-	// Extract resolved packages from resolution result
-	// The resolver has already applied conflict resolution (nearest wins)
-	for _, pkg := range resolutionResult.Packages {
-		key := pkg.Key()
-		allResolvedPackages[key] = pkg
-	}
-
-	// Handle unresolved packages (packages that couldn't be found)
-	// These will be reported as NU1101 errors
-	for _, pkg := range resolutionResult.Packages {
-		if pkg.IsUnresolved {
-			// Create synthetic graph node for unresolved package (needed for error reporting)
-			unresolvedNode := &resolver.GraphNode{
-				Key:  pkg.Key(),
-				Item: pkg,
-			}
-			unresolvedPackages = append(unresolvedPackages, unresolvedNode)
+		// Merge into union (for backward compatibility)
+		for key, pkg := range frameworkResult.allResolvedPackages {
+			allResolvedPackagesUnion[key] = pkg
 		}
 	}
 
-	// Record total resolution timing
-	if isDiagnostic && result.PerformanceTiming != nil {
-		result.PerformanceTiming.DependencyResolution = time.Since(resolutionStart)
-	}
-
-	// Diagnostic: Show dependency graph summary
-	if isDiagnostic {
-		directCount := len(packageRefs)
-		transitiveCount := max(0, len(allResolvedPackages)-directCount) // Safety check
-		r.tracer.TraceDependencyGraph(directCount, transitiveCount)
-	}
-
-	// Get downgrades from resolution result
-	// TransitiveResolver has already detected downgrades during conflict resolution
-	// Matches NuGet.Client: RestoreCommand.GetDowngradeErrors (line 985-1029)
-	// NU1605 is treated as error by default (in warnAsError)
-	downgrades := resolutionResult.Downgrades
-
-	// If downgrades detected, fail restore with NU1605 errors
-	if len(downgrades) > 0 {
-		result.Errors = r.buildDowngradeErrors(downgrades, proj.Path)
-		return result, fmt.Errorf("restore failed due to package downgrades")
-	}
-
-	// Check for unresolved packages and fail restore if any found
-	// Matches NuGet.Client: RestoreCommand fails when graphs have Unresolved.Count > 0
-	if len(unresolvedPackages) > 0 {
-		// Store NuGet errors in result for proper formatting by Run()
-		result.Errors = r.buildUnresolvedError(ctx, unresolvedPackages, proj.Path)
-		return result, fmt.Errorf("restore failed due to unresolved packages")
-	}
+	// Build backward-compatible DirectPackages and TransitivePackages from union
+	// This maintains compatibility with existing code that expects flat lists
+	allResolvedPackages := allResolvedPackagesUnion
 
 	// Phase 2: Download all resolved packages (direct + transitive)
 	// Matches ProjectRestoreCommand.InstallPackagesAsync behavior
@@ -503,4 +377,161 @@ fullRestore:
 	}
 
 	return result, nil
+}
+
+// restoreFramework handles dependency resolution for a single target framework.
+// Matches NuGet.Client's WalkDependenciesAsync pattern.
+// Returns FrameworkResult with resolved packages for this framework.
+func (r *Restorer) restoreFramework(
+	ctx context.Context,
+	packageRefs []project.PackageReference,
+	targetFrameworkStr string,
+	targetFramework *frameworks.NuGetFramework,
+	packagesFolder string,
+	directPackageIDs map[string]bool,
+	isDiagnostic bool,
+	perfTiming *PerformanceTiming,
+) (*FrameworkResult, error) {
+	// Diagnostic: Start resolution trace for this framework
+	if isDiagnostic {
+		r.console.Printf("\nResolving dependencies for %s:\n", targetFrameworkStr)
+	}
+
+	// Start timing dependency resolution for this framework
+	resolutionStart := time.Now()
+
+	// Create local dependency provider for cached packages (NO HTTP!)
+	localProvider := NewLocalDependencyProvider(packagesFolder)
+
+	// Build list of package dependencies for multi-root resolution
+	packageDependencies := make([]resolver.PackageDependency, 0, len(packageRefs))
+
+	// First pass: Validate all package versions exist (early failure optimization)
+	for _, pkgRef := range packageRefs {
+		versionRange := pkgRef.Version
+		if versionRange == "" {
+			versionRange = "0.0.0" // Empty means any version >= 0.0.0
+		}
+
+		// Diagnostic: Trace package resolution start
+		if isDiagnostic {
+			r.console.Printf("  %s %s (direct reference)\n", pkgRef.Include, versionRange)
+			r.console.Printf("    Constraint: %s\n", versionRange)
+		}
+
+		// OPTIMIZATION: Early version availability check
+		versionInfos, allVersions, allSourceNames, canSatisfy := r.checkVersionAvailability(ctx, pkgRef.Include, versionRange)
+
+		// Diagnostic: Show available versions (limit to last 10)
+		if isDiagnostic && len(allVersions) > 0 {
+			displayVersions := allVersions
+			if len(displayVersions) > 10 {
+				displayVersions = displayVersions[len(displayVersions)-10:]
+			}
+			r.console.Printf("    Available versions: %s\n", strings.Join(displayVersions, ", "))
+		}
+
+		if !canSatisfy {
+			// Version not found - return error for this framework
+			var nugetErr *NuGetError
+			switch {
+			case len(versionInfos) == 0:
+				nugetErr = NewPackageNotFoundError("", pkgRef.Include, versionRange, allSourceNames)
+			case !isPrereleaseAllowed(versionRange) && hasPrereleaseVersionsOnly(versionRange, allVersions):
+				parsedRange, _ := version.ParseVersionRange(versionRange)
+				versionInfosNU1103 := r.updateNearestVersionForNU1103(versionInfos, allVersions, parsedRange)
+				nugetErr = NewPackageDownloadFailedError("", pkgRef.Include, versionRange, versionInfosNU1103)
+			default:
+				nugetErr = NewPackageVersionNotFoundError("", pkgRef.Include, versionRange, versionInfos)
+			}
+
+			// Add error log for this framework
+			r.addErrorLog(nugetErr, targetFrameworkStr)
+
+			return nil, fmt.Errorf("package version not found for framework %s: %s %s", targetFrameworkStr, pkgRef.Include, versionRange)
+		}
+
+		// Add to package dependencies list
+		packageDependencies = append(packageDependencies, resolver.PackageDependency{
+			ID:           pkgRef.Include,
+			VersionRange: versionRange,
+		})
+	}
+
+	// Phase 2: Resolve all dependencies together using multi-root resolution
+	// Create metadata client for resolver
+	metadataClient, err := r.createLocalFirstMetadataClient(localProvider, targetFramework)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create metadata client for %s: %w", targetFrameworkStr, err)
+	}
+
+	// Create resolver with conflict detection and resolution
+	res := resolver.NewResolver(metadataClient, r.opts.Sources, targetFrameworkStr)
+	transitiveResolver := resolver.NewTransitiveResolver(res)
+
+	// Resolve all dependencies together (creates synthetic project root internally)
+	resolutionResult, err := transitiveResolver.ResolveMultipleRoots(ctx, packageDependencies)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve dependencies for %s: %w", targetFrameworkStr, err)
+	}
+
+	// Extract resolved packages from resolution result
+	allResolvedPackages := make(map[string]*resolver.PackageDependencyInfo)
+	for _, pkg := range resolutionResult.Packages {
+		key := pkg.Key()
+		allResolvedPackages[key] = pkg
+	}
+
+	// Handle unresolved packages
+	for _, pkg := range resolutionResult.Packages {
+		if pkg.IsUnresolved {
+			return nil, fmt.Errorf("unresolved package for %s: %s", targetFrameworkStr, pkg.ID)
+		}
+	}
+
+	// Record resolution timing
+	if isDiagnostic && perfTiming != nil {
+		perfTiming.DependencyResolution += time.Since(resolutionStart)
+	}
+
+	// Diagnostic: Show dependency graph summary
+	if isDiagnostic {
+		directCount := len(packageRefs)
+		transitiveCount := max(0, len(allResolvedPackages)-directCount)
+		r.console.Printf("    Resolved %d direct + %d transitive = %d total packages\n", directCount, transitiveCount, len(allResolvedPackages))
+	}
+
+	// Check for downgrades
+	if len(resolutionResult.Downgrades) > 0 {
+		return nil, fmt.Errorf("package downgrades detected for framework %s", targetFrameworkStr)
+	}
+
+	// Build FrameworkResult
+	frameworkResult := &FrameworkResult{
+		Framework:           targetFrameworkStr,
+		DirectPackages:      make([]PackageInfo, 0),
+		TransitivePackages:  make([]PackageInfo, 0),
+		allResolvedPackages: allResolvedPackages,
+	}
+
+	// Categorize packages as direct vs transitive
+	for _, pkgInfo := range allResolvedPackages {
+		normalizedID := strings.ToLower(pkgInfo.ID)
+		packagePath := filepath.Join(packagesFolder, normalizedID, pkgInfo.Version)
+
+		pkg := PackageInfo{
+			ID:       pkgInfo.ID,
+			Version:  pkgInfo.Version,
+			Path:     packagePath,
+			IsDirect: directPackageIDs[normalizedID],
+		}
+
+		if directPackageIDs[normalizedID] {
+			frameworkResult.DirectPackages = append(frameworkResult.DirectPackages, pkg)
+		} else {
+			frameworkResult.TransitivePackages = append(frameworkResult.TransitivePackages, pkg)
+		}
+	}
+
+	return frameworkResult, nil
 }

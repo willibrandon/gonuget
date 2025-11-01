@@ -81,13 +81,13 @@
 
 ### Implementation for User Story 2
 
-- [ ] T022 [P] [US2] Create test for pure direct dependencies (no transitive) in tests/nuget-client-interop/GonugetInterop.Tests/RestoreTransitiveTests.cs
-- [ ] T023 [P] [US2] Create test for pure transitive dependencies (only pulled by direct) in tests/nuget-client-interop/GonugetInterop.Tests/RestoreTransitiveTests.cs
-- [ ] T024 [P] [US2] Create test for mixed scenario (package is both direct and transitive) in tests/nuget-client-interop/GonugetInterop.Tests/RestoreTransitiveTests.cs
-- [ ] T025 [P] [US2] Create test for ProjectFileDependencyGroups contains only direct in tests/nuget-client-interop/GonugetInterop.Tests/RestoreTransitiveTests.cs
-- [ ] T026 [P] [US2] Create test for Libraries map contains all packages (direct + transitive) in tests/nuget-client-interop/GonugetInterop.Tests/RestoreTransitiveTests.cs
-- [ ] T027 [P] [US2] Create test for multi-framework project categorization in tests/nuget-client-interop/GonugetInterop.Tests/RestoreTransitiveTests.cs
-- [ ] T028 [P] [US2] Create test for framework-specific transitive dependencies categorization in tests/nuget-client-interop/GonugetInterop.Tests/RestoreTransitiveTests.cs
+- [x] T022 [P] [US2] Create test for pure direct dependencies (no transitive) in tests/nuget-client-interop/GonugetInterop.Tests/RestoreTransitiveTests.cs
+- [x] T023 [P] [US2] Create test for pure transitive dependencies (only pulled by direct) in tests/nuget-client-interop/GonugetInterop.Tests/RestoreTransitiveTests.cs
+- [x] T024 [P] [US2] Create test for mixed scenario (package is both direct and transitive) in tests/nuget-client-interop/GonugetInterop.Tests/RestoreTransitiveTests.cs
+- [x] T025 [P] [US2] Create test for ProjectFileDependencyGroups contains only direct in tests/nuget-client-interop/GonugetInterop.Tests/RestoreTransitiveTests.cs
+- [x] T026 [P] [US2] Create test for Libraries map contains all packages (direct + transitive) in tests/nuget-client-interop/GonugetInterop.Tests/RestoreTransitiveTests.cs
+- [x] T027 [P] [US2] Create test for multi-framework project categorization in tests/nuget-client-interop/GonugetInterop.Tests/RestoreTransitiveTests.cs
+- [x] T028 [P] [US2] Create test for framework-specific transitive dependencies categorization in tests/nuget-client-interop/GonugetInterop.Tests/RestoreTransitiveTests.cs
 
 **Checkpoint**: At this point, direct vs transitive categorization should be fully validated. User Stories 1 AND 2 should both work independently.
 
