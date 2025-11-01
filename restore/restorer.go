@@ -69,6 +69,7 @@ func (r *Restorer) Restore(
 	result := &Result{
 		DirectPackages:     make([]PackageInfo, 0, len(packageRefs)),
 		TransitivePackages: make([]PackageInfo, 0),
+		Errors:             make([]*NuGetError, 0),
 	}
 
 	// Initialize performance timing in diagnostic mode
@@ -246,6 +247,7 @@ fullRestore:
 		// Restore this framework (dependency resolution only, no downloads yet)
 		frameworkResult, err := r.restoreFramework(
 			ctx,
+			proj.Path,
 			packageRefs,
 			targetFrameworkStr,
 			targetFramework,
@@ -254,17 +256,34 @@ fullRestore:
 			isDiagnostic,
 			result.PerformanceTiming,
 		)
-		if err != nil {
+
+		// Always store framework result (even on error - may have partial data)
+		if frameworkResult != nil {
+			result.FrameworkResults[targetFrameworkStr] = frameworkResult
+
+			// Collect errors from this framework
+			if len(frameworkResult.Errors) > 0 {
+				result.Errors = append(result.Errors, frameworkResult.Errors...)
+			}
+
+			// Merge into union (for backward compatibility)
+			for key, pkg := range frameworkResult.allResolvedPackages {
+				allResolvedPackagesUnion[key] = pkg
+			}
+		}
+
+		// If there was a fatal error (frameworkResult is nil), still need to handle it
+		if err != nil && frameworkResult == nil {
+			// Fatal error - can't continue
 			return result, err
 		}
+	}
 
-		// Store framework-specific result
-		result.FrameworkResults[targetFrameworkStr] = frameworkResult
-
-		// Merge into union (for backward compatibility)
-		for key, pkg := range frameworkResult.allResolvedPackages {
-			allResolvedPackagesUnion[key] = pkg
-		}
+	// Check if any frameworks had errors
+	if len(result.Errors) > 0 {
+		// Return result with errors populated (matches NuGet.Client behavior)
+		// The result may contain partial data that was successfully resolved
+		return result, fmt.Errorf("restore failed with %d error(s)", len(result.Errors))
 	}
 
 	// Build backward-compatible DirectPackages and TransitivePackages from union
@@ -384,6 +403,7 @@ fullRestore:
 // Returns FrameworkResult with resolved packages for this framework.
 func (r *Restorer) restoreFramework(
 	ctx context.Context,
+	projectPath string,
 	packageRefs []project.PackageReference,
 	targetFrameworkStr string,
 	targetFramework *frameworks.NuGetFramework,
@@ -392,6 +412,15 @@ func (r *Restorer) restoreFramework(
 	isDiagnostic bool,
 	perfTiming *PerformanceTiming,
 ) (*FrameworkResult, error) {
+	// Initialize framework result (returned even on error for partial data + error collection)
+	frameworkResult := &FrameworkResult{
+		Framework:           targetFrameworkStr,
+		DirectPackages:      make([]PackageInfo, 0),
+		TransitivePackages:  make([]PackageInfo, 0),
+		Errors:              make([]*NuGetError, 0),
+		allResolvedPackages: make(map[string]*resolver.PackageDependencyInfo),
+	}
+
 	// Diagnostic: Start resolution trace for this framework
 	if isDiagnostic {
 		r.console.Printf("\nResolving dependencies for %s:\n", targetFrameworkStr)
@@ -432,23 +461,28 @@ func (r *Restorer) restoreFramework(
 		}
 
 		if !canSatisfy {
-			// Version not found - return error for this framework
+			// Version not found - add error to framework result
 			var nugetErr *NuGetError
 			switch {
 			case len(versionInfos) == 0:
-				nugetErr = NewPackageNotFoundError("", pkgRef.Include, versionRange, allSourceNames)
+				nugetErr = NewPackageNotFoundError(projectPath, pkgRef.Include, versionRange, allSourceNames)
 			case !isPrereleaseAllowed(versionRange) && hasPrereleaseVersionsOnly(versionRange, allVersions):
 				parsedRange, _ := version.ParseVersionRange(versionRange)
 				versionInfosNU1103 := r.updateNearestVersionForNU1103(versionInfos, allVersions, parsedRange)
-				nugetErr = NewPackageDownloadFailedError("", pkgRef.Include, versionRange, versionInfosNU1103)
+				nugetErr = NewPackageDownloadFailedError(projectPath, pkgRef.Include, versionRange, versionInfosNU1103)
 			default:
-				nugetErr = NewPackageVersionNotFoundError("", pkgRef.Include, versionRange, versionInfos)
+				nugetErr = NewPackageVersionNotFoundError(projectPath, pkgRef.Include, versionRange, versionInfos)
 			}
 
-			// Add error log for this framework
+			// Add error to framework result
+			frameworkResult.Errors = append(frameworkResult.Errors, nugetErr)
+
+			// Add error log for this framework (for caching)
 			r.addErrorLog(nugetErr, targetFrameworkStr)
 
-			return nil, fmt.Errorf("package version not found for framework %s: %s %s", targetFrameworkStr, pkgRef.Include, versionRange)
+			// Continue processing other packages (collect all errors, don't fail fast)
+			// Skip adding this package to dependencies list
+			continue
 		}
 
 		// Add to package dependencies list
@@ -456,6 +490,12 @@ func (r *Restorer) restoreFramework(
 			ID:           pkgRef.Include,
 			VersionRange: versionRange,
 		})
+	}
+
+	// If we collected errors during package validation, return early
+	// Don't attempt dependency resolution with invalid packages
+	if len(frameworkResult.Errors) > 0 {
+		return frameworkResult, fmt.Errorf("package validation failed for framework %s", targetFrameworkStr)
 	}
 
 	// Phase 2: Resolve all dependencies together using multi-root resolution
@@ -501,18 +541,17 @@ func (r *Restorer) restoreFramework(
 		r.console.Printf("    Resolved %d direct + %d transitive = %d total packages\n", directCount, transitiveCount, len(allResolvedPackages))
 	}
 
-	// Check for downgrades
+	// Check for downgrades - these are warnings in NuGet.Client but we treat as errors
+	// TODO: In future, may want to support TreatWarningsAsErrors flag
 	if len(resolutionResult.Downgrades) > 0 {
-		return nil, fmt.Errorf("package downgrades detected for framework %s", targetFrameworkStr)
+		// Add downgrade errors to framework result
+		downgradeErrs := r.buildDowngradeErrors(resolutionResult.Downgrades, "")
+		frameworkResult.Errors = append(frameworkResult.Errors, downgradeErrs...)
+		return frameworkResult, fmt.Errorf("package downgrades detected for framework %s", targetFrameworkStr)
 	}
 
-	// Build FrameworkResult
-	frameworkResult := &FrameworkResult{
-		Framework:           targetFrameworkStr,
-		DirectPackages:      make([]PackageInfo, 0),
-		TransitivePackages:  make([]PackageInfo, 0),
-		allResolvedPackages: allResolvedPackages,
-	}
+	// Store resolved packages in framework result
+	frameworkResult.allResolvedPackages = allResolvedPackages
 
 	// Categorize packages as direct vs transitive
 	for _, pkgInfo := range allResolvedPackages {

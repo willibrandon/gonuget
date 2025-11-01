@@ -359,11 +359,23 @@ func (h *RestoreTransitiveHandler) Handle(data json.RawMessage) (interface{}, er
 
 	lockFilePath := filepath.Join(filepath.Dir(proj.Path), "obj", "project.assets.json")
 
-	// Handle restore errors
-	if err != nil {
-		// Restore failed - categorize error messages
-		errorMessages := []string{err.Error()}
+	// Handle restore errors - check both generic error and structured NuGetErrors
+	errorMessages := make([]string, 0)
 
+	// First, check if result has structured NuGetError entries with error codes
+	if result != nil && len(result.Errors) > 0 {
+		// Use structured NuGetErrors which include proper error codes (NU1101, NU1102, etc.)
+		for _, nugetErr := range result.Errors {
+			// Format without ANSI colors for interop test consumption
+			errorMessages = append(errorMessages, nugetErr.FormatError(false))
+		}
+	} else if err != nil {
+		// Fallback to generic error if no structured errors
+		errorMessages = append(errorMessages, err.Error())
+	}
+
+	// If we have errors, restore failed
+	if len(errorMessages) > 0 {
 		return RestoreTransitiveResponse{
 			Success:             false,
 			DirectPackages:      []RestoredPackageInfo{},

@@ -3,8 +3,12 @@ package restore
 import (
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/willibrandon/gonuget/cmd/gonuget/project"
+	"github.com/willibrandon/gonuget/frameworks"
+	"github.com/willibrandon/gonuget/packaging"
+	"github.com/willibrandon/gonuget/packaging/assets"
 )
 
 // LockFileBuilder builds project.assets.json from restore results.
@@ -71,6 +75,10 @@ func (b *LockFileBuilder) Build(proj *project.Project, result *Result) *LockFile
 		dependencies = append(dependencies, pkgRef.Include+" >= "+pkgRef.Version)
 	}
 
+	// Get all packages (direct + transitive) - needed for both Libraries and Targets
+	// Matches NuGet.Client BuildAssetsFile line 265
+	allPackages := result.AllPackages()
+
 	// Add entries for each target framework
 	for _, tfm := range targetFrameworks {
 		// Add to Restore.Frameworks
@@ -95,9 +103,28 @@ func (b *LockFileBuilder) Build(proj *project.Project, result *Result) *LockFile
 		// Add to ProjectFileDependencyGroups (per-framework)
 		lf.ProjectFileDependencyGroups[tfm] = dependencies
 
-		// Add target for this framework
+		// Parse framework
+		framework, err := frameworks.ParseFramework(tfm)
+		if err != nil {
+			// If we can't parse framework, create empty target
+			lf.Targets[tfm] = Target{}
+			continue
+		}
+
+		// Add target for this framework with populated assemblies
 		// For multi-TFM, each framework gets its own target section
-		lf.Targets[tfm] = Target{}
+		target := make(Target)
+
+		// Populate assemblies for each package
+		for _, pkg := range allPackages {
+			targetLib := b.createTargetLibrary(pkg, framework, packagesPath)
+			if targetLib != nil {
+				key := pkg.ID + "/" + pkg.Version
+				target[key] = *targetLib
+			}
+		}
+
+		lf.Targets[tfm] = target
 	}
 
 	// Add global ProjectFileDependencyGroups entry (for all frameworks)
@@ -105,15 +132,93 @@ func (b *LockFileBuilder) Build(proj *project.Project, result *Result) *LockFile
 
 	// Add libraries (direct + transitive) - this is the UNION across all frameworks
 	// Matches NuGet.Client BuildAssetsFile line 265
-	allPackages := result.AllPackages()
 	for _, pkg := range allPackages {
 		key := pkg.ID + "/" + pkg.Version
+		// NuGet.Client uses lowercase package ID in path for cross-platform compatibility
+		// Format: "packageid/version" (e.g., "newtonsoft.json/13.0.3")
+		relativePath := strings.ToLower(pkg.ID) + "/" + pkg.Version
 		lf.Libraries[key] = Library{
 			Type:  "package",
-			Path:  pkg.Path,
+			Path:  relativePath,
 			Files: []string{},
 		}
 	}
 
 	return lf
+}
+
+// createTargetLibrary creates a TargetLibrary with compile and runtime assemblies for a package.
+// Matches NuGet.Client's LockFileUtils.CreateLockFileTargetLibrary.
+func (b *LockFileBuilder) createTargetLibrary(
+	pkg PackageInfo,
+	framework *frameworks.NuGetFramework,
+	packagesPath string,
+) *TargetLibrary {
+	// Build package path
+	pkgPath := filepath.Join(packagesPath, strings.ToLower(pkg.ID), pkg.Version)
+	nupkgPath := filepath.Join(pkgPath, strings.ToLower(pkg.ID)+"."+pkg.Version+".nupkg")
+
+	// Check if package exists
+	if _, err := os.Stat(nupkgPath); os.IsNotExist(err) {
+		// Package not downloaded yet - return empty target library
+		return &TargetLibrary{
+			Type:    "package",
+			Compile: make(map[string]map[string]string),
+			Runtime: make(map[string]map[string]string),
+		}
+	}
+
+	// Open package
+	reader, err := packaging.OpenPackage(nupkgPath)
+	if err != nil {
+		// Can't read package - return empty target library
+		return &TargetLibrary{
+			Type:    "package",
+			Compile: make(map[string]map[string]string),
+			Runtime: make(map[string]map[string]string),
+		}
+	}
+	defer reader.Close()
+
+	// Get all files from package
+	files := reader.GetFiles("")
+	paths := make([]string, 0, len(files))
+	for _, file := range files {
+		paths = append(paths, file.Name)
+	}
+
+	// Create content item collection from package files
+	collection := assets.NewContentItemCollection(paths)
+
+	// Create managed code conventions for asset selection
+	conventions := assets.NewManagedCodeConventions()
+
+	// Create selection criteria for this framework
+	criteria := assets.ForFramework(framework, conventions.Properties)
+
+	targetLib := &TargetLibrary{
+		Type:    "package",
+		Compile: make(map[string]map[string]string),
+		Runtime: make(map[string]map[string]string),
+	}
+
+	// Select compile assemblies (ref/ takes precedence over lib/)
+	compileGroup := collection.FindBestItemGroup(criteria, conventions.CompileRefAssemblies, conventions.CompileLibAssemblies)
+	if compileGroup != nil {
+		for _, item := range compileGroup.Items {
+			// Add with empty metadata (related property would go here if we parsed it)
+			targetLib.Compile[item.Path] = map[string]string{"related": ".xml"}
+		}
+	}
+
+	// Select runtime assemblies (lib/ folder)
+	runtimeGroup := collection.FindBestItemGroup(criteria, conventions.RuntimeAssemblies)
+	if runtimeGroup != nil {
+		for _, item := range runtimeGroup.Items {
+			// Add with empty metadata
+			targetLib.Runtime[item.Path] = map[string]string{"related": ".xml"}
+		}
+	}
+
+	return targetLib
 }

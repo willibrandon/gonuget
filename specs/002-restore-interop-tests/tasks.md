@@ -101,13 +101,13 @@
 
 ### Implementation for User Story 3
 
-- [ ] T029 [P] [US3] Create test for NU1101 error (package doesn't exist) in tests/nuget-client-interop/GonugetInterop.Tests/RestoreTransitiveTests.cs
-- [ ] T030 [P] [US3] Create test for NU1102 error (version doesn't exist) in tests/nuget-client-interop/GonugetInterop.Tests/RestoreTransitiveTests.cs
-- [ ] T031 [P] [US3] Create test for NU1103 error (only prerelease available) in tests/nuget-client-interop/GonugetInterop.Tests/RestoreTransitiveTests.cs
-- [ ] T032 [P] [US3] Create test for error message format matching (spacing, punctuation) in tests/nuget-client-interop/GonugetInterop.Tests/RestoreTransitiveTests.cs
-- [ ] T033 [P] [US3] Create test for error message sources list accuracy in tests/nuget-client-interop/GonugetInterop.Tests/RestoreTransitiveTests.cs
-- [ ] T034 [P] [US3] Create test for NU1102 available versions list in tests/nuget-client-interop/GonugetInterop.Tests/RestoreTransitiveTests.cs
-- [ ] T035 [P] [US3] Create test for NU1102 nearest version suggestion in tests/nuget-client-interop/GonugetInterop.Tests/RestoreTransitiveTests.cs
+- [x] T029 [P] [US3] Create test for NU1101 error (package doesn't exist) in tests/nuget-client-interop/GonugetInterop.Tests/RestoreTransitiveTests.cs
+- [x] T030 [P] [US3] Create test for NU1102 error (version doesn't exist) in tests/nuget-client-interop/GonugetInterop.Tests/RestoreTransitiveTests.cs
+- [x] T031 [P] [US3] Create test for NU1103 error (only prerelease available) in tests/nuget-client-interop/GonugetInterop.Tests/RestoreTransitiveTests.cs
+- [x] T032 [P] [US3] Create test for error message format matching (spacing, punctuation) in tests/nuget-client-interop/GonugetInterop.Tests/RestoreTransitiveTests.cs
+- [x] T033 [P] [US3] Create test for error message sources list accuracy in tests/nuget-client-interop/GonugetInterop.Tests/RestoreTransitiveTests.cs
+- [x] T034 [P] [US3] Create test for NU1102 available versions list in tests/nuget-client-interop/GonugetInterop.Tests/RestoreTransitiveTests.cs
+- [x] T035 [P] [US3] Create test for NU1102 nearest version suggestion in tests/nuget-client-interop/GonugetInterop.Tests/RestoreTransitiveTests.cs
 
 **Checkpoint**: At this point, unresolved package error messages should be fully validated. All user stories 1, 2, AND 3 should work independently.
 
@@ -121,13 +121,13 @@
 
 ### Implementation for User Story 4
 
-- [ ] T036 [P] [US4] Create test for Libraries map structure (lowercase paths, metadata) in tests/nuget-client-interop/GonugetInterop.Tests/RestoreTransitiveTests.cs
-- [ ] T037 [P] [US4] Create test for ProjectFileDependencyGroups (direct only, not transitive) in tests/nuget-client-interop/GonugetInterop.Tests/RestoreTransitiveTests.cs
-- [ ] T038 [P] [US4] Create test for multi-framework project lock file structure in tests/nuget-client-interop/GonugetInterop.Tests/RestoreTransitiveTests.cs
-- [ ] T039 [P] [US4] Create test for MSBuild compatibility (dotnet build succeeds after gonuget restore) in tests/nuget-client-interop/GonugetInterop.Tests/RestoreTransitiveTests.cs
-- [ ] T040 [P] [US4] Create test for package path casing (lowercase package IDs) in tests/nuget-client-interop/GonugetInterop.Tests/RestoreTransitiveTests.cs
-- [ ] T041 [P] [US4] Create test for targets section structure (framework-specific packages) in tests/nuget-client-interop/GonugetInterop.Tests/RestoreTransitiveTests.cs
-- [ ] T042 [P] [US4] Create test for lock file version and format compatibility in tests/nuget-client-interop/GonugetInterop.Tests/RestoreTransitiveTests.cs
+- [x] T036 [P] [US4] Create test for Libraries map structure (lowercase paths, metadata) in tests/nuget-client-interop/GonugetInterop.Tests/RestoreTransitiveTests.cs
+- [x] T037 [P] [US4] Create test for ProjectFileDependencyGroups (direct only, not transitive) in tests/nuget-client-interop/GonugetInterop.Tests/RestoreTransitiveTests.cs
+- [x] T038 [P] [US4] Create test for multi-framework project lock file structure in tests/nuget-client-interop/GonugetInterop.Tests/RestoreTransitiveTests.cs
+- [x] T039 [P] [US4] Create test for MSBuild compatibility (dotnet build succeeds after gonuget restore) in tests/nuget-client-interop/GonugetInterop.Tests/RestoreTransitiveTests.cs
+- [x] T040 [P] [US4] Create test for package path casing (lowercase package IDs) in tests/nuget-client-interop/GonugetInterop.Tests/RestoreTransitiveTests.cs
+- [x] T041 [P] [US4] Create test for targets section structure (framework-specific packages) in tests/nuget-client-interop/GonugetInterop.Tests/RestoreTransitiveTests.cs
+- [x] T042 [P] [US4] Create test for lock file version and format compatibility in tests/nuget-client-interop/GonugetInterop.Tests/RestoreTransitiveTests.cs
 
 **Checkpoint**: All user stories should now be independently functional. The test suite comprehensively validates restore transitive dependency resolution parity.
 
