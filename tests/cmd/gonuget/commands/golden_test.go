@@ -5,6 +5,7 @@ import (
 	"flag"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
@@ -13,6 +14,11 @@ import (
 )
 
 var update = flag.Bool("update", false, "update golden files")
+
+// normalizeLineEndings converts all line endings to LF for consistent cross-platform comparison
+func normalizeLineEndings(s string) string {
+	return strings.ReplaceAll(s, "\r\n", "\n")
+}
 
 // TestHelpOutput validates help output against golden files
 func TestHelpOutput(t *testing.T) {
@@ -64,7 +70,11 @@ func TestHelpOutput(t *testing.T) {
 					t.Fatalf("failed to read golden file %s: %v (run with -update to create)", goldenPath, err)
 				}
 
-				if !bytes.Equal(buf.Bytes(), golden) {
+				// Normalize line endings for cross-platform compatibility
+				gotNormalized := normalizeLineEndings(buf.String())
+				wantNormalized := normalizeLineEndings(string(golden))
+
+				if gotNormalized != wantNormalized {
 					t.Errorf("output mismatch for %s:\n=== GOT ===\n%s\n=== WANT ===\n%s\n=== END ===",
 						tt.name, buf.String(), string(golden))
 					t.Logf("Run 'go test -update' to update golden files")

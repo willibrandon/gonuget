@@ -23,6 +23,10 @@ func TestErrorMessageTiming(t *testing.T) {
 
 	gonugetPath := commands.BuildBinary(t)
 
+	// Warmup: Run once to avoid measuring process startup overhead
+	warmupCmd := exec.Command(gonugetPath, "--help")
+	_, _ = warmupCmd.CombinedOutput()
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			start := time.Now()
@@ -55,6 +59,10 @@ func TestHelpOutputTiming(t *testing.T) {
 	}
 
 	gonugetPath := commands.BuildBinary(t)
+
+	// Warmup: Run once to avoid measuring process startup overhead
+	warmupCmd := exec.Command(gonugetPath, "--help")
+	_, _ = warmupCmd.CombinedOutput()
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
