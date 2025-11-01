@@ -77,3 +77,6 @@ cmd/gonuget/gonuget
 tests/nuget-client-interop/gonuget-interop-test
 cmd/nuget-interop-test/*-interop-test
 cmd/gonuget-cli-interop-test/gonuget-cli-interop-test
+
+# Spec Kit
+.specify/
