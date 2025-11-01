@@ -8,15 +8,46 @@ namespace GonugetInterop.Tests.TestHelpers;
 
 /// <summary>
 /// Helper class to create temporary .NET test projects for restore testing.
+/// Provides a fluent builder API for creating test projects with specific target frameworks
+/// and package references, then writing them to disk in a temporary directory.
 /// </summary>
+/// <remarks>
+/// Implements IDisposable to automatically clean up temporary directories.
+/// Use with 'using' statements to ensure cleanup after tests complete.
+/// </remarks>
+/// <example>
+/// <code>
+/// using var project = TestProject.Create("MyTest")
+///     .WithFramework("net8.0")
+///     .AddPackage("Newtonsoft.Json", "13.0.3")
+///     .Build();
+/// // Use project.Path for restore operations
+/// </code>
+/// </example>
 public class TestProject : IDisposable
 {
     private readonly string _tempDir;
     private readonly List<PackageReference> _packageReferences = new();
 
+    /// <summary>
+    /// Gets the name of the test project.
+    /// </summary>
     public string Name { get; }
+
+    /// <summary>
+    /// Gets the full path to the generated .csproj file. Empty until Build() is called.
+    /// </summary>
     public string Path { get; private set; } = string.Empty;
+
+    /// <summary>
+    /// Gets or sets the target framework moniker (TFM) for the project (e.g., "net9.0", "net8.0").
+    /// Defaults to "net9.0" if not explicitly set.
+    /// </summary>
     public string TargetFramework { get; private set; }
+
+    /// <summary>
+    /// Gets the list of package references configured for this project.
+    /// </summary>
     public IReadOnlyList<PackageReference> PackageReferences => _packageReferences.AsReadOnly();
 
     private TestProject(string name)
@@ -83,19 +114,49 @@ public class TestProject : IDisposable
 
     /// <summary>
     /// Builds the test project by writing the .csproj file to disk.
+    /// This method must be called after configuring the project with WithFramework() and/or AddPackage().
     /// </summary>
-    /// <returns>Test project instance with Path set to the created .csproj file</returns>
+    /// <returns>Test project instance with Path property set to the created .csproj file path</returns>
+    /// <exception cref="IOException">Thrown if the .csproj file cannot be written to disk</exception>
     public TestProject Build()
     {
         var projectFileName = $"{Name}.csproj";
         Path = System.IO.Path.Combine(_tempDir, projectFileName);
 
-        var csprojContent = GenerateCsprojContent();
-        File.WriteAllText(Path, csprojContent, Encoding.UTF8);
+        try
+        {
+            var csprojContent = GenerateCsprojContent();
+            File.WriteAllText(Path, csprojContent, Encoding.UTF8);
+        }
+        catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException || ex is System.Security.SecurityException)
+        {
+            throw new IOException(
+                $"Failed to create test project file.\n" +
+                $"Project name: {Name}\n" +
+                $"Target path: {Path}\n" +
+                $"Temp directory: {_tempDir}\n" +
+                $"Target framework: {TargetFramework}\n" +
+                $"Package count: {_packageReferences.Count}\n" +
+                $"Error: {ex.Message}", ex);
+        }
+
+        // Verify file was created successfully
+        if (!File.Exists(Path))
+        {
+            throw new IOException(
+                $"Test project file was not created.\n" +
+                $"Expected path: {Path}\n" +
+                $"Directory exists: {Directory.Exists(_tempDir)}\n" +
+                $"This may indicate a filesystem permissions issue.");
+        }
 
         return this;
     }
 
+    /// <summary>
+    /// Generates the .csproj file content as XML based on configured target framework and package references.
+    /// </summary>
+    /// <returns>Complete .csproj file content as a string</returns>
     private string GenerateCsprojContent()
     {
         var sb = new StringBuilder();
@@ -126,8 +187,14 @@ public class TestProject : IDisposable
     }
 
     /// <summary>
-    /// Cleans up the temporary project directory.
+    /// Cleans up the temporary project directory and all its contents.
+    /// This method is called automatically when the object is disposed (via using statement or explicit Dispose()).
     /// </summary>
+    /// <remarks>
+    /// Uses best-effort cleanup - exceptions during cleanup are logged to console but not thrown
+    /// to prevent exceptions from Dispose() which could hide test failures.
+    /// If cleanup fails, the temporary directory path is written to console for manual cleanup.
+    /// </remarks>
     public void Dispose()
     {
         try
@@ -137,14 +204,24 @@ public class TestProject : IDisposable
                 Directory.Delete(_tempDir, recursive: true);
             }
         }
-        catch
+        catch (Exception ex)
         {
             // Best effort cleanup - don't throw in Dispose
+            // Write diagnostic info to console for debugging
+            Console.WriteLine(
+                $"WARNING: Failed to clean up test project temporary directory.\n" +
+                $"Project: {Name}\n" +
+                $"Path: {_tempDir}\n" +
+                $"Error: {ex.GetType().Name}: {ex.Message}\n" +
+                $"Manual cleanup may be required.\n");
         }
     }
 }
 
 /// <summary>
-/// Represents a NuGet package reference in a project.
+/// Represents a NuGet package reference in a project (.csproj PackageReference element).
 /// </summary>
+/// <param name="PackageId">The NuGet package identifier (e.g., "Newtonsoft.Json")</param>
+/// <param name="Version">The package version or version range (e.g., "13.0.3" or "[13.0.0, 14.0.0)")</param>
+/// <param name="IncludePrerelease">Whether to include prerelease versions when resolving this package. Defaults to false.</param>
 public record PackageReference(string PackageId, string Version, bool IncludePrerelease = false);

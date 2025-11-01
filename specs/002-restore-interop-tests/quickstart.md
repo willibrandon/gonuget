@@ -12,7 +12,7 @@ This guide explains how to run and develop C# interop tests for gonuget's restor
 - .NET 9.0 SDK installed
 - Go 1.21+ installed
 - gonuget repository cloned
-- NuGet.Client interop test infrastructure functional (existing 491 tests pass)
+- NuGet.Client interop test infrastructure functional (existing 550 tests pass)
 
 ## Quick Start
 

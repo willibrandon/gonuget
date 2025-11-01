@@ -16,6 +16,16 @@ public sealed class RestoreTransitiveTests
 {
     private readonly string[] _testSources = ["https://api.nuget.org/v3/index.json"];
 
+    #region Phase 3: User Story 1 - Transitive Dependency Resolution Parity (T014-T021)
+
+    // This phase validates that gonuget's transitive dependency resolution behaves identically
+    // to NuGet.Client for all scenarios: simple chains, moderate trees, complex graphs,
+    // diamond dependencies, framework-specific dependencies, shared transitive dependencies,
+    // version resolution, and version ranges.
+    //
+    // Success Criteria: All packages resolved by gonuget must match NuGet.Client exactly,
+    // including package IDs, versions, and the complete transitive closure.
+
     /// <summary>
     /// T014: Test simple transitive resolution with 1-2 dependency levels.
     /// Serilog.Sinks.File 5.0.0 -> Serilog (>= 2.10.0)
@@ -540,9 +550,20 @@ public sealed class RestoreTransitiveTests
         }
     }
 
-    // ========================================================================
-    // Phase 4: User Story 2 - Direct vs Transitive Categorization
-    // ========================================================================
+    #endregion
+
+    #region Phase 4: User Story 2 - Direct vs Transitive Categorization (T022-T028)
+
+    // This phase validates that gonuget correctly categorizes packages as direct or transitive
+    // in project.assets.json, matching NuGet.Client's behavior exactly. This is critical for
+    // future package listing commands that need to distinguish user-installed packages from
+    // their dependencies.
+    //
+    // Success Criteria:
+    // - ProjectFileDependencyGroups contains ONLY direct dependencies
+    // - Libraries map contains ALL packages (direct + transitive)
+    // - Categorization is correct for multi-framework projects
+    // - Framework-specific transitive dependencies are properly categorized
 
     /// <summary>
     /// T022: Test pure direct dependencies (no transitive).
@@ -1028,7 +1049,20 @@ public sealed class RestoreTransitiveTests
         }
     }
 
-    // ========== Phase 5: User Story 3 - Unresolved Package Error Message Parity ==========
+    #endregion
+
+    #region Phase 5: User Story 3 - Unresolved Package Error Message Parity (T029-T035)
+
+    // This phase validates that gonuget returns identical error messages (NU1101, NU1102, NU1103)
+    // as NuGet.Client for missing or incompatible packages. Error message parity is critical for
+    // user experience - developers should see the same helpful diagnostics regardless of which
+    // NuGet client they use.
+    //
+    // Success Criteria:
+    // - Error codes match exactly (NU1101, NU1102, NU1103)
+    // - Error message format and content match (allowing minor formatting tolerance)
+    // - Source lists are accurate
+    // - Available versions and nearest version suggestions match
 
     /// <summary>
     /// T029: Test NU1101 error (package doesn't exist).
@@ -1475,7 +1509,21 @@ public sealed class RestoreTransitiveTests
         }
     }
 
+    #endregion
+
     #region Phase 6: User Story 4 - Lock File Format Compatibility (T036-T042)
+
+    // This phase validates that generated project.assets.json is 100% compatible with MSBuild
+    // and dotnet build. Lock file format compatibility is critical - if the format doesn't match
+    // NuGet.Client exactly, MSBuild won't be able to locate package assemblies and builds will fail.
+    //
+    // Success Criteria:
+    // - Libraries map uses lowercase package ID paths for cross-platform compatibility
+    // - ProjectFileDependencyGroups contains only direct dependencies
+    // - Targets section contains framework-specific compile/runtime assemblies
+    // - Multi-framework projects have correct structure
+    // - dotnet build succeeds after gonuget restore (integration test)
+    // - Lock file version and format match NuGet.Client
 
     /// <summary>
     /// T036: Test Libraries map structure (lowercase paths, metadata).

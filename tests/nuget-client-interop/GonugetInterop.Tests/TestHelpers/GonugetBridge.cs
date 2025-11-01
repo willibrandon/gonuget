@@ -411,9 +411,14 @@ public static class GonugetBridge
 
     /// <summary>
     /// Executes a request against the gonuget CLI and deserializes the response.
+    /// Includes comprehensive error handling and diagnostic output for debugging test failures.
     /// </summary>
     private static TResponse Execute<TResponse>(object request)
     {
+        // Extract action for diagnostic messages
+        var actionProperty = request.GetType().GetProperty("action");
+        var action = actionProperty?.GetValue(request)?.ToString() ?? "unknown";
+
         var psi = new ProcessStartInfo
         {
             FileName = GonugetPath,
@@ -424,41 +429,146 @@ public static class GonugetBridge
             CreateNoWindow = true
         };
 
-        using var process = Process.Start(psi)
-            ?? throw new InvalidOperationException("Failed to start gonuget process");
+        Process? process = null;
+        string requestJson = string.Empty;
+        string outputJson = string.Empty;
+        string errorOutput = string.Empty;
 
-        // Send request as JSON
-        var requestJson = JsonSerializer.Serialize(request, s_serializerOptions);
-
-        process.StandardInput.WriteLine(requestJson);
-        process.StandardInput.Close();
-
-        // Read response
-        var outputJson = process.StandardOutput.ReadToEnd();
-        var errorOutput = process.StandardError.ReadToEnd();
-
-        process.WaitForExit(30000); // 30 second timeout
-
-        if (!string.IsNullOrEmpty(errorOutput))
+        try
         {
-            throw new InvalidOperationException($"gonuget stderr: {errorOutput}");
+            process = Process.Start(psi);
+            if (process == null)
+            {
+                throw new InvalidOperationException(
+                    $"Failed to start gonuget-interop-test process.\n" +
+                    $"Executable: {GonugetPath}\n" +
+                    $"Action: {action}\n" +
+                    $"Ensure the binary is built with 'make build-interop'.");
+            }
+
+            // Send request as JSON
+            requestJson = JsonSerializer.Serialize(request, s_serializerOptions);
+            process.StandardInput.WriteLine(requestJson);
+            process.StandardInput.Close();
+
+            // Read response
+            outputJson = process.StandardOutput.ReadToEnd();
+            errorOutput = process.StandardError.ReadToEnd();
+
+            // Wait for process with timeout
+            bool exited = process.WaitForExit(30000); // 30 second timeout
+            if (!exited)
+            {
+                process.Kill();
+                throw new TimeoutException(
+                    $"gonuget-interop-test process timed out after 30 seconds.\n" +
+                    $"Action: {action}\n" +
+                    $"Request: {requestJson}\n" +
+                    $"This may indicate a deadlock or infinite loop in the handler.");
+            }
+
+            // Check for stderr output (diagnostic warnings or errors)
+            if (!string.IsNullOrEmpty(errorOutput))
+            {
+                throw new InvalidOperationException(
+                    $"gonuget-interop-test wrote to stderr:\n" +
+                    $"Action: {action}\n" +
+                    $"Stderr: {errorOutput}\n" +
+                    $"Stdout: {outputJson}\n" +
+                    $"Request: {requestJson}");
+            }
+
+            // Validate we got output
+            if (string.IsNullOrWhiteSpace(outputJson))
+            {
+                throw new InvalidOperationException(
+                    $"gonuget-interop-test produced no output.\n" +
+                    $"Action: {action}\n" +
+                    $"Request: {requestJson}\n" +
+                    $"Exit code: {process.ExitCode}\n" +
+                    $"Stderr: {errorOutput}");
+            }
+
+            // Parse response envelope
+            ResponseEnvelope? envelope;
+            try
+            {
+                envelope = JsonSerializer.Deserialize<ResponseEnvelope>(outputJson, s_deserializerOptions);
+            }
+            catch (JsonException ex)
+            {
+                throw new InvalidOperationException(
+                    $"Failed to deserialize response envelope.\n" +
+                    $"Action: {action}\n" +
+                    $"JSON output: {outputJson}\n" +
+                    $"Request: {requestJson}\n" +
+                    $"Error: {ex.Message}", ex);
+            }
+
+            if (envelope == null)
+            {
+                throw new InvalidOperationException(
+                    $"Response envelope deserialized to null.\n" +
+                    $"Action: {action}\n" +
+                    $"JSON output: {outputJson}\n" +
+                    $"Request: {requestJson}");
+            }
+
+            // Check for handler-reported errors
+            if (!envelope.Success)
+            {
+                var error = envelope.Error ?? new ErrorInfo { Message = "Unknown error" };
+                throw new GonugetException(
+                    error.Code,
+                    error.Message,
+                    error.Details,
+                    action,
+                    requestJson);
+            }
+
+            // Deserialize data payload
+            TResponse? result;
+            try
+            {
+                var dataJson = JsonSerializer.Serialize(envelope.Data, s_serializerOptions);
+                result = JsonSerializer.Deserialize<TResponse>(dataJson, s_deserializerOptions);
+            }
+            catch (JsonException ex)
+            {
+                throw new InvalidOperationException(
+                    $"Failed to deserialize response data to {typeof(TResponse).Name}.\n" +
+                    $"Action: {action}\n" +
+                    $"Data JSON: {JsonSerializer.Serialize(envelope.Data, s_serializerOptions)}\n" +
+                    $"Request: {requestJson}\n" +
+                    $"Error: {ex.Message}", ex);
+            }
+
+            if (result == null)
+            {
+                throw new InvalidOperationException(
+                    $"Response data deserialized to null.\n" +
+                    $"Action: {action}\n" +
+                    $"Expected type: {typeof(TResponse).Name}\n" +
+                    $"Request: {requestJson}");
+            }
+
+            return result;
         }
-
-        // Parse response envelope
-        var envelope = JsonSerializer.Deserialize<ResponseEnvelope>(outputJson, s_deserializerOptions)
-            ?? throw new InvalidOperationException("Failed to deserialize response");
-
-        if (!envelope.Success)
+        catch (Exception ex) when (ex is not GonugetException && ex is not TimeoutException)
         {
-            var error = envelope.Error ?? new ErrorInfo { Message = "Unknown error" };
-            throw new GonugetException(error.Code, error.Message, error.Details);
+            // Wrap unexpected exceptions with diagnostic context
+            throw new InvalidOperationException(
+                $"Unexpected error executing gonuget-interop-test.\n" +
+                $"Action: {action}\n" +
+                $"Request: {requestJson}\n" +
+                $"Stdout: {outputJson}\n" +
+                $"Stderr: {errorOutput}\n" +
+                $"Error: {ex.Message}", ex);
         }
-
-        // Deserialize data payload
-        return JsonSerializer.Deserialize<TResponse>(
-            JsonSerializer.Serialize(envelope.Data, s_serializerOptions),
-            s_deserializerOptions
-        ) ?? throw new InvalidOperationException("Failed to deserialize response data");
+        finally
+        {
+            process?.Dispose();
+        }
     }
 
     /// <summary>
@@ -823,13 +933,37 @@ public static class GonugetBridge
 
     /// <summary>
     /// Restores a project with full transitive dependency resolution and categorization.
+    /// Invokes gonuget's restore command to resolve all direct and transitive dependencies,
+    /// then categorizes each package for validation against NuGet.Client behavior.
     /// </summary>
-    /// <param name="projectPath">Absolute path to .csproj file</param>
-    /// <param name="packagesFolder">Optional custom packages folder path</param>
-    /// <param name="sources">Optional list of package sources</param>
-    /// <param name="noCache">Disable cache usage</param>
-    /// <param name="force">Force re-download of packages</param>
-    /// <returns>Restore result with direct and transitive packages categorized</returns>
+    /// <param name="projectPath">Absolute path to .csproj file to restore</param>
+    /// <param name="packagesFolder">Optional custom packages folder path. If null, uses default user profile location (~/.nuget/packages)</param>
+    /// <param name="sources">Optional array of package source URLs. If null or empty, uses NuGet.config sources</param>
+    /// <param name="noCache">If true, disables HTTP cache and forces fresh package metadata downloads</param>
+    /// <param name="force">If true, forces re-download of packages even if they exist in packages folder</param>
+    /// <returns>
+    /// Restore result containing:
+    /// - DirectPackages: Packages directly referenced in .csproj
+    /// - TransitivePackages: Packages pulled in as dependencies
+    /// - ErrorMessages: Any errors encountered during restore
+    /// - Success: Whether restore completed without errors
+    /// </returns>
+    /// <remarks>
+    /// This method is critical for validating NuGet.Client parity in transitive dependency resolution.
+    /// Tests should compare DirectPackages and TransitivePackages lists against NuGet.Client's output
+    /// to ensure gonuget resolves dependencies identically.
+    /// </remarks>
+    /// <example>
+    /// <code>
+    /// var result = GonugetBridge.RestoreTransitive(
+    ///     projectPath: "/tmp/test.csproj",
+    ///     sources: new[] { "https://api.nuget.org/v3/index.json" },
+    ///     force: true
+    /// );
+    /// Assert.True(result.Success);
+    /// Assert.Contains(result.DirectPackages, p => p.PackageId == "Newtonsoft.Json");
+    /// </code>
+    /// </example>
     public static RestoreTransitiveResponse RestoreTransitive(
         string projectPath,
         string? packagesFolder = null,
@@ -854,11 +988,32 @@ public static class GonugetBridge
     }
 
     /// <summary>
-    /// Compares two project.assets.json files semantically (gonuget vs NuGet.Client).
+    /// Compares two project.assets.json lock files semantically to validate format compatibility.
+    /// Performs deep structural comparison of gonuget-generated vs NuGet.Client-generated lock files,
+    /// checking Libraries, Targets, ProjectFileDependencyGroups, and other critical sections.
     /// </summary>
-    /// <param name="gonugetLockFilePath">Path to gonuget-generated project.assets.json</param>
-    /// <param name="nugetLockFilePath">Path to NuGet.Client-generated project.assets.json</param>
-    /// <returns>Comparison result with detailed differences if files don't match</returns>
+    /// <param name="gonugetLockFilePath">Absolute path to gonuget-generated project.assets.json file</param>
+    /// <param name="nugetLockFilePath">Absolute path to NuGet.Client-generated project.assets.json file</param>
+    /// <returns>
+    /// Comparison result containing:
+    /// - IsMatch: Whether the lock files are semantically equivalent
+    /// - Differences: Detailed list of structural differences if files don't match
+    /// - ErrorMessages: Any errors encountered during comparison
+    /// </returns>
+    /// <remarks>
+    /// This method validates lock file format compatibility, which is critical for MSBuild integration.
+    /// The comparison is semantic, not textual - minor formatting differences are ignored as long as
+    /// the structure and content match. Focuses on sections that MSBuild and dotnet build rely on.
+    /// </remarks>
+    /// <example>
+    /// <code>
+    /// var comparison = GonugetBridge.CompareProjectAssets(
+    ///     gonugetLockFilePath: "/tmp/obj/project.assets.json",
+    ///     nugetLockFilePath: "/tmp/obj/project.assets.json.nuget"
+    /// );
+    /// Assert.True(comparison.IsMatch, $"Lock files should match: {string.Join(", ", comparison.Differences)}");
+    /// </code>
+    /// </example>
     public static CompareProjectAssetsResponse CompareProjectAssets(
         string gonugetLockFilePath,
         string nugetLockFilePath)
@@ -877,11 +1032,37 @@ public static class GonugetBridge
     }
 
     /// <summary>
-    /// Validates error message format between gonuget and NuGet.Client.
+    /// Validates error message format and content parity between gonuget and NuGet.Client.
+    /// Compares error codes (NU1101, NU1102, NU1103), message structure, and diagnostic details
+    /// to ensure gonuget provides the same user experience as NuGet.Client for error scenarios.
     /// </summary>
-    /// <param name="gonugetError">Error message from gonuget</param>
-    /// <param name="nugetError">Error message from NuGet.Client</param>
-    /// <returns>Validation result with differences if messages don't match</returns>
+    /// <param name="gonugetError">Error message string from gonuget restore operation</param>
+    /// <param name="nugetError">Error message string from NuGet.Client restore operation</param>
+    /// <returns>
+    /// Validation result containing:
+    /// - IsMatch: Whether error messages are equivalent (allowing minor formatting differences)
+    /// - Differences: Specific differences in error code, format, or content
+    /// - ErrorMessages: Any errors encountered during validation
+    /// </returns>
+    /// <remarks>
+    /// Error message parity is critical for user experience - developers should see identical
+    /// diagnostics regardless of which NuGet client they use. This method validates:
+    /// - Error code matching (e.g., NU1101 for package not found)
+    /// - Message structure and formatting
+    /// - Source lists accuracy
+    /// - Available versions and nearest version suggestions
+    /// Minor formatting differences (spacing, punctuation) are tolerated as long as the diagnostic
+    /// information is equivalent.
+    /// </remarks>
+    /// <example>
+    /// <code>
+    /// var validation = GonugetBridge.ValidateErrorMessages(
+    ///     gonugetError: "NU1101: Unable to find package NonExistent. No packages exist...",
+    ///     nugetError: "NU1101: Unable to find package NonExistent. No packages exist..."
+    /// );
+    /// Assert.True(validation.IsMatch, $"Error messages should match: {string.Join(", ", validation.Differences)}");
+    /// </code>
+    /// </example>
     public static ValidateErrorMessagesResponse ValidateErrorMessages(
         string gonugetError,
         string nugetError)
