@@ -8,26 +8,24 @@ import (
 	"github.com/willibrandon/gonuget/cmd/gonuget/output"
 )
 
-// NewRemoveCommand creates the "remove source" command matching dotnet nuget
-func NewRemoveCommand(console *output.Console) *cobra.Command {
+// NewSourceRemoveCommand creates the "source remove" command matching dotnet nuget
+func NewSourceRemoveCommand(console *output.Console) *cobra.Command {
 	opts := &sourceOptions{}
 
 	cmd := &cobra.Command{
-		Use:   "remove source <name>",
-		Short: "Remove a NuGet source.",
+		Use:   "remove <NAME>",
+		Short: "Remove a NuGet source",
 		Long: `Remove a package source from NuGet.config.
 
 This command matches: dotnet nuget remove source
 
 Examples:
-  gonuget remove source "MyFeed"
-  gonuget remove source "Azure" --configfile /path/to/NuGet.config`,
-		Args: cobra.ExactArgs(2),
+  gonuget source remove "MyFeed"
+  gonuget source remove "Azure" --configfile /path/to/NuGet.config`,
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: completeSourceNames,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if args[0] != "source" {
-				return fmt.Errorf("unknown command %q for \"remove\"", args[0])
-			}
-			opts.name = args[1]
+			opts.name = args[0]
 			return runRemoveSource(console, opts)
 		},
 	}
@@ -52,6 +50,10 @@ func runRemoveSource(console *output.Console, opts *sourceOptions) error {
 	if !cfg.RemovePackageSource(opts.name) {
 		return fmt.Errorf("failed to remove source: %s", opts.name)
 	}
+
+	// Remove password from keychain if it exists
+	// Ignore errors - password might not be in keychain (could be cleartext or base64)
+	_ = deletePasswordFromKeychain(opts.name)
 
 	// Save config
 	if err := config.SaveNuGetConfig(configPath, cfg); err != nil {

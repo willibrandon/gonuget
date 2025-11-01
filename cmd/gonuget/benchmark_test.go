@@ -109,7 +109,7 @@ func BenchmarkListSource(b *testing.B) {
 	b.ReportAllocs()
 
 	for i := 0; i < b.N; i++ {
-		cmd := exec.Command(binPath, "list", "source", "--configfile", configFile)
+		cmd := exec.Command(binPath, "source", "list", "--configfile", configFile)
 		cmd.Stdout = &bytes.Buffer{}
 		if err := cmd.Run(); err != nil {
 			b.Fatalf("list source failed: %v", err)
@@ -129,7 +129,18 @@ func BenchmarkAddSource(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		// Use unique config file for each iteration to avoid conflicts
 		configFile := filepath.Join(tempDir, fmt.Sprintf("source-%d.xml", i))
-		cmd := exec.Command(binPath, "add", "source",
+
+		// Create minimal config file (required by source add command)
+		initialConfig := `<?xml version="1.0" encoding="utf-8"?>
+<configuration>
+  <packageSources>
+  </packageSources>
+</configuration>`
+		if err := os.WriteFile(configFile, []byte(initialConfig), 0644); err != nil {
+			b.Fatalf("failed to create config: %v", err)
+		}
+
+		cmd := exec.Command(binPath, "source", "add",
 			"https://test.example.com/v3/index.json",
 			"--configfile", configFile,
 			"--name", "TestFeed")

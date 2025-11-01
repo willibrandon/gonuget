@@ -9,27 +9,24 @@ import (
 	"github.com/willibrandon/gonuget/cmd/gonuget/output"
 )
 
-// NewUpdateCommand creates the "update source" command matching dotnet nuget
-func NewUpdateCommand(console *output.Console) *cobra.Command {
+// NewSourceUpdateCommand creates the "source update" command matching dotnet nuget
+func NewSourceUpdateCommand(console *output.Console) *cobra.Command {
 	opts := &sourceOptions{}
 
 	cmd := &cobra.Command{
-		Use:   "update source [name]",
-		Short: "Update a NuGet source.",
+		Use:   "update <NAME>",
+		Short: "Update a NuGet source",
 		Long: `Update properties of an existing package source.
 
 This command matches: dotnet nuget update source
 
 Examples:
-  gonuget update source MyFeed --source https://new.url/v3/index.json
-  gonuget update source Azure --username newuser --password newpass
-  gonuget update source Private --store-password-in-clear-text`,
-		Args: cobra.ExactArgs(2),
+  gonuget source update MyFeed --source https://new.url/v3/index.json
+  gonuget source update Azure --username newuser --password newpass
+  gonuget source update Private --store-password-in-clear-text`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if args[0] != "source" {
-				return fmt.Errorf("unknown command %q for \"update\"", args[0])
-			}
-			opts.name = args[1]
+			opts.name = args[0]
 			return runUpdateSource(console, opts)
 		},
 	}
@@ -88,7 +85,13 @@ func runUpdateSource(console *output.Console, opts *sourceOptions) error {
 		if opts.storePasswordInClearText {
 			console.Warning("WARNING: Storing password in clear text is not secure!")
 		}
-		addOrUpdateCredential(cfg, opts.name, opts.username, opts.password, opts.storePasswordInClearText, opts.validAuthenticationTypes)
+		warning, err := addOrUpdateCredential(cfg, opts.name, opts.username, opts.password, opts.storePasswordInClearText, opts.validAuthenticationTypes)
+		if err != nil {
+			return fmt.Errorf("failed to update credentials: %w", err)
+		}
+		if warning != "" {
+			console.Warning("WARNING: %s", warning)
+		}
 	}
 
 	// Save config

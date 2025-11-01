@@ -1,51 +1,75 @@
 package commands
 
 import (
-	"fmt"
+	"os"
+	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/willibrandon/gonuget/cmd/gonuget/output"
 )
 
-// NewListCommand creates the "list source" command matching dotnet nuget
-func NewListCommand(console *output.Console) *cobra.Command {
+// NewSourceListCommand creates the "source list" command matching dotnet nuget
+func NewSourceListCommand(console *output.Console) *cobra.Command {
 	opts := &sourceOptions{
-		format: "Detailed", // Default matches dotnet nuget
+		format: "console", // Default format
 	}
 
 	cmd := &cobra.Command{
-		Use:   "list source",
-		Short: "List configured NuGet sources.",
+		Use:   "list",
+		Short: "List configured NuGet sources",
 		Long: `List all package sources from NuGet.config hierarchy.
 
 This command matches: dotnet nuget list source
 
 Examples:
-  gonuget list source
-  gonuget list source --format Detailed
-  gonuget list source --format Short
-  gonuget list source --configfile /path/to/NuGet.config`,
-		Args: cobra.ExactArgs(1),
+  gonuget source list
+  gonuget source list --format console
+  gonuget source list --format json
+  gonuget source list --configfile /path/to/NuGet.config`,
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if args[0] != "source" {
-				return fmt.Errorf("unknown command %q for \"list\"", args[0])
-			}
 			return runListSource(console, opts)
 		},
 	}
 
 	cmd.Flags().StringVar(&opts.configFile, "configfile", "", "The NuGet configuration file. If specified, only the settings from this file will be used. If not specified, the hierarchy of configuration files from the current directory will be used.")
-	cmd.Flags().StringVar(&opts.format, "format", "Detailed", "The format of the list command output: `Detailed` (the default) and `Short`.")
+	cmd.Flags().StringVar(&opts.format, "format", "console", "The format of the list command output: console or json")
 
 	return cmd
 }
 
 func runListSource(console *output.Console, opts *sourceOptions) error {
-	cfg, _, err := loadSourceConfig(opts.configFile)
+	start := time.Now()
+
+	cfg, configPath, err := loadSourceConfig(opts.configFile)
 	if err != nil {
 		return err
 	}
 
+	// Handle JSON output format (VR-018: JSON to stdout, errors/warnings to stderr)
+	if opts.format == "json" {
+		jsonOutput := output.NewSourceListOutput(configPath, start)
+
+		// Build sources list
+		if cfg.PackageSources != nil && len(cfg.PackageSources.Add) > 0 {
+			for _, source := range cfg.PackageSources.Add {
+				enabled := !cfg.IsSourceDisabled(source.Key)
+				jsonOutput.Sources = append(jsonOutput.Sources, output.PackageSource{
+					Name:    source.Key,
+					Source:  source.Value,
+					Enabled: enabled,
+				})
+			}
+		}
+
+		// Update elapsed time
+		jsonOutput.ElapsedMs = output.MeasureElapsed(start)
+
+		// Write JSON to stdout
+		return output.WriteJSON(os.Stdout, jsonOutput)
+	}
+
+	// Console output format
 	if cfg.PackageSources == nil || len(cfg.PackageSources.Add) == 0 {
 		console.Info("No package sources configured.")
 		return nil
@@ -61,9 +85,7 @@ func runListSource(console *output.Console, opts *sourceOptions) error {
 			status = "Disabled"
 		}
 		console.Info("  %d.  %s [%s]", i+1, source.Key, status)
-		if opts.format == "Detailed" {
-			console.Info("      %s", source.Value)
-		}
+		console.Info("      %s", source.Value)
 	}
 
 	return nil

@@ -55,8 +55,8 @@ func HandleExecuteAddPackage(data json.RawMessage) (interface{}, error) {
 		return nil, fmt.Errorf("failed to execute dotnet: %w", err)
 	}
 
-	// Build gonuget add package command
-	gonugetArgs := []string{"add", "package", req.PackageID, "--project", req.ProjectPath}
+	// Build gonuget package add command (noun-first)
+	gonugetArgs := []string{"package", "add", req.PackageID, "--project", req.ProjectPath}
 	if req.Version != "" {
 		gonugetArgs = append(gonugetArgs, "--version", req.Version)
 	}

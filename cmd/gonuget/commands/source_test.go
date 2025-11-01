@@ -547,15 +547,32 @@ func TestStatusString(t *testing.T) {
 	}
 }
 
-func TestEncodePassword(t *testing.T) {
+func TestEncodeDecodePassword(t *testing.T) {
+	sourceName := "TestSource"
 	password := "testpassword"
-	encoded := encodePassword(password)
 
-	if encoded == password {
-		t.Error("Expected password to be encoded")
-	}
+	// Test encoding (will use keychain or fallback to base64)
+	encoded, _ := encodePassword(sourceName, password)
+	// Ignore warning if keychain unavailable - tests should work with or without keychain
 	if encoded == "" {
 		t.Error("Expected non-empty encoded password")
+	}
+	if encoded == password {
+		t.Error("Expected password to be encoded, not stored as plain text")
+	}
+
+	// Test decoding
+	decoded, err := decodePassword(sourceName, encoded)
+	if err != nil {
+		t.Errorf("Failed to decode password: %v", err)
+	}
+	if decoded != password {
+		t.Errorf("Decoded password = %s, expected %s", decoded, password)
+	}
+
+	// Clean up keychain if password was stored there
+	if strings.HasPrefix(encoded, keychainPrefix) {
+		_ = deletePasswordFromKeychain(sourceName)
 	}
 }
 
@@ -711,17 +728,17 @@ func TestLoadSourceConfig(t *testing.T) {
 		}
 	})
 
-	t.Run("create new config", func(t *testing.T) {
+	t.Run("error on non-existent explicit path", func(t *testing.T) {
 		newPath := filepath.Join(tmpDir, "new", "NuGet.config")
 		cfg, path, err := loadSourceConfig(newPath)
-		if err != nil {
-			t.Errorf("Expected no error, got: %v", err)
+		if err == nil {
+			t.Error("Expected error when explicit config path doesn't exist")
 		}
-		if cfg == nil {
-			t.Error("Expected config to be created")
+		if cfg != nil {
+			t.Error("Expected nil config when path doesn't exist")
 		}
-		if path != newPath {
-			t.Errorf("Expected path '%s', got '%s'", newPath, path)
+		if path != "" {
+			t.Errorf("Expected empty path, got '%s'", path)
 		}
 	})
 }
@@ -730,7 +747,10 @@ func TestAddOrUpdateCredential(t *testing.T) {
 	cfg := config.NewDefaultConfig()
 
 	t.Run("add new credential", func(t *testing.T) {
-		addOrUpdateCredential(cfg, "TestFeed", "user", "pass", false, "basic")
+		_, err := addOrUpdateCredential(cfg, "TestFeed", "user", "pass", false, "basic")
+		if err != nil {
+			t.Fatalf("Failed to add credential: %v", err)
+		}
 
 		if cfg.PackageSourceCredentials == nil {
 			t.Fatal("Expected credentials to be set")
@@ -749,7 +769,10 @@ func TestAddOrUpdateCredential(t *testing.T) {
 	})
 
 	t.Run("update existing credential", func(t *testing.T) {
-		addOrUpdateCredential(cfg, "TestFeed", "newuser", "newpass", true, "negotiate")
+		_, err := addOrUpdateCredential(cfg, "TestFeed", "newuser", "newpass", true, "negotiate")
+		if err != nil {
+			t.Fatalf("Failed to update credential: %v", err)
+		}
 
 		found := false
 		for _, cred := range cfg.PackageSourceCredentials.Items {
@@ -776,85 +799,69 @@ func TestAddOrUpdateCredential(t *testing.T) {
 func TestNewCommands(t *testing.T) {
 	console := output.NewConsole(os.Stdout, os.Stderr, output.VerbosityQuiet)
 
-	t.Run("NewListCommand", func(t *testing.T) {
-		cmd := NewListCommand(console)
+	t.Run("NewSourceListCommand", func(t *testing.T) {
+		cmd := NewSourceListCommand(console)
 		if cmd == nil {
 			t.Fatal("Expected command to be created")
 		}
-		if cmd.Use != "list source" {
-			t.Errorf("Expected Use to be 'list source', got '%s'", cmd.Use)
+		if cmd.Use != "list" {
+			t.Errorf("Expected Use to be 'list', got '%s'", cmd.Use)
 		}
 		if cmd.Short == "" {
 			t.Error("Expected Short description to be set")
 		}
 	})
 
-	t.Run("NewAddCommand", func(t *testing.T) {
-		cmd := NewAddCommand(console)
+	t.Run("NewSourceAddCommand", func(t *testing.T) {
+		cmd := NewSourceAddCommand(console)
 		if cmd == nil {
 			t.Fatal("Expected command to be created")
 		}
-		if cmd.Use != "add" {
-			t.Errorf("Expected Use to be 'add', got '%s'", cmd.Use)
+		if cmd.Use != "add <PACKAGE_SOURCE_PATH>" {
+			t.Errorf("Expected Use to be 'add <PACKAGE_SOURCE_PATH>', got '%s'", cmd.Use)
 		}
-		// Verify it has subcommands (source and package)
-		if len(cmd.Commands()) < 2 {
-			t.Error("Expected add command to have at least 2 subcommands (source and package)")
-		}
-		// Verify the source subcommand exists
-		var foundSource bool
-		for _, subCmd := range cmd.Commands() {
-			if subCmd.Name() == "source" {
-				foundSource = true
-				// Verify source subcommand has required flags
-				nameFlag := subCmd.Flags().Lookup("name")
-				if nameFlag == nil {
-					t.Error("Expected --name flag to exist on source subcommand")
-				}
-			}
-		}
-		if !foundSource {
-			t.Error("Expected to find 'source' subcommand")
+		if cmd.Short == "" {
+			t.Error("Expected Short description to be set")
 		}
 	})
 
-	t.Run("NewRemoveCommand", func(t *testing.T) {
-		cmd := NewRemoveCommand(console)
+	t.Run("NewSourceRemoveCommand", func(t *testing.T) {
+		cmd := NewSourceRemoveCommand(console)
 		if cmd == nil {
 			t.Fatal("Expected command to be created")
 		}
-		if cmd.Use != "remove source <name>" {
-			t.Errorf("Expected Use to be 'remove source <name>', got '%s'", cmd.Use)
+		if cmd.Use != "remove <NAME>" {
+			t.Errorf("Expected Use to be 'remove <NAME>', got '%s'", cmd.Use)
 		}
 	})
 
-	t.Run("NewEnableCommand", func(t *testing.T) {
-		cmd := NewEnableCommand(console)
+	t.Run("NewSourceEnableCommand", func(t *testing.T) {
+		cmd := NewSourceEnableCommand(console)
 		if cmd == nil {
 			t.Fatal("Expected command to be created")
 		}
-		if cmd.Use != "enable source <name>" {
-			t.Errorf("Expected Use to be 'enable source <name>', got '%s'", cmd.Use)
+		if cmd.Use != "enable <NAME>" {
+			t.Errorf("Expected Use to be 'enable <NAME>', got '%s'", cmd.Use)
 		}
 	})
 
-	t.Run("NewDisableCommand", func(t *testing.T) {
-		cmd := NewDisableCommand(console)
+	t.Run("NewSourceDisableCommand", func(t *testing.T) {
+		cmd := NewSourceDisableCommand(console)
 		if cmd == nil {
 			t.Fatal("Expected command to be created")
 		}
-		if cmd.Use != "disable source <name>" {
-			t.Errorf("Expected Use to be 'disable source <name>', got '%s'", cmd.Use)
+		if cmd.Use != "disable <NAME>" {
+			t.Errorf("Expected Use to be 'disable <NAME>', got '%s'", cmd.Use)
 		}
 	})
 
-	t.Run("NewUpdateCommand", func(t *testing.T) {
-		cmd := NewUpdateCommand(console)
+	t.Run("NewSourceUpdateCommand", func(t *testing.T) {
+		cmd := NewSourceUpdateCommand(console)
 		if cmd == nil {
 			t.Fatal("Expected command to be created")
 		}
-		if cmd.Use != "update source [name]" {
-			t.Errorf("Expected Use to be 'update source [name]', got '%s'", cmd.Use)
+		if cmd.Use != "update <NAME>" {
+			t.Errorf("Expected Use to be 'update <NAME>', got '%s'", cmd.Use)
 		}
 	})
 }
@@ -1115,7 +1122,7 @@ func createEmptyConfig(path string) error {
 
 func TestListCommandConstructor(t *testing.T) {
 	console := output.NewConsole(os.Stdout, os.Stderr, output.VerbosityQuiet)
-	cmd := NewListCommand(console)
+	cmd := NewSourceListCommand(console)
 
 	// Test command was created
 	if cmd == nil {
@@ -1123,8 +1130,8 @@ func TestListCommandConstructor(t *testing.T) {
 	}
 
 	// Test Use field
-	if cmd.Use != "list source" {
-		t.Errorf("Expected Use 'list source', got '%s'", cmd.Use)
+	if cmd.Use != "list" {
+		t.Errorf("Expected Use 'list', got '%s'", cmd.Use)
 	}
 
 	// Test default format flag
@@ -1132,32 +1139,29 @@ func TestListCommandConstructor(t *testing.T) {
 	if formatFlag == nil {
 		t.Fatal("Expected --format flag")
 	}
-	if formatFlag.DefValue != "Detailed" {
-		t.Errorf("Expected default format 'Detailed', got '%s'", formatFlag.DefValue)
+	if formatFlag.DefValue != "console" {
+		t.Errorf("Expected default format 'console', got '%s'", formatFlag.DefValue)
 	}
 
-	// Test that RunE returns error for wrong args (not Args validator)
-	cmd.SetArgs([]string{"source"})
+	// Test that command accepts no args
+	cmd.SetArgs([]string{})
 	err := cmd.Execute()
 	if err != nil {
-		t.Errorf("Expected no error with correct arg 'source', got: %v", err)
+		t.Errorf("Expected no error with no args, got: %v", err)
 	}
 
-	// Test with wrong arg
-	cmd2 := NewListCommand(console)
+	// Test with wrong arg (should fail since it accepts no args)
+	cmd2 := NewSourceListCommand(console)
 	cmd2.SetArgs([]string{"wrongarg"})
 	err = cmd2.Execute()
 	if err == nil {
-		t.Error("Expected error for wrong argument")
-	}
-	if !strings.Contains(err.Error(), "unknown command") {
-		t.Errorf("Expected 'unknown command' error, got: %v", err)
+		t.Error("Expected error when passing arguments to no-args command")
 	}
 }
 
 func TestRemoveCommandConstructor(t *testing.T) {
 	console := output.NewConsole(os.Stdout, os.Stderr, output.VerbosityQuiet)
-	cmd := NewRemoveCommand(console)
+	cmd := NewSourceRemoveCommand(console)
 
 	if cmd == nil {
 		t.Fatal("Expected command to be created")
@@ -1173,7 +1177,7 @@ func TestRemoveCommandConstructor(t *testing.T) {
 
 func TestEnableCommandConstructor(t *testing.T) {
 	console := output.NewConsole(os.Stdout, os.Stderr, output.VerbosityQuiet)
-	cmd := NewEnableCommand(console)
+	cmd := NewSourceEnableCommand(console)
 
 	if cmd == nil {
 		t.Fatal("Expected command to be created")
@@ -1189,7 +1193,7 @@ func TestEnableCommandConstructor(t *testing.T) {
 
 func TestDisableCommandConstructor(t *testing.T) {
 	console := output.NewConsole(os.Stdout, os.Stderr, output.VerbosityQuiet)
-	cmd := NewDisableCommand(console)
+	cmd := NewSourceDisableCommand(console)
 
 	if cmd == nil {
 		t.Fatal("Expected command to be created")

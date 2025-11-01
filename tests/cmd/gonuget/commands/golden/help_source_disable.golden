@@ -1,0 +1,18 @@
+Disable an enabled package source.
+
+This command matches: dotnet nuget disable source
+
+Examples:
+  gonuget source disable "MyFeed"
+  gonuget source disable "Azure" --configfile /path/to/NuGet.config
+
+Usage:
+  gonuget source disable <NAME> [flags]
+
+Flags:
+      --configfile string   The NuGet configuration file. If specified, only the settings from this file will be used. If not specified, the hierarchy of configuration files from the current directory will be used.
+  -h, --help                help for disable
+
+Global Flags:
+      --non-interactive    Do not prompt for user input or confirmations
+      --verbosity string   Display verbosity (quiet, normal, detailed) (default "normal")

@@ -48,14 +48,14 @@ public class HelpCommandTests
         // Arrange
         using var env = new TestEnvironment();
 
-        // Act
-        var result = _bridge.ExecuteHelp(env.TestDirectory, "list");
+        // Act - Use 'source' command which exists in both CLIs
+        var result = _bridge.ExecuteHelp(env.TestDirectory, "source");
 
         // Assert
         Assert.Equal(0, result.DotnetExitCode);
         Assert.Equal(0, result.GonugetExitCode);
 
-        // Both should show usage information for list command
+        // Both should show usage information for source command
         Assert.True(result.BothShowUsage, "Both outputs should show usage information");
         Assert.Contains("usage", result.DotnetStdOut.ToLower());
         Assert.Contains("usage", result.GonugetStdOut.ToLower());

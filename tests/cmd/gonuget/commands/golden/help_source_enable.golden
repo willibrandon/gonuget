@@ -1,0 +1,18 @@
+Enable a disabled package source.
+
+This command matches: dotnet nuget enable source
+
+Examples:
+  gonuget source enable "MyFeed"
+  gonuget source enable "Azure" --configfile /path/to/NuGet.config
+
+Usage:
+  gonuget source enable <NAME> [flags]
+
+Flags:
+      --configfile string   The NuGet configuration file. If specified, only the settings from this file will be used. If not specified, the hierarchy of configuration files from the current directory will be used.
+  -h, --help                help for enable
+
+Global Flags:
+      --non-interactive    Do not prompt for user input or confirmations
+      --verbosity string   Display verbosity (quiet, normal, detailed) (default "normal")

@@ -8,26 +8,23 @@ import (
 	"github.com/willibrandon/gonuget/cmd/gonuget/output"
 )
 
-// NewEnableCommand creates the "enable source" command matching dotnet nuget
-func NewEnableCommand(console *output.Console) *cobra.Command {
+// NewSourceEnableCommand creates the "source enable" command matching dotnet nuget
+func NewSourceEnableCommand(console *output.Console) *cobra.Command {
 	opts := &sourceOptions{}
 
 	cmd := &cobra.Command{
-		Use:   "enable source <name>",
-		Short: "Enable a NuGet source.",
+		Use:   "enable <NAME>",
+		Short: "Enable a NuGet source",
 		Long: `Enable a disabled package source.
 
 This command matches: dotnet nuget enable source
 
 Examples:
-  gonuget enable source "MyFeed"
-  gonuget enable source "Azure" --configfile /path/to/NuGet.config`,
-		Args: cobra.ExactArgs(2),
+  gonuget source enable "MyFeed"
+  gonuget source enable "Azure" --configfile /path/to/NuGet.config`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if args[0] != "source" {
-				return fmt.Errorf("unknown command %q for \"enable\"", args[0])
-			}
-			opts.name = args[1]
+			opts.name = args[0]
 			return runEnableSource(console, opts)
 		},
 	}

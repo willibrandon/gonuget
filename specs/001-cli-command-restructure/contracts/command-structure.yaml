@@ -1,0 +1,616 @@
+# CLI Command Structure Contract
+# Defines the exact command hierarchy, flags, and validation rules
+
+version: 1.0.0
+feature: cli-command-restructure
+
+# Root command
+root:
+  use: "gonuget"
+  short: "NuGet package management for Go"
+  long: |
+    gonuget is a complete NuGet client library and CLI for Go that achieves
+    100% feature parity with the official C# NuGet.Client.
+
+  # Top-level commands (not under namespaces)
+  commands:
+    - config
+    - package
+    - restore
+    - source
+    - version
+
+  # Global flags (available on ALL commands)
+  persistent_flags:
+    - name: verbosity
+      type: string
+      default: "normal"
+      usage: "Output verbosity (quiet|minimal|normal|detailed|diagnostic)"
+      valid_values:
+        - quiet
+        - minimal
+        - normal
+        - detailed
+        - diagnostic
+
+# Parent command: package
+package:
+  use: "package"
+  short: "Manage package references"
+  long: |
+    Manage NuGet package references in .NET project files.
+
+    This command provides operations for adding, listing, removing, and searching
+    packages. All operations modify or query .NET project files (.csproj, .fsproj, .vbproj).
+
+  # Validation rules
+  validation:
+    - rule: VR-001
+      description: "Parent command MUST have Use field as single noun"
+      enforcement: reflection_test
+    - rule: VR-004
+      description: "MUST have empty Aliases field"
+      enforcement: reflection_test
+
+  # Subcommands
+  subcommands:
+    - add
+    - list
+    - remove
+    - search
+
+  # Flags inherited by all package subcommands
+  persistent_flags:
+    - name: project
+      type: string
+      shorthand: p
+      usage: "Path to .NET project file"
+      example: "./src/MyApp/MyApp.csproj"
+
+# Subcommand: package add
+package_add:
+  use: "add <PACKAGE_ID>"
+  parent: package
+  short: "Add a package reference to the project"
+  long: |
+    Add a NuGet package reference to a .NET project file.
+
+    This command modifies the .csproj (or .fsproj, .vbproj) file by adding a
+    <PackageReference> element with the specified package ID and version.
+
+  examples: |
+    # Add latest version
+    gonuget package add Newtonsoft.Json
+
+    # Add specific version
+    gonuget package add Serilog --version 3.1.1
+
+    # Add to specific project
+    gonuget package add Microsoft.Extensions.Logging --project ./src/MyApp/MyApp.csproj
+
+  # Positional arguments
+  args:
+    - name: PACKAGE_ID
+      type: string
+      required: true
+      description: "Package identifier (e.g., Newtonsoft.Json)"
+
+  # Command-specific flags
+  flags:
+    - name: version
+      type: string
+      shorthand: v
+      usage: "Package version (defaults to latest stable)"
+      example: "13.0.3"
+
+    - name: framework
+      type: string
+      shorthand: f
+      usage: "Target framework moniker"
+      example: "net8.0"
+
+    - name: prerelease
+      type: bool
+      default: false
+      usage: "Include prerelease versions when resolving latest"
+
+    - name: source
+      type: string
+      shorthand: s
+      usage: "Package source URL or name"
+      example: "https://api.nuget.org/v3/index.json"
+
+  # Validation rules
+  validation:
+    - rule: VR-002
+      description: "Subcommand MUST have Use field as single verb (no spaces in 'add')"
+      enforcement: reflection_test
+    - rule: VR-005
+      description: "Short description MUST start with verb"
+      enforcement: unit_test
+
+# Subcommand: package list
+package_list:
+  use: "list [PROJECT]"
+  parent: package
+  short: "List package references in the project"
+  long: |
+    List all NuGet package references in a .NET project file.
+
+    By default, shows both direct and transitive dependencies. Use --format json
+    for machine-readable output.
+
+  examples: |
+    # List packages in current directory project
+    gonuget package list
+
+    # List with full dependency tree
+    gonuget package list --include-transitive
+
+    # JSON output for automation
+    gonuget package list --format json
+
+  # Positional arguments
+  args:
+    - name: PROJECT
+      type: string
+      required: false
+      description: "Path to .NET project file (defaults to current directory)"
+
+  # Command-specific flags
+  flags:
+    - name: include-transitive
+      type: bool
+      default: false
+      usage: "Include transitive (indirect) package references"
+
+    - name: framework
+      type: string
+      shorthand: f
+      usage: "Filter by target framework"
+      example: "net8.0"
+
+    - name: format
+      type: string
+      default: "console"
+      usage: "Output format (console|json)"
+      valid_values:
+        - console
+        - json
+
+  # JSON output contract
+  json_schema:
+    schema_version: "1.0.0"
+    fields:
+      - name: schemaVersion
+        type: string
+        required: true
+        description: "JSON schema version (semantic versioning)"
+
+      - name: project
+        type: string
+        required: true
+        description: "Absolute path to project file"
+
+      - name: framework
+        type: string
+        required: true
+        description: "Target framework moniker"
+
+      - name: packages
+        type: array
+        required: true
+        description: "List of package references"
+        items:
+          - id: string
+          - version: string
+          - type: string  # "direct" or "transitive"
+          - resolvedVersion: string
+
+      - name: warnings
+        type: array
+        required: true
+        description: "Warning messages (empty if none)"
+
+      - name: elapsedMs
+        type: integer
+        required: true
+        description: "Execution time in milliseconds"
+
+# Subcommand: package remove
+package_remove:
+  use: "remove <PACKAGE_ID>"
+  parent: package
+  short: "Remove a package reference from the project"
+  long: |
+    Remove a NuGet package reference from a .NET project file.
+
+    This command modifies the .csproj (or .fsproj, .vbproj) file by removing
+    the <PackageReference> element with the specified package ID.
+
+  examples: |
+    # Remove package from current directory project
+    gonuget package remove Newtonsoft.Json
+
+    # Remove from specific project
+    gonuget package remove Serilog --project ./src/MyApp/MyApp.csproj
+
+  # Positional arguments
+  args:
+    - name: PACKAGE_ID
+      type: string
+      required: true
+      description: "Package identifier to remove"
+
+  flags: []  # Inherits --project from parent
+
+# Subcommand: package search
+package_search:
+  use: "search <SEARCH_TERM>"
+  parent: package
+  short: "Search for packages on configured sources"
+  long: |
+    Search for NuGet packages across all enabled package sources.
+
+    Returns packages matching the search term with metadata like version,
+    description, authors, and download counts.
+
+  examples: |
+    # Search for packages
+    gonuget package search Serilog
+
+    # Search with prerelease
+    gonuget package search EntityFramework --prerelease
+
+    # JSON output
+    gonuget package search Microsoft.Extensions --format json
+
+  # Positional arguments
+  args:
+    - name: SEARCH_TERM
+      type: string
+      required: true
+      description: "Package name or keyword to search for"
+
+  # Command-specific flags
+  flags:
+    - name: prerelease
+      type: bool
+      default: false
+      usage: "Include prerelease packages in results"
+
+    - name: take
+      type: int
+      default: 20
+      usage: "Maximum number of results to return"
+
+    - name: source
+      type: string
+      shorthand: s
+      usage: "Search specific source (name or URL)"
+
+    - name: format
+      type: string
+      default: "console"
+      usage: "Output format (console|json)"
+      valid_values:
+        - console
+        - json
+
+  # JSON output contract
+  json_schema:
+    schema_version: "1.0.0"
+    fields:
+      - name: schemaVersion
+        type: string
+        required: true
+
+      - name: searchTerm
+        type: string
+        required: true
+
+      - name: sources
+        type: array
+        required: true
+        description: "URLs of sources searched"
+
+      - name: items
+        type: array
+        required: true
+        items:
+          - id: string
+          - version: string
+          - description: string
+          - authors: string
+          - totalDownloads: integer
+
+      - name: total
+        type: integer
+        required: true
+        description: "Total matching packages (may exceed returned items)"
+
+      - name: elapsedMs
+        type: integer
+        required: true
+
+# Parent command: source
+source:
+  use: "source"
+  short: "Manage package sources"
+  long: |
+    Manage NuGet package sources in NuGet.config files.
+
+    This command provides operations for adding, listing, removing, enabling,
+    disabling, and updating package sources. All operations modify NuGet.config
+    XML files following Microsoft's schema.
+
+  validation:
+    - rule: VR-001
+      description: "Parent command MUST have Use field as single noun"
+    - rule: VR-004
+      description: "MUST have empty Aliases field"
+
+  subcommands:
+    - add
+    - disable
+    - enable
+    - list
+    - remove
+    - update
+
+  persistent_flags:
+    - name: configfile
+      type: string
+      usage: "Path to NuGet.config file"
+      example: "./NuGet.config"
+
+# Subcommand: source add
+source_add:
+  use: "add <SOURCE_URL>"
+  parent: source
+  short: "Add a package source"
+  long: |
+    Add a new package source to NuGet.config.
+
+    If --configfile is not specified, uses the nearest NuGet.config in the
+    directory hierarchy or creates a new one in the current directory.
+
+  examples: |
+    # Add nuget.org
+    gonuget source add https://api.nuget.org/v3/index.json --name nuget.org
+
+    # Add with credentials
+    gonuget source add https://pkgs.dev.azure.com/myorg/_packaging/myfeed/nuget/v3/index.json \
+      --name azure-devops --username myuser --password mytoken
+
+  args:
+    - name: SOURCE_URL
+      type: string
+      required: true
+      description: "Package source URL (must include /index.json for v3)"
+
+  flags:
+    - name: name
+      type: string
+      shorthand: n
+      required: true
+      usage: "Source name (must be unique)"
+
+    - name: username
+      type: string
+      shorthand: u
+      usage: "Username for authenticated feeds"
+
+    - name: password
+      type: string
+      usage: "Password or token for authenticated feeds"
+
+    - name: store-password-in-clear-text
+      type: bool
+      default: false
+      usage: "Store password in plain text (not recommended)"
+
+# Subcommand: source list
+source_list:
+  use: "list"
+  parent: source
+  short: "List configured package sources"
+  long: |
+    List all package sources from NuGet.config with their enabled status.
+
+  examples: |
+    # List sources
+    gonuget source list
+
+    # JSON output
+    gonuget source list --format json
+
+  flags:
+    - name: format
+      type: string
+      default: "console"
+      usage: "Output format (console|json)"
+      valid_values:
+        - console
+        - json
+
+# Subcommand: source remove
+source_remove:
+  use: "remove <NAME>"
+  parent: source
+  short: "Remove a package source"
+
+  args:
+    - name: NAME
+      type: string
+      required: true
+      description: "Source name to remove"
+
+# Subcommand: source enable
+source_enable:
+  use: "enable <NAME>"
+  parent: source
+  short: "Enable a package source"
+
+  args:
+    - name: NAME
+      type: string
+      required: true
+      description: "Source name to enable"
+
+# Subcommand: source disable
+source_disable:
+  use: "disable <NAME>"
+  parent: source
+  short: "Disable a package source"
+
+  args:
+    - name: NAME
+      type: string
+      required: true
+      description: "Source name to disable"
+
+# Subcommand: source update
+source_update:
+  use: "update <NAME>"
+  parent: source
+  short: "Update a package source"
+
+  args:
+    - name: NAME
+      type: string
+      required: true
+      description: "Source name to update"
+
+  flags:
+    - name: source
+      type: string
+      shorthand: s
+      usage: "New source URL"
+
+    - name: username
+      type: string
+      shorthand: u
+      usage: "New username"
+
+    - name: password
+      type: string
+      usage: "New password or token"
+
+# Top-level command: restore
+restore:
+  use: "restore [PROJECT_OR_SOLUTION]"
+  short: "Restore packages for a project or solution"
+  long: |
+    Restore NuGet packages for a .NET project or solution.
+
+    This downloads all package dependencies to the global package folder
+    and updates project.assets.json.
+
+  examples: |
+    # Restore current directory
+    gonuget restore
+
+    # Restore specific project
+    gonuget restore ./src/MyApp/MyApp.csproj
+
+  args:
+    - name: PROJECT_OR_SOLUTION
+      type: string
+      required: false
+      description: "Path to .csproj or .sln file"
+
+  flags:
+    - name: configfile
+      type: string
+      usage: "Path to NuGet.config file"
+
+    - name: force
+      type: bool
+      default: false
+      usage: "Force restore even if lock file is valid"
+
+# Top-level command: config
+config:
+  use: "config <get|set|list> [KEY] [VALUE]"
+  short: "Manage NuGet configuration settings"
+
+  examples: |
+    # List all settings
+    gonuget config list
+
+    # Get specific setting
+    gonuget config get globalPackagesFolder
+
+    # Set setting
+    gonuget config set repositoryPath ./packages
+
+# Top-level command: version
+version:
+  use: "version"
+  short: "Show gonuget version information"
+
+  examples: |
+    # Show version
+    gonuget version
+
+# Error patterns for verb-first detection
+error_patterns:
+  - pattern: "add package"
+    suggestion: "gonuget package add"
+    verb: "add"
+    noun: "package"
+
+  - pattern: "list package"
+    suggestion: "gonuget package list"
+    verb: "list"
+    noun: "package"
+
+  - pattern: "remove package"
+    suggestion: "gonuget package remove"
+    verb: "remove"
+    noun: "package"
+
+  - pattern: "search package"
+    suggestion: "gonuget package search"
+    verb: "search"
+    noun: "package"
+
+  - pattern: "add source"
+    suggestion: "gonuget source add"
+    verb: "add"
+    noun: "source"
+
+  - pattern: "list source"
+    suggestion: "gonuget source list"
+    verb: "list"
+    noun: "source"
+
+  - pattern: "remove source"
+    suggestion: "gonuget source remove"
+    verb: "remove"
+    noun: "source"
+
+  - pattern: "enable"
+    suggestion: "gonuget source enable"
+    verb: "enable"
+    noun: "source"
+    note: "Top-level enable/disable/update always imply source operations"
+
+  - pattern: "disable"
+    suggestion: "gonuget source disable"
+    verb: "disable"
+    noun: "source"
+
+  - pattern: "update"
+    suggestion: "gonuget source update"
+    verb: "update"
+    noun: "source"
+
+# Exit codes
+exit_codes:
+  success: 0
+  generic_error: 1
+  invalid_arguments: 2
+  not_found: 3
+  network_failure: 4

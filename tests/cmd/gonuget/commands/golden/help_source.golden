@@ -1,0 +1,43 @@
+Manage NuGet package sources in NuGet.config files.
+
+This command provides operations for adding, listing, removing, enabling,
+disabling, and updating package sources. All operations modify NuGet.config
+XML files following Microsoft's schema.
+
+Usage:
+  gonuget source [command]
+
+Examples:
+  # Add a package source
+  gonuget source add https://api.nuget.org/v3/index.json --name nuget.org
+
+  # List all sources
+  gonuget source list
+
+  # Remove a source
+  gonuget source remove nuget.org
+
+  # Enable/disable a source
+  gonuget source enable nuget.org
+  gonuget source disable nuget.org
+
+  # Update a source
+  gonuget source update nuget.org --source https://new-url.org/v3/index.json
+
+Available Commands:
+  add         Add a NuGet source
+  disable     Disable a NuGet source
+  enable      Enable a NuGet source
+  list        List configured NuGet sources
+  remove      Remove a NuGet source
+  update      Update a NuGet source
+
+Flags:
+      --configfile string   Path to NuGet.config file
+  -h, --help                help for source
+
+Global Flags:
+      --non-interactive    Do not prompt for user input or confirmations
+      --verbosity string   Display verbosity (quiet, normal, detailed) (default "normal")
+
+Use "gonuget source [command] --help" for more information about a command.

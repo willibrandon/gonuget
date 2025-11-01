@@ -1,0 +1,18 @@
+Remove a package source from NuGet.config.
+
+This command matches: dotnet nuget remove source
+
+Examples:
+  gonuget source remove "MyFeed"
+  gonuget source remove "Azure" --configfile /path/to/NuGet.config
+
+Usage:
+  gonuget source remove <NAME> [flags]
+
+Flags:
+      --configfile string   The NuGet configuration file. If specified, only the settings from this file will be used. If not specified, the hierarchy of configuration files from the current directory will be used.
+  -h, --help                help for remove
+
+Global Flags:
+      --non-interactive    Do not prompt for user input or confirmations
+      --verbosity string   Display verbosity (quiet, normal, detailed) (default "normal")

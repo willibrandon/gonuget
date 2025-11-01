@@ -1,0 +1,21 @@
+List all package sources from NuGet.config hierarchy.
+
+This command matches: dotnet nuget list source
+
+Examples:
+  gonuget source list
+  gonuget source list --format console
+  gonuget source list --format json
+  gonuget source list --configfile /path/to/NuGet.config
+
+Usage:
+  gonuget source list [flags]
+
+Flags:
+      --configfile string   The NuGet configuration file. If specified, only the settings from this file will be used. If not specified, the hierarchy of configuration files from the current directory will be used.
+      --format string       The format of the list command output: console or json (default "console")
+  -h, --help                help for list
+
+Global Flags:
+      --non-interactive    Do not prompt for user input or confirmations
+      --verbosity string   Display verbosity (quiet, normal, detailed) (default "normal")
