@@ -377,13 +377,13 @@ func (h *RestoreTransitiveHandler) Handle(data json.RawMessage) (interface{}, er
 	// If we have errors, restore failed
 	if len(errorMessages) > 0 {
 		return RestoreTransitiveResponse{
-			Success:             false,
-			DirectPackages:      []RestoredPackageInfo{},
-			TransitivePackages:  []RestoredPackageInfo{},
-			UnresolvedPackages:  []UnresolvedPackage{},
-			LockFilePath:        lockFilePath,
-			ElapsedMs:           elapsed.Milliseconds(),
-			ErrorMessages:       errorMessages,
+			Success:            false,
+			DirectPackages:     []RestoredPackageInfo{},
+			TransitivePackages: []RestoredPackageInfo{},
+			UnresolvedPackages: []UnresolvedPackage{},
+			LockFilePath:       lockFilePath,
+			ElapsedMs:          elapsed.Milliseconds(),
+			ErrorMessages:      errorMessages,
 		}, nil
 	}
 
@@ -413,13 +413,13 @@ func (h *RestoreTransitiveHandler) Handle(data json.RawMessage) (interface{}, er
 	}
 
 	return RestoreTransitiveResponse{
-		Success:             true,
-		DirectPackages:      directPackages,
-		TransitivePackages:  transitivePackages,
-		UnresolvedPackages:  []UnresolvedPackage{},
-		LockFilePath:        lockFilePath,
-		ElapsedMs:           elapsed.Milliseconds(),
-		ErrorMessages:       []string{},
+		Success:            true,
+		DirectPackages:     directPackages,
+		TransitivePackages: transitivePackages,
+		UnresolvedPackages: []UnresolvedPackage{},
+		LockFilePath:       lockFilePath,
+		ElapsedMs:          elapsed.Milliseconds(),
+		ErrorMessages:      []string{},
 	}, nil
 }
 
@@ -516,12 +516,12 @@ func (h *CompareProjectAssetsHandler) Handle(data json.RawMessage) (interface{},
 	areEqual := librariesMatch && projectFileDependencyGroupsMatch && versionsMatch && pathsMatch
 
 	return CompareProjectAssetsResponse{
-		AreEqual:                        areEqual,
-		LibrariesMatch:                  librariesMatch,
+		AreEqual:                         areEqual,
+		LibrariesMatch:                   librariesMatch,
 		ProjectFileDependencyGroupsMatch: projectFileDependencyGroupsMatch,
-		VersionsMatch:                   versionsMatch,
-		PathsMatch:                      pathsMatch,
-		Differences:                     differences,
+		VersionsMatch:                    versionsMatch,
+		PathsMatch:                       pathsMatch,
+		Differences:                      differences,
 	}, nil
 }
 
@@ -566,11 +566,11 @@ func (h *ValidateErrorMessagesHandler) Handle(data json.RawMessage) (interface{}
 	}
 
 	return ValidateErrorMessagesResponse{
-		ErrorCode:         errorCode,
-		GonugetMessage:    req.GonugetError,
+		ErrorCode:          errorCode,
+		GonugetMessage:     req.GonugetError,
 		NuGetClientMessage: req.NugetError,
-		Match:             match,
-		Differences:       differences,
+		Match:              match,
+		Differences:        differences,
 	}, nil
 }
 
@@ -579,7 +579,7 @@ func extractErrorCode(message string) string {
 	// Match NU1101, NU1102, NU1103 patterns
 	if len(message) >= 6 {
 		prefix := message[:6]
-		if (prefix == "NU1101" || prefix == "NU1102" || prefix == "NU1103") {
+		if prefix == "NU1101" || prefix == "NU1102" || prefix == "NU1103" {
 			return prefix
 		}
 	}

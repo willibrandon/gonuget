@@ -810,13 +810,13 @@ type RestoreTransitiveRequest struct {
 
 // RestoreTransitiveResponse contains the results with direct vs transitive categorization.
 type RestoreTransitiveResponse struct {
-	Success             bool                      `json:"success"`
-	DirectPackages      []RestoredPackageInfo     `json:"directPackages"`
-	TransitivePackages  []RestoredPackageInfo     `json:"transitivePackages"`
-	UnresolvedPackages  []UnresolvedPackage       `json:"unresolvedPackages"`
-	LockFilePath        string                    `json:"lockFilePath"`
-	ElapsedMs           int64                     `json:"elapsedMs"`
-	ErrorMessages       []string                  `json:"errorMessages"`
+	Success            bool                  `json:"success"`
+	DirectPackages     []RestoredPackageInfo `json:"directPackages"`
+	TransitivePackages []RestoredPackageInfo `json:"transitivePackages"`
+	UnresolvedPackages []UnresolvedPackage   `json:"unresolvedPackages"`
+	LockFilePath       string                `json:"lockFilePath"`
+	ElapsedMs          int64                 `json:"elapsedMs"`
+	ErrorMessages      []string              `json:"errorMessages"`
 }
 
 // RestoredPackageInfo represents a successfully resolved package with path and categorization.
@@ -847,12 +847,12 @@ type CompareProjectAssetsRequest struct {
 
 // CompareProjectAssetsResponse contains the comparison results.
 type CompareProjectAssetsResponse struct {
-	AreEqual                        bool     `json:"areEqual"`
-	LibrariesMatch                  bool     `json:"librariesMatch"`
+	AreEqual                         bool     `json:"areEqual"`
+	LibrariesMatch                   bool     `json:"librariesMatch"`
 	ProjectFileDependencyGroupsMatch bool     `json:"projectFileDependencyGroupsMatch"`
-	VersionsMatch                   bool     `json:"versionsMatch"`
-	PathsMatch                      bool     `json:"pathsMatch"`
-	Differences                     []string `json:"differences"`
+	VersionsMatch                    bool     `json:"versionsMatch"`
+	PathsMatch                       bool     `json:"pathsMatch"`
+	Differences                      []string `json:"differences"`
 }
 
 // ValidateErrorMessagesRequest represents a request to validate error messages.
@@ -863,9 +863,9 @@ type ValidateErrorMessagesRequest struct {
 
 // ValidateErrorMessagesResponse contains the validation results.
 type ValidateErrorMessagesResponse struct {
-	ErrorCode         string   `json:"errorCode"`
-	GonugetMessage    string   `json:"gonugetMessage"`
+	ErrorCode          string   `json:"errorCode"`
+	GonugetMessage     string   `json:"gonugetMessage"`
 	NuGetClientMessage string   `json:"nuGetClientMessage"`
-	Match             bool     `json:"match"`
-	Differences       []string `json:"differences"`
+	Match              bool     `json:"match"`
+	Differences        []string `json:"differences"`
 }

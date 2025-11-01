@@ -33,11 +33,11 @@ type Result struct {
 
 // FrameworkResult holds restore results for a specific target framework.
 type FrameworkResult struct {
-	Framework            string                                     // Target framework string (e.g., "net6.0")
-	DirectPackages       []PackageInfo                              // Packages explicitly listed for this framework
-	TransitivePackages   []PackageInfo                              // Transitive dependencies for this framework
-	Errors               []*NuGetError                              // NuGet errors encountered during this framework's restore
-	allResolvedPackages  map[string]*resolver.PackageDependencyInfo // Internal: all resolved packages for this framework
+	Framework           string                                     // Target framework string (e.g., "net6.0")
+	DirectPackages      []PackageInfo                              // Packages explicitly listed for this framework
+	TransitivePackages  []PackageInfo                              // Transitive dependencies for this framework
+	Errors              []*NuGetError                              // NuGet errors encountered during this framework's restore
+	allResolvedPackages map[string]*resolver.PackageDependencyInfo // Internal: all resolved packages for this framework
 }
 
 // PerformanceTiming holds detailed timing metrics for diagnostic output.

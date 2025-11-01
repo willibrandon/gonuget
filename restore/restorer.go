@@ -6,6 +6,7 @@ package restore
 import (
 	"context"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -267,9 +268,7 @@ fullRestore:
 			}
 
 			// Merge into union (for backward compatibility)
-			for key, pkg := range frameworkResult.allResolvedPackages {
-				allResolvedPackagesUnion[key] = pkg
-			}
+			maps.Copy(allResolvedPackagesUnion, frameworkResult.allResolvedPackages)
 		}
 
 		// If there was a fatal error (frameworkResult is nil), still need to handle it
@@ -281,6 +280,12 @@ fullRestore:
 
 	// Check if any frameworks had errors
 	if len(result.Errors) > 0 {
+		// Write cache file even on error (matches NuGet.Client behavior)
+		// This prevents redundant error checks on subsequent restores
+		if currentHash != "" {
+			r.writeCacheFileOnError(proj, currentHash, cachePath)
+		}
+
 		// Return result with errors populated (matches NuGet.Client behavior)
 		// The result may contain partial data that was successfully resolved
 		return result, fmt.Errorf("restore failed with %d error(s)", len(result.Errors))
@@ -523,10 +528,11 @@ func (r *Restorer) restoreFramework(
 	}
 
 	// Handle unresolved packages
-	for _, pkg := range resolutionResult.Packages {
-		if pkg.IsUnresolved {
-			return nil, fmt.Errorf("unresolved package for %s: %s", targetFrameworkStr, pkg.ID)
-		}
+	if len(resolutionResult.Unresolved) > 0 {
+		// Build detailed NU1101/NU1102/NU1103 errors
+		unresolvedErrs := r.buildUnresolvedError(ctx, resolutionResult.Unresolved, projectPath)
+		frameworkResult.Errors = append(frameworkResult.Errors, unresolvedErrs...)
+		return frameworkResult, fmt.Errorf("unresolved packages for framework %s", targetFrameworkStr)
 	}
 
 	// Record resolution timing

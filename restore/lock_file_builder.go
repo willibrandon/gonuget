@@ -178,7 +178,7 @@ func (b *LockFileBuilder) createTargetLibrary(
 			Runtime: make(map[string]map[string]string),
 		}
 	}
-	defer reader.Close()
+	defer func() { _ = reader.Close() }()
 
 	// Get all files from package
 	files := reader.GetFiles("")

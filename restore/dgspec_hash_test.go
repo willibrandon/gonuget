@@ -174,6 +174,7 @@ func TestDgSpecHasher_WithDownloadDependencies(t *testing.T) {
 	json, err := hasher.GenerateJSON()
 	require.NoError(t, err)
 	assert.NotEmpty(t, json)
-	jsonStr := string(json); assert.Contains(t, jsonStr, "downloadDependencies")
+	jsonStr := string(json)
+	assert.Contains(t, jsonStr, "downloadDependencies")
 	assert.Contains(t, jsonStr, "Test.Package")
 }

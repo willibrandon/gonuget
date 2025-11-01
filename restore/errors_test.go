@@ -1,6 +1,7 @@
 package restore
 
 import (
+	"slices"
 	"strings"
 	"testing"
 )
@@ -222,13 +223,7 @@ func TestNewPackageNotFoundError(t *testing.T) {
 			err := NewPackageNotFoundError(tt.projectPath, tt.packageID, tt.version, tt.sources)
 
 			// Check if error code is one of the expected codes
-			found := false
-			for _, code := range tt.wantCode {
-				if err.Code == code {
-					found = true
-					break
-				}
-			}
+			found := slices.Contains(tt.wantCode, err.Code)
 			if !found {
 				t.Errorf("Expected error code to be one of %v, got %s", tt.wantCode, err.Code)
 			}

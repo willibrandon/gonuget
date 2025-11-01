@@ -23,7 +23,9 @@ func TestRestorer_downloadPackage(t *testing.T) {
 	// Create repository manager and add source
 	repoManager := core.NewRepositoryManager()
 	repo := core.GetOrCreateRepository("https://api.nuget.org/v3/index.json")
-	repoManager.AddRepository(repo)
+	if err := repoManager.AddRepository(repo); err != nil {
+		t.Fatalf("Failed to add repository: %v", err)
+	}
 
 	client := core.NewClient(core.ClientConfig{
 		RepositoryManager: repoManager,
@@ -68,7 +70,9 @@ func TestRestorer_downloadPackage_InvalidVersion(t *testing.T) {
 	// Create repository manager and add source
 	repoManager := core.NewRepositoryManager()
 	repo := core.GetOrCreateRepository("https://api.nuget.org/v3/index.json")
-	repoManager.AddRepository(repo)
+	if err := repoManager.AddRepository(repo); err != nil {
+		t.Fatalf("Failed to add repository: %v", err)
+	}
 
 	client := core.NewClient(core.ClientConfig{
 		RepositoryManager: repoManager,
@@ -107,7 +111,9 @@ func TestRestorer_downloadPackage_DiagnosticVerbosity(t *testing.T) {
 	// Create repository manager and add source
 	repoManager := core.NewRepositoryManager()
 	repo := core.GetOrCreateRepository("https://api.nuget.org/v3/index.json")
-	repoManager.AddRepository(repo)
+	if err := repoManager.AddRepository(repo); err != nil {
+		t.Fatalf("Failed to add repository: %v", err)
+	}
 
 	client := core.NewClient(core.ClientConfig{
 		RepositoryManager: repoManager,
@@ -154,7 +160,9 @@ func TestRestorer_downloadPackage_CacheHit(t *testing.T) {
 	// Create repository manager and add source
 	repoManager := core.NewRepositoryManager()
 	repo := core.GetOrCreateRepository("https://api.nuget.org/v3/index.json")
-	repoManager.AddRepository(repo)
+	if err := repoManager.AddRepository(repo); err != nil {
+		t.Fatalf("Failed to add repository: %v", err)
+	}
 
 	client := core.NewClient(core.ClientConfig{
 		RepositoryManager: repoManager,
@@ -200,7 +208,9 @@ func TestRestorer_installPackageV3(t *testing.T) {
 	// Create repository manager and add source
 	repoManager := core.NewRepositoryManager()
 	repo := core.GetOrCreateRepository("https://api.nuget.org/v3/index.json")
-	repoManager.AddRepository(repo)
+	if err := repoManager.AddRepository(repo); err != nil {
+		t.Fatalf("Failed to add repository: %v", err)
+	}
 
 	client := core.NewClient(core.ClientConfig{
 		RepositoryManager: repoManager,

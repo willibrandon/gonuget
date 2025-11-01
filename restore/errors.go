@@ -257,28 +257,28 @@ func FormatVersionNotFoundError(projectPath, packageID, versionConstraint string
 	return strings.TrimSuffix(result, "\n")
 }
 
-// buildUnresolvedError converts unresolved nodes into NuGet errors (NU1101, NU1102, NU1103).
+// buildUnresolvedError converts unresolved packages into NuGet errors (NU1101, NU1102, NU1103).
 // Matches NuGet.Client's error detection in RestoreCommand.
-func (r *Restorer) buildUnresolvedError(ctx context.Context, unresolvedNodes []*resolver.GraphNode, projectPath string) []*NuGetError {
-	if len(unresolvedNodes) == 0 {
+func (r *Restorer) buildUnresolvedError(ctx context.Context, unresolvedPkgs []resolver.UnresolvedPackage, projectPath string) []*NuGetError {
+	if len(unresolvedPkgs) == 0 {
 		return nil
 	}
 
-	errors := make([]*NuGetError, 0, len(unresolvedNodes))
-	for _, node := range unresolvedNodes {
+	errors := make([]*NuGetError, 0, len(unresolvedPkgs))
+	for _, pkg := range unresolvedPkgs {
 		// Try to detect if this is NU1101, NU1102, or NU1103
-		queryResult := r.tryGetVersionInfo(ctx, node.Item.ID, node.Item.Version)
+		queryResult := r.tryGetVersionInfo(ctx, pkg.ID, pkg.VersionRange)
 
 		if queryResult.packageFound && len(queryResult.versionInfos) > 0 {
 			// Package exists but no compatible version found
 			// Check if this is NU1103 (only prerelease versions satisfy the range when stable requested)
 			// Matches NuGet.Client logic: !IsPrereleaseAllowed(range) && HasPrereleaseVersionsOnly(range, allVersions)
-			if !isPrereleaseAllowed(node.Item.Version) && hasPrereleaseVersionsOnly(node.Item.Version, queryResult.allVersions) {
+			if !isPrereleaseAllowed(pkg.VersionRange) && hasPrereleaseVersionsOnly(pkg.VersionRange, queryResult.allVersions) {
 				// NU1103: Only prerelease versions satisfy the range, but stable requested
 				err := NewPackageDownloadFailedError(
 					projectPath,
-					node.Item.ID,
-					node.Item.Version,
+					pkg.ID,
+					pkg.VersionRange,
 					queryResult.versionInfos,
 				)
 				errors = append(errors, err)
@@ -286,8 +286,8 @@ func (r *Restorer) buildUnresolvedError(ctx context.Context, unresolvedNodes []*
 				// NU1102: Package exists but no compatible version
 				err := NewPackageVersionNotFoundError(
 					projectPath,
-					node.Item.ID,
-					node.Item.Version,
+					pkg.ID,
+					pkg.VersionRange,
 					queryResult.versionInfos,
 				)
 				errors = append(errors, err)
@@ -296,8 +296,8 @@ func (r *Restorer) buildUnresolvedError(ctx context.Context, unresolvedNodes []*
 			// NU1101: Package doesn't exist at all
 			err := NewPackageNotFoundError(
 				projectPath,
-				node.Item.ID,
-				node.Item.Version,
+				pkg.ID,
+				pkg.VersionRange,
 				r.opts.Sources,
 			)
 			errors = append(errors, err)
