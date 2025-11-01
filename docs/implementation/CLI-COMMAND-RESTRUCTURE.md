@@ -1,8 +1,8 @@
-# CLI Command Structure Restructure - Simplified dotnet-style Commands
+# CLI Command Structure Restructure - Modern CLI Standards
 
 **Status:** Planning
-**Goal:** Achieve functional parity with dotnet CLI using simplified command structure
-**Approach:** Big bang restructure (immediate breaking changes)
+**Goal:** Adopt modern noun-first CLI command structure from day one
+**Approach:** Noun-first commands only (no verb-first aliases)
 
 ## Current State
 
@@ -60,6 +60,54 @@ gonuget restore [PROJECT]
 ```
 
 **Matches:** `dotnet restore`, `dotnet nuget config`
+
+## Design Decision: Noun-First Only (No Aliases)
+
+### Why Noun-First Commands?
+
+Starting in .NET 10, Microsoft introduced noun-first command aliases (`dotnet package add`) alongside the original verb-first commands (`dotnet add package`). Both forms work identically in dotnet CLI.
+
+**gonuget adopts ONLY the noun-first form** for package commands. Here's why:
+
+### Rationale
+
+1. **No Backward Compatibility Burden**: gonuget has not been released yet. There are no existing users or scripts to break, so we can adopt modern standards immediately without maintaining legacy command structures.
+
+2. **Aligns with General CLI Standards**: Noun-first commands are the industry standard used by modern CLI tools:
+   - `git branch create` (noun → verb)
+   - `kubectl get pods` (noun → verb)
+   - `docker container run` (noun → verb)
+   - `aws s3 cp` (noun → verb)
+
+3. **Simpler Implementation**: Supporting only one command form means:
+   - No alias handling logic
+   - Cleaner command registration
+   - Less test surface area
+   - Easier to maintain and document
+
+4. **Clearer Intent**: Noun-first commands group related operations naturally:
+   ```
+   gonuget package add     # All package operations
+   gonuget package list    # are clearly under the
+   gonuget package remove  # 'package' namespace
+   ```
+
+5. **Future-Proof**: As Microsoft recommends the noun-first form for new code and documentation, starting with this pattern ensures gonuget stays aligned with evolving .NET CLI conventions.
+
+### What This Means
+
+- ✅ **Supported**: `gonuget package add`, `gonuget package list`, `gonuget package remove`, `gonuget package search`
+- ❌ **Not Supported**: `gonuget add package`, `gonuget list package`, `gonuget remove package`
+
+Source commands remain unchanged (already using the simplified form):
+- ✅ **Supported**: `gonuget add source`, `gonuget list source`, etc.
+
+### Microsoft's Guidance
+
+From .NET 10 documentation:
+> "The new noun-first forms align with general CLI standards, making the dotnet CLI more consistent with other tools. While the verb-first forms continue to work, **it's better to use the noun-first forms for improved readability and consistency** in scripts and documentation."
+
+gonuget follows this guidance from inception by implementing only the recommended noun-first form.
 
 ## Command Mapping
 
@@ -423,15 +471,18 @@ gonuget config get packageSources
 
 ## Success Criteria
 
-- [ ] `gonuget package` matches `dotnet package` exactly
+- [ ] `gonuget package [subcommand]` matches `dotnet package [subcommand]` exactly (noun-first form only)
 - [ ] `gonuget [verb] source` matches `dotnet nuget [verb] source` (removes "nuget" parent)
+- [ ] Old verb-first commands (`gonuget add package`) are NOT supported (noun-first only)
 - [ ] All flags use kebab-case matching dotnet
 - [ ] All output formats match dotnet
+- [ ] Help text clearly documents noun-first command structure
 - [ ] All tests pass
-- [ ] Interop tests correctly handle different command structures
+- [ ] Command structure follows modern CLI standards (noun-first)
 
 ## References
 
 - dotnet CLI source: https://github.com/dotnet/sdk
 - dotnet nuget: https://learn.microsoft.com/en-us/dotnet/core/tools/dotnet-nuget
 - dotnet package: https://learn.microsoft.com/en-us/dotnet/core/tools/dotnet-package
+- .NET 10 Command Aliases: https://learn.microsoft.com/en-us/dotnet/core/whats-new/dotnet-10/sdk#more-consistent-command-order
