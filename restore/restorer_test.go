@@ -575,15 +575,35 @@ func TestRestorer_Restore_DownloadError(t *testing.T) {
 	restorer := NewRestorer(opts, console)
 	packageRefs := proj.GetPackageReferences()
 
-	_, err = restorer.Restore(context.Background(), proj, packageRefs)
+	result, err := restorer.Restore(context.Background(), proj, packageRefs)
 	if err == nil {
 		t.Error("expected error for nonexistent package")
 	}
 
-	// Should get package not found error (NU1101 or NU1102)
-	errMsg := err.Error()
-	if !strings.Contains(errMsg, "package version not found") && !strings.Contains(errMsg, "unresolved packages") {
-		t.Errorf("expected package not found error for NonExistentPackage999999, got: %v", err)
+	// Should get package not found error in result.Errors
+	if len(result.Errors) == 0 {
+		t.Error("expected error messages in result.Errors")
+	}
+
+	// Check that at least one error mentions the package
+	foundPackageError := false
+	for _, resErr := range result.Errors {
+		if strings.Contains(resErr.Message, "NonExistentPackage999999") ||
+			strings.Contains(resErr.Message, "package version not found") ||
+			strings.Contains(resErr.Message, "unresolved packages") ||
+			strings.Contains(resErr.Message, "NU1101") ||
+			strings.Contains(resErr.Message, "NU1102") {
+			foundPackageError = true
+			break
+		}
+	}
+
+	if !foundPackageError {
+		var errMsgs []string
+		for _, resErr := range result.Errors {
+			errMsgs = append(errMsgs, resErr.Message)
+		}
+		t.Errorf("expected package not found error for NonExistentPackage999999, got errors: %v", errMsgs)
 	}
 }
 
@@ -1081,6 +1101,114 @@ func TestHasPrereleaseVersionsOnly(t *testing.T) {
 					tt.versionRange, tt.versions, result, tt.expected, tt.description)
 			}
 		})
+	}
+}
+
+func TestRunWithResult_NoPackages(t *testing.T) {
+	tmpDir := t.TempDir()
+	projPath := filepath.Join(tmpDir, "test.csproj")
+
+	// Create project with no packages
+	content := `<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+  </PropertyGroup>
+</Project>`
+
+	if err := os.WriteFile(projPath, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	console := &mockConsole{}
+	opts := &Options{
+		Verbosity: "normal",
+	}
+
+	result, err := RunWithResult(context.Background(), []string{projPath}, opts, console)
+	if err != nil {
+		t.Fatalf("RunWithResult failed: %v", err)
+	}
+
+	if result == nil {
+		t.Fatal("Expected result, got nil")
+	}
+
+	if len(result.DirectPackages) != 0 {
+		t.Errorf("Expected 0 direct packages, got %d", len(result.DirectPackages))
+	}
+
+	if len(result.TransitivePackages) != 0 {
+		t.Errorf("Expected 0 transitive packages, got %d", len(result.TransitivePackages))
+	}
+
+	if result.CacheHit {
+		t.Error("Expected CacheHit to be false for project with no packages")
+	}
+}
+
+func TestRunWithResult_WithPackage(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test - requires network")
+	}
+
+	tmpDir := t.TempDir()
+	projPath := filepath.Join(tmpDir, "test.csproj")
+
+	// Create project with one package
+	content := `<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+  </ItemGroup>
+</Project>`
+
+	if err := os.WriteFile(projPath, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	console := &mockConsole{}
+	opts := &Options{
+		Verbosity: "normal",
+		Sources:   []string{"https://api.nuget.org/v3/index.json"},
+	}
+
+	result, err := RunWithResult(context.Background(), []string{projPath}, opts, console)
+	if err != nil {
+		t.Fatalf("RunWithResult failed: %v", err)
+	}
+
+	if result == nil {
+		t.Fatal("Expected result, got nil")
+	}
+
+	// Should have restored Newtonsoft.Json
+	if len(result.DirectPackages) == 0 {
+		t.Error("Expected at least 1 direct package")
+	}
+
+	// Verify project.assets.json was created
+	assetsPath := filepath.Join(tmpDir, "obj", "project.assets.json")
+	if _, err := os.Stat(assetsPath); os.IsNotExist(err) {
+		t.Error("Expected project.assets.json to be created")
+	}
+}
+
+func TestRunWithResult_NoProjectFile(t *testing.T) {
+	console := &mockConsole{}
+	opts := &Options{
+		Verbosity: "normal",
+	}
+
+	// Call with empty args and empty directory - should fail to find project
+	_, err := RunWithResult(context.Background(), []string{}, opts, console)
+	if err == nil {
+		t.Error("Expected error when no project file found")
+	}
+
+	if !strings.Contains(err.Error(), "no project file found") {
+		t.Errorf("Expected 'no project file found' error, got: %v", err)
 	}
 }
 

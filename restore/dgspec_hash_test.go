@@ -120,3 +120,61 @@ func TestCalculateDgSpecHash_FrameworkChange(t *testing.T) {
 	// Hashes should differ
 	assert.NotEqual(t, hash1, hash2)
 }
+
+func TestDefaultDgSpecConfig(t *testing.T) {
+	cfg := DefaultDgSpecConfig()
+
+	assert.NotNil(t, cfg)
+	assert.NotEmpty(t, cfg.PackagesPath)
+	assert.Contains(t, cfg.PackagesPath, ".nuget")
+	assert.Contains(t, cfg.PackagesPath, "packages")
+
+	// Should have default NuGet source
+	assert.Len(t, cfg.Sources, 1)
+	assert.Equal(t, "https://api.nuget.org/v3/index.json", cfg.Sources[0])
+
+	// ConfigPaths should be empty (initialized but empty)
+	assert.NotNil(t, cfg.ConfigPaths)
+	assert.Empty(t, cfg.ConfigPaths)
+}
+
+func TestGetDefaultRuntimeIDPath(t *testing.T) {
+	path := getDefaultRuntimeIDPath()
+	// Path may be empty if dotnet SDK is not installed
+	// Just verify it doesn't panic
+	_ = path
+}
+
+func TestDgSpecHasher_WithDownloadDependencies(t *testing.T) {
+	tmpDir := t.TempDir()
+	projectPath := filepath.Join(tmpDir, "test.csproj")
+
+	content := `<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+  </PropertyGroup>
+</Project>`
+
+	err := os.WriteFile(projectPath, []byte(content), 0644)
+	require.NoError(t, err)
+
+	proj, err := project.LoadProject(projectPath)
+	require.NoError(t, err)
+
+	downloadDeps := map[string]map[string]string{
+		"net8.0": {
+			"Test.Package": "1.0.0",
+		},
+	}
+
+	hasher := NewDgSpecHasher(proj).
+		WithPackagesPath("/tmp/packages").
+		WithDownloadDependencies(downloadDeps)
+
+	json, err := hasher.GenerateJSON()
+	require.NoError(t, err)
+	assert.NotEmpty(t, json)
+	jsonStr := string(json)
+	assert.Contains(t, jsonStr, "downloadDependencies")
+	assert.Contains(t, jsonStr, "Test.Package")
+}

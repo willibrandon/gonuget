@@ -311,6 +311,89 @@ func ParseFramework(tfm string) (*NuGetFramework, error) {
 	return fw, nil
 }
 
+// NormalizeFrameworkName converts various framework name formats to the standard TFM short folder name.
+// It handles:
+//   - V3 registration API format: ".NETStandard2.0" -> "netstandard2.0"
+//   - Full framework names: ".NETCoreApp,Version=v2.2" -> "netcoreapp2.2"
+//   - Already normalized names: "netstandard2.0" -> "netstandard2.0" (passthrough)
+func NormalizeFrameworkName(frameworkName string) string {
+	if frameworkName == "" {
+		return ""
+	}
+
+	// Already in TFM format (no dot prefix or comma) - return as-is
+	if !strings.HasPrefix(frameworkName, ".") && !strings.Contains(frameworkName, ",") {
+		return strings.ToLower(frameworkName)
+	}
+
+	// Extract framework identifier and version
+	// Handle formats like ".NETStandard2.0" or ".NETCoreApp,Version=v2.2"
+	parts := strings.Split(frameworkName, ",")
+	nameAndVersion := parts[0] // ".NETStandard2.0" or ".NETCoreApp"
+
+	// Map full framework names to short identifiers
+	var shortName string
+	var versionStr string
+
+	// Extract version from the name if present (e.g., ".NETStandard2.0")
+	hasVersion := strings.Contains(nameAndVersion, "2.0") || strings.Contains(nameAndVersion, "2.1") ||
+		strings.Contains(nameAndVersion, "2.2") || strings.Contains(nameAndVersion, "1.") ||
+		strings.Contains(nameAndVersion, "3.") || strings.Contains(nameAndVersion, "4.") ||
+		strings.Contains(nameAndVersion, "5.") || strings.Contains(nameAndVersion, "6.") ||
+		strings.Contains(nameAndVersion, "7.") || strings.Contains(nameAndVersion, "8.")
+
+	switch {
+	case hasVersion:
+		// Version is embedded in the name
+		switch {
+		case strings.HasPrefix(nameAndVersion, ".NETStandard"):
+			shortName = "netstandard"
+			versionStr = strings.TrimPrefix(nameAndVersion, ".NETStandard")
+		case strings.HasPrefix(nameAndVersion, ".NETCoreApp"):
+			shortName = "netcoreapp"
+			versionStr = strings.TrimPrefix(nameAndVersion, ".NETCoreApp")
+		case strings.HasPrefix(nameAndVersion, ".NETFramework"):
+			shortName = "net"
+			versionStr = strings.TrimPrefix(nameAndVersion, ".NETFramework")
+			// .NET Framework uses compact form without dots
+			versionStr = strings.ReplaceAll(versionStr, ".", "")
+		case strings.HasPrefix(nameAndVersion, ".NETPortable"):
+			// Portable class library
+			return strings.ToLower(frameworkName) // Return as-is for PCL
+		}
+	case len(parts) > 1 && strings.Contains(parts[1], "Version="):
+		// Version is in separate component: ".NETCoreApp,Version=v2.2"
+		switch {
+		case strings.HasPrefix(nameAndVersion, ".NETStandard"):
+			shortName = "netstandard"
+		case strings.HasPrefix(nameAndVersion, ".NETCoreApp"):
+			shortName = "netcoreapp"
+		case strings.HasPrefix(nameAndVersion, ".NETFramework"):
+			shortName = "net"
+		}
+
+		// Extract version from "Version=v2.2"
+		for _, part := range parts[1:] {
+			if v, found := strings.CutPrefix(part, "Version="); found {
+				versionStr, _ = strings.CutPrefix(v, "v")
+				if shortName == "net" {
+					// .NET Framework uses compact form
+					versionStr = strings.ReplaceAll(versionStr, ".", "")
+				}
+			}
+		}
+	default:
+		// Unknown format - return lowercase
+		return strings.ToLower(frameworkName)
+	}
+
+	if shortName == "" {
+		return strings.ToLower(frameworkName)
+	}
+
+	return shortName + versionStr
+}
+
 // MustParseFramework parses a TFM and panics on error.
 func MustParseFramework(tfm string) *NuGetFramework {
 	fw, err := ParseFramework(tfm)

@@ -364,17 +364,82 @@ func TestLockFileBuilder_Libraries_LowercasePaths(t *testing.T) {
 		t.Fatalf("Library %s not found", key)
 	}
 
-	// Verify path uses lowercase package ID
-	// Expected: /Users/foo/.nuget/packages/newtonsoft.json/13.0.3
-	expectedPath := filepath.Join(packagesPath, "newtonsoft.json", "13.0.3")
+	// Verify path uses lowercase package ID (relative path format matching NuGet.Client)
+	// Expected: newtonsoft.json/13.0.3 (relative, not absolute)
+	expectedPath := "newtonsoft.json/13.0.3"
 	if lib.Path != expectedPath {
-		t.Errorf("Expected path with lowercase package ID:\n  got:  %s\n  want: %s", lib.Path, expectedPath)
+		t.Errorf("Expected relative path with lowercase package ID:\n  got:  %s\n  want: %s", lib.Path, expectedPath)
 	}
 
 	// Verify path does NOT use original case
-	wrongPath := filepath.Join(packagesPath, "Newtonsoft.Json", "13.0.3")
+	wrongPath := "Newtonsoft.Json/13.0.3"
 	if lib.Path == wrongPath {
 		t.Error("Path should use lowercase package ID, not original case")
+	}
+}
+
+// TestLockFileBuilder_Build_MultiFramework validates lock file generation for
+// projects targeting multiple frameworks.
+func TestLockFileBuilder_Build_MultiFramework(t *testing.T) {
+	tmpDir := t.TempDir()
+	projPath := filepath.Join(tmpDir, "test.csproj")
+
+	// Multi-framework project
+	content := `<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFrameworks>net6.0;net7.0;net8.0</TargetFrameworks>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+  </ItemGroup>
+</Project>`
+
+	if err := os.WriteFile(projPath, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	proj, err := project.LoadProject(projPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	home, _ := os.UserHomeDir()
+	packagesPath := filepath.Join(home, ".nuget", "packages")
+
+	result := &Result{
+		DirectPackages: []PackageInfo{
+			{
+				ID:       "Newtonsoft.Json",
+				Version:  "13.0.3",
+				Path:     filepath.Join(packagesPath, "newtonsoft.json", "13.0.3"),
+				IsDirect: true,
+			},
+		},
+	}
+
+	builder := NewLockFileBuilder()
+	lockFile := builder.Build(proj, result)
+
+	// Verify targets exist for all frameworks
+	if len(lockFile.Targets) == 0 {
+		t.Error("Expected targets for multi-framework project")
+	}
+
+	// Verify project file dependency groups for all frameworks
+	tfms := proj.GetTargetFrameworks()
+	if len(tfms) != 3 {
+		t.Errorf("Expected 3 target frameworks, got %d", len(tfms))
+	}
+
+	for _, tfm := range tfms {
+		deps, exists := lockFile.ProjectFileDependencyGroups[tfm]
+		if !exists {
+			t.Errorf("Missing ProjectFileDependencyGroups for %s", tfm)
+			continue
+		}
+		if len(deps) == 0 {
+			t.Errorf("Expected dependencies for %s", tfm)
+		}
 	}
 }
 

@@ -1,0 +1,281 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Restore Interop Test JSON-RPC API",
+    "version": "1.0.0",
+    "description": "JSON-RPC actions for testing gonuget restore transitive dependency resolution against NuGet.Client"
+  },
+  "paths": {},
+  "components": {
+    "schemas": {
+      "RestoreTransitiveRequest": {
+        "type": "object",
+        "required": ["action", "data"],
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": ["restore_transitive"],
+            "description": "Action to execute full transitive restore"
+          },
+          "data": {
+            "type": "object",
+            "required": ["projectPath"],
+            "properties": {
+              "projectPath": {
+                "type": "string",
+                "description": "Absolute path to .csproj file"
+              },
+              "packagesFolder": {
+                "type": "string",
+                "description": "Optional custom packages folder path"
+              },
+              "sources": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Optional list of package sources"
+              },
+              "noCache": {
+                "type": "boolean",
+                "description": "Disable cache usage",
+                "default": false
+              },
+              "force": {
+                "type": "boolean",
+                "description": "Force re-download of packages",
+                "default": false
+              }
+            }
+          }
+        }
+      },
+      "RestoreTransitiveResponse": {
+        "type": "object",
+        "required": ["success", "directPackages", "transitivePackages", "unresolvedPackages", "lockFilePath", "elapsedMs"],
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "description": "Whether restore completed without errors"
+          },
+          "directPackages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ResolvedPackage"
+            },
+            "description": "Packages explicitly listed in project file"
+          },
+          "transitivePackages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ResolvedPackage"
+            },
+            "description": "Packages pulled in as dependencies"
+          },
+          "unresolvedPackages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UnresolvedPackage"
+            },
+            "description": "Packages that could not be resolved"
+          },
+          "lockFilePath": {
+            "type": "string",
+            "description": "Path to generated project.assets.json"
+          },
+          "elapsedMs": {
+            "type": "integer",
+            "description": "Restore execution time in milliseconds"
+          },
+          "errorMessages": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Error messages (NU1101, NU1102, NU1103)"
+          }
+        }
+      },
+      "ResolvedPackage": {
+        "type": "object",
+        "required": ["packageId", "version", "path", "isDirect"],
+        "properties": {
+          "packageId": {
+            "type": "string",
+            "description": "NuGet package identifier"
+          },
+          "version": {
+            "type": "string",
+            "description": "Resolved version (exact version, not range)"
+          },
+          "path": {
+            "type": "string",
+            "description": "Path to package in global packages folder"
+          },
+          "isDirect": {
+            "type": "boolean",
+            "description": "True if directly referenced in project file"
+          }
+        }
+      },
+      "UnresolvedPackage": {
+        "type": "object",
+        "required": ["packageId", "versionRange", "targetFramework", "errorCode", "message"],
+        "properties": {
+          "packageId": {
+            "type": "string",
+            "description": "NuGet package identifier"
+          },
+          "versionRange": {
+            "type": "string",
+            "description": "Requested version or version range"
+          },
+          "targetFramework": {
+            "type": "string",
+            "description": "Target framework moniker"
+          },
+          "errorCode": {
+            "type": "string",
+            "enum": ["NU1101", "NU1102", "NU1103"],
+            "description": "NuGet error code"
+          },
+          "message": {
+            "type": "string",
+            "description": "Full error message"
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Package sources queried"
+          },
+          "availableVersions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Versions found (for NU1102/NU1103)"
+          },
+          "nearestVersion": {
+            "type": "string",
+            "description": "Closest version match (for NU1102/NU1103)"
+          }
+        }
+      },
+      "CompareProjectAssetsRequest": {
+        "type": "object",
+        "required": ["action", "data"],
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": ["compare_project_assets"],
+            "description": "Action to compare two project.assets.json files"
+          },
+          "data": {
+            "type": "object",
+            "required": ["gonugetLockFilePath", "nugetLockFilePath"],
+            "properties": {
+              "gonugetLockFilePath": {
+                "type": "string",
+                "description": "Path to gonuget-generated project.assets.json"
+              },
+              "nugetLockFilePath": {
+                "type": "string",
+                "description": "Path to NuGet.Client-generated project.assets.json"
+              }
+            }
+          }
+        }
+      },
+      "CompareProjectAssetsResponse": {
+        "type": "object",
+        "required": ["areEqual", "librariesMatch", "projectFileDependencyGroupsMatch", "versionsMatch", "pathsMatch", "differences"],
+        "properties": {
+          "areEqual": {
+            "type": "boolean",
+            "description": "Overall equality result"
+          },
+          "librariesMatch": {
+            "type": "boolean",
+            "description": "Libraries map keys and structure match"
+          },
+          "projectFileDependencyGroupsMatch": {
+            "type": "boolean",
+            "description": "Direct dependency groups match"
+          },
+          "versionsMatch": {
+            "type": "boolean",
+            "description": "Package versions match"
+          },
+          "pathsMatch": {
+            "type": "boolean",
+            "description": "Package paths match (including lowercase requirement)"
+          },
+          "differences": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Human-readable list of differences"
+          }
+        }
+      },
+      "ValidateErrorMessagesRequest": {
+        "type": "object",
+        "required": ["action", "data"],
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": ["validate_error_messages"],
+            "description": "Action to validate error message format"
+          },
+          "data": {
+            "type": "object",
+            "required": ["gonugetError", "nugetError"],
+            "properties": {
+              "gonugetError": {
+                "type": "string",
+                "description": "Error message from gonuget"
+              },
+              "nugetError": {
+                "type": "string",
+                "description": "Error message from NuGet.Client"
+              }
+            }
+          }
+        }
+      },
+      "ValidateErrorMessagesResponse": {
+        "type": "object",
+        "required": ["errorCode", "match", "differences"],
+        "properties": {
+          "errorCode": {
+            "type": "string",
+            "enum": ["NU1101", "NU1102", "NU1103"],
+            "description": "NuGet error code"
+          },
+          "gonugetMessage": {
+            "type": "string",
+            "description": "Error message from gonuget"
+          },
+          "nugetClientMessage": {
+            "type": "string",
+            "description": "Error message from NuGet.Client"
+          },
+          "match": {
+            "type": "boolean",
+            "description": "Whether messages match (allowing for formatting tolerance)"
+          },
+          "differences": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Specific differences found"
+          }
+        }
+      }
+    }
+  }
+}

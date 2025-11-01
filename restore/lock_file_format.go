@@ -18,9 +18,14 @@ type LockFile struct {
 }
 
 // Target represents a target framework's dependency graph.
-type Target struct {
-	// Map of package ID to package info
-	// Key format: "PackageID/Version"
+// Maps package ID/Version to target library info.
+type Target map[string]TargetLibrary
+
+// TargetLibrary represents a package's assemblies and metadata for a specific target framework.
+type TargetLibrary struct {
+	Type    string                       `json:"type"`
+	Compile map[string]map[string]string `json:"compile,omitempty"` // Path to DLL -> metadata
+	Runtime map[string]map[string]string `json:"runtime,omitempty"` // Path to DLL -> metadata
 }
 
 // Library represents a package library entry.

@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/willibrandon/gonuget/cmd/gonuget/project"
@@ -315,3 +316,290 @@ func (c *silentConsole) Printf(format string, args ...any)  {}
 func (c *silentConsole) Error(format string, args ...any)   {}
 func (c *silentConsole) Warning(format string, args ...any) {}
 func (c *silentConsole) Output() io.Writer                  { return io.Discard }
+
+// RestoreTransitiveHandler handles restore operations with full transitive dependency categorization.
+type RestoreTransitiveHandler struct{}
+
+// ErrorCode returns the error code for restore failures.
+func (h *RestoreTransitiveHandler) ErrorCode() string {
+	return "RESTORE_TRANSITIVE_001"
+}
+
+// Handle processes the restore transitive request.
+func (h *RestoreTransitiveHandler) Handle(data json.RawMessage) (interface{}, error) {
+	var req RestoreTransitiveRequest
+	if err := json.Unmarshal(data, &req); err != nil {
+		return nil, fmt.Errorf("invalid request: %w", err)
+	}
+
+	// Create temporary console for restore output
+	console := &silentConsole{}
+
+	// Create restore options
+	opts := &restore.Options{
+		Sources:        req.Sources,
+		PackagesFolder: req.PackagesFolder,
+		Force:          req.Force,
+		NoCache:        req.NoCache,
+	}
+
+	// Execute restore
+	start := time.Now()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+
+	result, err := restore.RunWithResult(ctx, []string{req.ProjectPath}, opts, console)
+	elapsed := time.Since(start)
+
+	// Load project to get lock file path
+	proj, loadErr := project.LoadProject(req.ProjectPath)
+	if loadErr != nil {
+		return nil, fmt.Errorf("failed to load project: %w", loadErr)
+	}
+
+	lockFilePath := filepath.Join(filepath.Dir(proj.Path), "obj", "project.assets.json")
+
+	// Handle restore errors - check both generic error and structured NuGetErrors
+	errorMessages := make([]string, 0)
+
+	// First, check if result has structured NuGetError entries with error codes
+	if result != nil && len(result.Errors) > 0 {
+		// Use structured NuGetErrors which include proper error codes (NU1101, NU1102, etc.)
+		for _, nugetErr := range result.Errors {
+			// Format without ANSI colors for interop test consumption
+			errorMessages = append(errorMessages, nugetErr.FormatError(false))
+		}
+	} else if err != nil {
+		// Fallback to generic error if no structured errors
+		errorMessages = append(errorMessages, err.Error())
+	}
+
+	// If we have errors, restore failed
+	if len(errorMessages) > 0 {
+		return RestoreTransitiveResponse{
+			Success:            false,
+			DirectPackages:     []RestoredPackageInfo{},
+			TransitivePackages: []RestoredPackageInfo{},
+			UnresolvedPackages: []UnresolvedPackage{},
+			LockFilePath:       lockFilePath,
+			ElapsedMs:          elapsed.Milliseconds(),
+			ErrorMessages:      errorMessages,
+		}, nil
+	}
+
+	// Categorize packages as direct vs transitive
+	// Initialize as empty slices (not nil) to avoid null in JSON serialization
+	directPackages := make([]RestoredPackageInfo, 0)
+	transitivePackages := make([]RestoredPackageInfo, 0)
+
+	if result != nil {
+		for _, pkg := range result.DirectPackages {
+			directPackages = append(directPackages, RestoredPackageInfo{
+				PackageID: pkg.ID,
+				Version:   pkg.Version,
+				Path:      pkg.Path,
+				IsDirect:  true,
+			})
+		}
+
+		for _, pkg := range result.TransitivePackages {
+			transitivePackages = append(transitivePackages, RestoredPackageInfo{
+				PackageID: pkg.ID,
+				Version:   pkg.Version,
+				Path:      pkg.Path,
+				IsDirect:  false,
+			})
+		}
+	}
+
+	return RestoreTransitiveResponse{
+		Success:            true,
+		DirectPackages:     directPackages,
+		TransitivePackages: transitivePackages,
+		UnresolvedPackages: []UnresolvedPackage{},
+		LockFilePath:       lockFilePath,
+		ElapsedMs:          elapsed.Milliseconds(),
+		ErrorMessages:      []string{},
+	}, nil
+}
+
+// CompareProjectAssetsHandler compares two project.assets.json files semantically.
+type CompareProjectAssetsHandler struct{}
+
+// ErrorCode returns the error code for comparison failures.
+func (h *CompareProjectAssetsHandler) ErrorCode() string {
+	return "COMPARE_ASSETS_001"
+}
+
+// Handle processes the comparison request.
+func (h *CompareProjectAssetsHandler) Handle(data json.RawMessage) (interface{}, error) {
+	var req CompareProjectAssetsRequest
+	if err := json.Unmarshal(data, &req); err != nil {
+		return nil, fmt.Errorf("invalid request: %w", err)
+	}
+
+	// Read both lock files
+	gonugetData, err := os.ReadFile(req.GonugetLockFilePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read gonuget lock file: %w", err)
+	}
+
+	nugetData, err := os.ReadFile(req.NugetLockFilePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read nuget lock file: %w", err)
+	}
+
+	// Parse both lock files
+	var gonugetLockFile restore.LockFile
+	if err := json.Unmarshal(gonugetData, &gonugetLockFile); err != nil {
+		return nil, fmt.Errorf("failed to parse gonuget lock file: %w", err)
+	}
+
+	var nugetLockFile restore.LockFile
+	if err := json.Unmarshal(nugetData, &nugetLockFile); err != nil {
+		return nil, fmt.Errorf("failed to parse nuget lock file: %w", err)
+	}
+
+	// Compare lock files
+	differences := []string{}
+	librariesMatch := true
+	projectFileDependencyGroupsMatch := true
+	versionsMatch := true
+	pathsMatch := true
+
+	// Compare Libraries map keys
+	if len(gonugetLockFile.Libraries) != len(nugetLockFile.Libraries) {
+		librariesMatch = false
+		differences = append(differences, fmt.Sprintf("Libraries count mismatch: gonuget=%d, nuget=%d",
+			len(gonugetLockFile.Libraries), len(nugetLockFile.Libraries)))
+	}
+
+	for key, gonugetLib := range gonugetLockFile.Libraries {
+		nugetLib, exists := nugetLockFile.Libraries[key]
+		if !exists {
+			librariesMatch = false
+			differences = append(differences, fmt.Sprintf("Library key missing in nuget: %s", key))
+			continue
+		}
+
+		// Compare versions
+		if gonugetLib.Type != nugetLib.Type {
+			versionsMatch = false
+			differences = append(differences, fmt.Sprintf("Library type mismatch for %s: gonuget=%s, nuget=%s",
+				key, gonugetLib.Type, nugetLib.Type))
+		}
+
+		// Compare paths (should be lowercase)
+		if gonugetLib.Path != nugetLib.Path {
+			pathsMatch = false
+			differences = append(differences, fmt.Sprintf("Library path mismatch for %s: gonuget=%s, nuget=%s",
+				key, gonugetLib.Path, nugetLib.Path))
+		}
+	}
+
+	// Compare ProjectFileDependencyGroups
+	for framework, gonugetDeps := range gonugetLockFile.ProjectFileDependencyGroups {
+		nugetDeps, exists := nugetLockFile.ProjectFileDependencyGroups[framework]
+		if !exists {
+			projectFileDependencyGroupsMatch = false
+			differences = append(differences, fmt.Sprintf("Framework missing in nuget ProjectFileDependencyGroups: %s", framework))
+			continue
+		}
+
+		if len(gonugetDeps) != len(nugetDeps) {
+			projectFileDependencyGroupsMatch = false
+			differences = append(differences, fmt.Sprintf("Dependency count mismatch for %s: gonuget=%d, nuget=%d",
+				framework, len(gonugetDeps), len(nugetDeps)))
+		}
+	}
+
+	areEqual := librariesMatch && projectFileDependencyGroupsMatch && versionsMatch && pathsMatch
+
+	return CompareProjectAssetsResponse{
+		AreEqual:                         areEqual,
+		LibrariesMatch:                   librariesMatch,
+		ProjectFileDependencyGroupsMatch: projectFileDependencyGroupsMatch,
+		VersionsMatch:                    versionsMatch,
+		PathsMatch:                       pathsMatch,
+		Differences:                      differences,
+	}, nil
+}
+
+// ValidateErrorMessagesHandler validates error message format between gonuget and NuGet.Client.
+type ValidateErrorMessagesHandler struct{}
+
+// ErrorCode returns the error code for validation failures.
+func (h *ValidateErrorMessagesHandler) ErrorCode() string {
+	return "VALIDATE_ERRORS_001"
+}
+
+// Handle processes the validation request.
+func (h *ValidateErrorMessagesHandler) Handle(data json.RawMessage) (interface{}, error) {
+	var req ValidateErrorMessagesRequest
+	if err := json.Unmarshal(data, &req); err != nil {
+		return nil, fmt.Errorf("invalid request: %w", err)
+	}
+
+	// Extract error code from messages (NU1101, NU1102, NU1103)
+	errorCode := extractErrorCode(req.GonugetError)
+	if errorCode == "" {
+		errorCode = extractErrorCode(req.NugetError)
+	}
+
+	// Compare messages with tolerance for formatting
+	differences := []string{}
+	match := req.GonugetError == req.NugetError
+
+	if !match {
+		// Check for formatting differences (whitespace, line endings)
+		gonugetNormalized := normalizeErrorMessage(req.GonugetError)
+		nugetNormalized := normalizeErrorMessage(req.NugetError)
+
+		if gonugetNormalized != nugetNormalized {
+			differences = append(differences, "Error message content differs")
+			differences = append(differences, fmt.Sprintf("gonuget: %s", req.GonugetError))
+			differences = append(differences, fmt.Sprintf("nuget: %s", req.NugetError))
+		} else {
+			// Only formatting differences - consider it a match
+			match = true
+		}
+	}
+
+	return ValidateErrorMessagesResponse{
+		ErrorCode:          errorCode,
+		GonugetMessage:     req.GonugetError,
+		NuGetClientMessage: req.NugetError,
+		Match:              match,
+		Differences:        differences,
+	}, nil
+}
+
+// extractErrorCode extracts the NuGet error code from an error message.
+func extractErrorCode(message string) string {
+	// Match NU1101, NU1102, NU1103 patterns
+	if len(message) >= 6 {
+		prefix := message[:6]
+		if prefix == "NU1101" || prefix == "NU1102" || prefix == "NU1103" {
+			return prefix
+		}
+	}
+	return ""
+}
+
+// normalizeErrorMessage normalizes an error message for comparison.
+func normalizeErrorMessage(message string) string {
+	// Remove leading/trailing whitespace
+	// Normalize line endings
+	// Normalize multiple spaces to single space
+	normalized := message
+	normalized = strings.TrimSpace(normalized)
+	normalized = strings.ReplaceAll(normalized, "\r\n", "\n")
+	normalized = strings.ReplaceAll(normalized, "\r", "\n")
+
+	// Normalize multiple spaces
+	for strings.Contains(normalized, "  ") {
+		normalized = strings.ReplaceAll(normalized, "  ", " ")
+	}
+
+	return normalized
+}
