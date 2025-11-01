@@ -1,7 +1,7 @@
-# CLI Command Structure Restructure - Full dotnet Parity
+# CLI Command Structure Restructure - Simplified dotnet-style Commands
 
 **Status:** Planning
-**Goal:** Achieve 100% command structure parity with dotnet CLI
+**Goal:** Achieve functional parity with dotnet CLI using simplified command structure
 **Approach:** Big bang restructure (immediate breaking changes)
 
 ## Current State
@@ -26,7 +26,7 @@ gonuget
 - No clear namespace separation
 - Inconsistent with dotnet pattern
 
-## Target State (100% dotnet Parity)
+## Target State (Simplified dotnet-style Structure)
 
 ### Package Namespace (`gonuget package`)
 
@@ -37,20 +37,20 @@ gonuget package remove <PACKAGE_NAME>
 gonuget package search <SEARCH_TERM>
 ```
 
-**Matches:** `dotnet package`
+**Matches:** `dotnet package` exactly
 
-### Source Namespace (`gonuget source`)
+### Source Commands
 
 ```bash
-gonuget source add <SOURCE_URL>
-gonuget source list
-gonuget source remove <NAME>
-gonuget source enable <NAME>
-gonuget source disable <NAME>
-gonuget source update <NAME>
+gonuget add source <SOURCE_URL>
+gonuget list source
+gonuget remove source <NAME>
+gonuget enable source <NAME>
+gonuget disable source <NAME>
+gonuget update source <NAME>
 ```
 
-**Matches:** `dotnet nuget` source commands (grouped under `source` for clarity)
+**Matches:** `dotnet nuget [command] source` (removes "nuget" parent, keeps same structure)
 
 ### Top-Level Commands
 
@@ -76,12 +76,12 @@ gonuget restore [PROJECT]
 
 | Old Command | New Command | Action |
 |-------------|-------------|--------|
-| `gonuget add source <URL>` | `gonuget source add <URL>` | MOVE |
-| `gonuget list` | `gonuget source list` | MOVE |
-| `gonuget remove <NAME>` | `gonuget source remove <NAME>` | MOVE |
-| `gonuget enable <NAME>` | `gonuget source enable <NAME>` | MOVE |
-| `gonuget disable <NAME>` | `gonuget source disable <NAME>` | MOVE |
-| `gonuget update <NAME>` | `gonuget source update <NAME>` | MOVE |
+| `gonuget add source <URL>` | `gonuget add source <URL>` | KEEP |
+| `gonuget list` | `gonuget list source` | CHANGE |
+| `gonuget remove <NAME>` | `gonuget remove source <NAME>` | CHANGE |
+| `gonuget enable <NAME>` | `gonuget enable source <NAME>` | CHANGE |
+| `gonuget disable <NAME>` | `gonuget disable source <NAME>` | CHANGE |
+| `gonuget update <NAME>` | `gonuget update source <NAME>` | CHANGE |
 
 ### Top-Level Operations
 
@@ -99,17 +99,21 @@ cmd/gonuget/commands/
 ├── package_list.go         # NEW
 ├── package_remove.go       # NEW
 ├── package_search.go       # NEW
-├── source.go               # NEW: Parent command
-├── source_add.go           # MOVE from source_add.go
-├── source_list.go          # MOVE from source_list.go
-├── source_remove.go        # MOVE from source_remove.go
-├── source_enable.go        # MOVE from source_enable.go
-├── source_disable.go       # MOVE from source_disable.go
-├── source_update.go        # MOVE from source_update.go
+├── add.go                  # KEEP: Parent for "add source"
+├── source_add.go           # KEEP (already exists)
+├── list.go                 # UPDATE: Change from "list" to "list source"
+├── source_list.go          # KEEP
+├── remove.go               # UPDATE: Change to "remove source"
+├── source_remove.go        # KEEP
+├── enable.go               # UPDATE: Change to "enable source"
+├── source_enable.go        # KEEP
+├── disable.go              # UPDATE: Change to "disable source"
+├── source_disable.go       # KEEP
+├── update.go               # UPDATE: Change to "update source"
+├── source_update.go        # KEEP
 ├── config.go               # KEEP
 ├── restore.go              # KEEP
-├── version.go              # KEEP
-└── [DELETE] add.go         # REMOVE parent command
+└── version.go              # KEEP
 ```
 
 ## Implementation Steps
@@ -149,40 +153,6 @@ Subcommands allow you to add, remove, list, and search for packages.`,
 }
 ```
 
-**File:** `cmd/gonuget/commands/source.go`
-
-```go
-package commands
-
-import (
-    "github.com/spf13/cobra"
-    "github.com/willibrandon/gonuget/cmd/gonuget/output"
-)
-
-// NewSourceCommand creates the source parent command
-func NewSourceCommand(console output.Console) *cobra.Command {
-    cmd := &cobra.Command{
-        Use:   "source",
-        Short: "Manage NuGet package sources",
-        Long: `Manage NuGet package sources in NuGet.config.
-Subcommands allow you to add, remove, list, enable, disable, and update sources.`,
-        Example: `  gonuget source add https://api.nuget.org/v3/index.json --name nuget.org
-  gonuget source list
-  gonuget source disable nuget.org
-  gonuget source remove nuget.org`,
-    }
-
-    // Add subcommands
-    cmd.AddCommand(NewSourceAddCommand(console))
-    cmd.AddCommand(NewSourceListCommand(console))
-    cmd.AddCommand(NewSourceRemoveCommand(console))
-    cmd.AddCommand(NewSourceEnableCommand(console))
-    cmd.AddCommand(NewSourceDisableCommand(console))
-    cmd.AddCommand(NewSourceUpdateCommand(console))
-
-    return cmd
-}
-```
 
 ### Step 2: Rename Package Command Files
 
@@ -196,17 +166,16 @@ Update `package_add.go`:
 - Rename `NewAddPackageCommand` → `NewPackageAddCommand`
 - Update `Use: "package"` → `Use: "add"`
 
-### Step 3: Rename Source Command Files
+### Step 3: Update Source Command Files
 
-Already named correctly, just update function names:
-- `NewListCommand` → `NewSourceListCommand`
-- `NewRemoveCommand` → `NewSourceRemoveCommand`
-- `NewEnableCommand` → `NewSourceEnableCommand`
-- `NewDisableCommand` → `NewSourceDisableCommand`
-- `NewUpdateCommand` → `NewSourceUpdateCommand`
-- `NewAddSourceCommand` → `NewSourceAddCommand`
+Update `Use:` fields to include "source" argument:
+- `list.go`: `Use: "list"` → `Use: "list source"`
+- `remove.go`: `Use: "remove <name>"` → `Use: "remove source <NAME>"`
+- `enable.go`: `Use: "enable <name>"` → `Use: "enable source <NAME>"`
+- `disable.go`: `Use: "disable <name>"` → `Use: "disable source <NAME>"`
+- `update.go`: `Use: "update <name>"` → `Use: "update source <NAME>"`
 
-Update each file's `Use:` field to remove "source" prefix since it's now a subcommand.
+Keep `add source` as-is (already correct).
 
 ### Step 4: Implement New Commands
 
@@ -355,7 +324,12 @@ func main() {
 
     // Register new command structure
     cli.AddCommand(commands.NewPackageCommand(cli.Console))
-    cli.AddCommand(commands.NewSourceCommand(cli.Console))
+    cli.AddCommand(commands.NewAddCommand(cli.Console))        // Keep: add source
+    cli.AddCommand(commands.NewListCommand(cli.Console))       // Update: list source
+    cli.AddCommand(commands.NewRemoveCommand(cli.Console))     // Update: remove source
+    cli.AddCommand(commands.NewEnableCommand(cli.Console))     // Update: enable source
+    cli.AddCommand(commands.NewDisableCommand(cli.Console))    // Update: disable source
+    cli.AddCommand(commands.NewUpdateCommand(cli.Console))     // Update: update source
 
     // Top-level commands
     cli.AddCommand(commands.NewConfigCommand(cli.Console))
@@ -366,27 +340,17 @@ func main() {
 }
 ```
 
-### Step 6: Delete Old Files
-
-```bash
-rm cmd/gonuget/commands/add.go
-rm cmd/gonuget/commands/add_test.go  # if exists
-```
-
-### Step 7: Update Tests
-
-Rename all test functions to match new command names:
-- `TestAddPackageCommand` → `TestPackageAddCommand`
-- `TestListCommand` → `TestSourceListCommand`
-- etc.
+### Step 6: Update Tests
 
 Update test invocations:
 ```go
-// Old
-cmd := exec.Command("gonuget", "add", "package", "Newtonsoft.Json")
-
-// New
+// Package commands
 cmd := exec.Command("gonuget", "package", "add", "Newtonsoft.Json")
+
+// Source commands (no changes needed)
+cmd := exec.Command("gonuget", "add", "source", "https://api.nuget.org/v3/index.json")
+cmd := exec.Command("gonuget", "list", "source")
+cmd := exec.Command("gonuget", "remove", "source", "nuget.org")
 ```
 
 ## Testing Strategy
@@ -408,8 +372,13 @@ func TestCommandStructure_MatchesDotnet(t *testing.T) {
         },
         {
             name:        "source list",
-            gonugetArgs: []string{"source", "list"},
-            dotnetArgs:  []string{"nuget", "list"},
+            gonugetArgs: []string{"list", "source"},
+            dotnetArgs:  []string{"nuget", "list", "source"},
+        },
+        {
+            name:        "source add",
+            gonugetArgs: []string{"add", "source", "https://api.nuget.org/v3/index.json"},
+            dotnetArgs:  []string{"nuget", "add", "source", "https://api.nuget.org/v3/index.json"},
         },
     }
 
@@ -439,10 +408,12 @@ gonuget package search Serilog
 gonuget package remove Newtonsoft.Json
 
 # Source operations
-gonuget source add https://api.nuget.org/v3/index.json --name nuget.org
-gonuget source list
-gonuget source enable nuget.org
-gonuget source disable nuget.org
+gonuget add source https://api.nuget.org/v3/index.json --name nuget.org
+gonuget list source
+gonuget enable source nuget.org
+gonuget disable source nuget.org
+gonuget remove source nuget.org
+gonuget update source nuget.org --source https://new-url.com
 
 # Project operations
 gonuget restore
@@ -453,11 +424,11 @@ gonuget config get packageSources
 ## Success Criteria
 
 - [ ] `gonuget package` matches `dotnet package` exactly
-- [ ] `gonuget source` matches `dotnet nuget` source commands exactly
+- [ ] `gonuget [verb] source` matches `dotnet nuget [verb] source` (removes "nuget" parent)
 - [ ] All flags use kebab-case matching dotnet
 - [ ] All output formats match dotnet
 - [ ] All tests pass
-- [ ] No old command structure remains
+- [ ] Interop tests correctly handle different command structures
 
 ## References
 
