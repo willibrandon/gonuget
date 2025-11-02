@@ -57,11 +57,11 @@ Core types and interfaces that all parsers depend on.
 
 ### Tasks
 
-- [ ] T022 [US2] Create tests for solution file rejection in tests/cmd/gonuget/commands/package_add_solution_test.go
-- [ ] T023 [US2] Add solution file detection in cmd/gonuget/commands/package_add.go
-- [ ] T024 [US2] Implement SolutionNotSupportedError type in cmd/gonuget/commands/errors.go
-- [ ] T025 [US2] Return proper error "Couldn't find a project to run..." for solution files
-- [ ] T026 [US2] Verify error message format matches dotnet CLI exactly
+- [X] T022 [US2] Create tests for solution file rejection in tests/cmd/gonuget/commands/package_add_solution_test.go
+- [X] T023 [US2] Add solution file detection in cmd/gonuget/commands/package_add.go
+- [X] T024 [US2] Implement SolutionNotSupportedError type in cmd/gonuget/commands/errors.go
+- [X] T025 [US2] Return proper error "Couldn't find a project to run..." for solution files
+- [X] T026 [US2] Verify error message format matches dotnet CLI exactly
 
 ## Phase 5: User Story 3 - Reject Solution Files for Package Remove (5 tasks)
 
@@ -71,11 +71,11 @@ Core types and interfaces that all parsers depend on.
 
 ### Tasks
 
-- [ ] T027 [US3] Create tests for solution file rejection in tests/cmd/gonuget/commands/package_remove_solution_test.go
-- [ ] T028 [US3] Add solution file detection in cmd/gonuget/commands/package_remove.go
-- [ ] T029 [US3] Implement InvalidProjectFileError type in cmd/gonuget/commands/errors.go
-- [ ] T030 [US3] Return proper error "Missing or invalid project file..." for solution files
-- [ ] T031 [US3] Verify error message format matches dotnet CLI exactly
+- [X] T027 [US3] Create tests for solution file rejection in tests/cmd/gonuget/commands/package_remove_solution_test.go
+- [X] T028 [US3] Add solution file detection in cmd/gonuget/commands/package_remove.go
+- [X] T029 [US3] Implement InvalidProjectFileError type in cmd/gonuget/commands/errors.go
+- [X] T030 [US3] Return proper error "Missing or invalid project file..." for solution files
+- [X] T031 [US3] Verify error message format matches dotnet CLI exactly
 
 ## Phase 6: User Story 4 - Cross-Platform Path Handling (6 tasks)
 

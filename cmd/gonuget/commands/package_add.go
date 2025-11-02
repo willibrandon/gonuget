@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/willibrandon/gonuget/cmd/gonuget/config"
 	"github.com/willibrandon/gonuget/cmd/gonuget/project"
+	"github.com/willibrandon/gonuget/cmd/gonuget/solution"
 	"github.com/willibrandon/gonuget/restore"
 	"github.com/willibrandon/gonuget/version"
 )
@@ -67,17 +68,38 @@ Examples:
 func runAddPackage(ctx context.Context, packageID string, opts *AddPackageOptions) error {
 	// 1. Find the project file
 	projectPath := opts.ProjectPath
+	currentDir, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("failed to get current directory: %w", err)
+	}
+
 	if projectPath == "" {
-		currentDir, err := os.Getwd()
+		// Try to detect a solution file first
+		detector := solution.NewDetector(currentDir)
+		result, err := detector.DetectSolution()
 		if err != nil {
-			return fmt.Errorf("failed to get current directory: %w", err)
+			return fmt.Errorf("failed to detect solution: %w", err)
 		}
 
+		if result.Found {
+			// Solution file found - this is not supported for add operation
+			return &SolutionNotSupportedError{Directory: currentDir}
+		}
+
+		// No solution file, try to find a project file
 		foundPath, err := project.FindProjectFile(currentDir)
 		if err != nil {
-			return fmt.Errorf("failed to find project file: %w", err)
+			// No project found either
+			return &SolutionNotSupportedError{Directory: currentDir}
 		}
 		projectPath = foundPath
+	} else {
+		// Check if the provided path is a solution file
+		if solution.IsSolutionFile(projectPath) {
+			// Get the directory containing the solution
+			dir := filepath.Dir(projectPath)
+			return &SolutionNotSupportedError{Directory: dir}
+		}
 	}
 
 	// 2. Load the project
