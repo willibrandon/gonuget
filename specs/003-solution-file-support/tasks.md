@@ -98,11 +98,11 @@ Final integration testing and performance validation.
 
 ### Tasks
 
-- [ ] T038 [P] Create end-to-end tests comparing gonuget output with dotnet CLI output byte-for-byte
-- [ ] T039 [P] Performance test with 100+ project solution (must complete in < 30 seconds)
-- [ ] T040 [P] Test UTF-8 with BOM and without BOM support
-- [ ] T041 [P] Add warning output formatting (yellow "Warning:" prefix to stderr)
-- [ ] T042 Document solution file support in README.md and CLI help text
+- [X] T038 [P] Create end-to-end tests comparing gonuget output with dotnet CLI output byte-for-byte
+- [X] T039 [P] Performance test with 100+ project solution (must complete in < 30 seconds)
+- [X] T040 [P] Test UTF-8 with BOM and without BOM support
+- [X] T041 [P] Add warning output formatting (yellow "Warning:" prefix to stderr)
+- [X] T042 Document solution file support in README.md and CLI help text
 
 ## Dependency Graph
 

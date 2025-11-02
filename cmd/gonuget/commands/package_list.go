@@ -198,6 +198,9 @@ func outputSolutionPackageListConsole(solutionPath string, sol *solution.Solutio
 	totalPackages := 0
 	successCount := 0
 
+	// Create warning writer for stderr output
+	warningWriter := output.NewWarningWriter()
+
 	// Process each project
 	for _, projectPath := range projectPaths {
 		// Make absolute path based on solution directory
@@ -206,9 +209,10 @@ func outputSolutionPackageListConsole(solutionPath string, sol *solution.Solutio
 			absProjectPath = filepath.Join(sol.SolutionDir, projectPath)
 		}
 
-		// Check if project file exists (T021: silent skip for missing)
+		// Check if project file exists
 		if _, err := os.Stat(absProjectPath); os.IsNotExist(err) {
-			// Silently skip missing project files
+			// Show warning for missing project file (T041: warning output formatting)
+			warningWriter.WriteMissingProjectWarning(absProjectPath)
 			continue
 		}
 
@@ -260,6 +264,9 @@ func outputSolutionPackageListJSON(solutionPath string, sol *solution.Solution, 
 		Projects: []output.PackageListOutput{},
 	}
 
+	// Create warning writer for stderr output
+	warningWriter := output.NewWarningWriter()
+
 	// Process each project
 	for _, projectPath := range projectPaths {
 		// Make absolute path based on solution directory
@@ -268,9 +275,10 @@ func outputSolutionPackageListJSON(solutionPath string, sol *solution.Solution, 
 			absProjectPath = filepath.Join(sol.SolutionDir, projectPath)
 		}
 
-		// Check if project file exists (T021: silent skip for missing)
+		// Check if project file exists
 		if _, err := os.Stat(absProjectPath); os.IsNotExist(err) {
-			// Silently skip missing project files
+			// Show warning for missing project file (JSON mode still shows warnings to stderr)
+			warningWriter.WriteMissingProjectWarning(absProjectPath)
 			continue
 		}
 
