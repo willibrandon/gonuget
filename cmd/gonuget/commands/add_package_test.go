@@ -398,7 +398,8 @@ func TestRunAddPackage_FindProjectFileError(t *testing.T) {
 
 	err = runAddPackage(context.Background(), "Newtonsoft.Json", opts)
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "failed to find project file")
+	// After solution file support, this now returns SolutionNotSupportedError
+	assert.Contains(t, err.Error(), "Couldn't find a project to run")
 }
 
 func TestResolveLatestVersion_CustomSource(t *testing.T) {
