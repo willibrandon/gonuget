@@ -116,12 +116,6 @@ func TestResolveProjectPath(t *testing.T) {
 			expected:    filepath.Join(solutionDir, "shared", "Common.csproj"),
 		},
 		{
-			name:        "Already absolute Unix path",
-			solutionDir: solutionDir,
-			projectPath: "/home/user/projects/MyProject.csproj",
-			expected:    "/home/user/projects/MyProject.csproj",
-		},
-		{
 			name:        "Empty project path",
 			solutionDir: solutionDir,
 			projectPath: "",
@@ -139,6 +133,21 @@ func TestResolveProjectPath(t *testing.T) {
 			projectPath: "..\\..\\external\\libs\\Library.csproj",
 			expected:    filepath.Clean(filepath.Join(solutionDir, "..", "..", "external", "libs", "Library.csproj")),
 		},
+	}
+
+	// Add Unix-specific tests if on Unix
+	if runtime.GOOS != "windows" {
+		tests = append(tests, struct {
+			name        string
+			solutionDir string
+			projectPath string
+			expected    string
+		}{
+			name:        "Already absolute Unix path",
+			solutionDir: solutionDir,
+			projectPath: "/home/user/projects/MyProject.csproj",
+			expected:    "/home/user/projects/MyProject.csproj",
+		})
 	}
 
 	// Add Windows-specific tests if on Windows
