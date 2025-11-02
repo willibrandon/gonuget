@@ -57,7 +57,7 @@
 - Chunk 14: Framework-Specific References (Conditional ItemGroups)
 - Chunk 15: Transitive Dependency Resolution
 - Chunk 16: Multi-TFM Project Support
-- Chunk 17: Solution File Support
+- ~~Chunk 17: Solution File Support~~ - **REMOVED** (dotnet CLI does NOT support solution files for `add package`)
 - Chunk 18: CLI Interop Tests for CPM
 - Chunk 19: CLI Interop Tests for Advanced Features
 

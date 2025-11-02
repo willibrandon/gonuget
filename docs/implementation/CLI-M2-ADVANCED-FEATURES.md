@@ -13,9 +13,9 @@ This guide covers M2.2 Advanced Features (Chunks 14-19) that extend the basic ad
 - ✅ Chunks 11-13 Complete: Central Package Management (CPM)
 
 **Reference Implementations:**
-- Primary: `/Users/brandon/src/sdk/src/Cli/dotnet/` - dotnet SDK implementation
-- Secondary: `/Users/brandon/src/NuGet.Client/` - NuGet.Client libraries
-- Docs: `/Users/brandon/src/docs/` - Official NuGet documentation
+- Primary: `dotnet/sdk` repository - dotnet SDK implementation
+- Secondary: `NuGet.Client` repository - NuGet.Client libraries
+- Docs: Official NuGet documentation
 
 ---
 
@@ -62,11 +62,11 @@ When a project targets multiple frameworks (e.g., `<TargetFrameworks>net8.0;net4
 ### Reference Implementation
 
 **dotnet SDK**: Automatically handles framework-specific references
-- Location: `/Users/brandon/src/sdk/src/Tasks/Microsoft.NET.Build.Tasks/`
+- Location: `sdk/src/Tasks/Microsoft.NET.Build.Tasks/`
 - MSBuild handles conditional evaluation
 
 **NuGet.Client**: Framework compatibility logic
-- Location: `/Users/brandon/src/NuGet.Client/src/NuGet.Frameworks/`
+- Location: `NuGet.Client/src/NuGet.Frameworks/`
 - `FrameworkReducer.cs` - Framework compatibility logic
 
 ### Files to Modify
@@ -444,7 +444,7 @@ gonuget should show similar output with transitive dependencies resolved.
 - `core/resolver/resolver.go` - Package resolution with conflict detection
 
 **dotnet SDK**: Uses NuGet.Commands for restore
-- Location: `/Users/brandon/src/NuGet.Client/src/NuGet.Commands/RestoreCommand/`
+- Location: `NuGet.Client/src/NuGet.Commands/RestoreCommand/`
 
 ### Files to Modify
 
@@ -630,7 +630,7 @@ When adding a package to a multi-TFM project:
 - `frameworks/reducer.go` - Framework reduction and compatibility logic
 
 **NuGet.Client**:
-- Location: `/Users/brandon/src/NuGet.Client/src/NuGet.Frameworks/`
+- Location: `NuGet.Client/src/NuGet.Frameworks/`
 - `FrameworkReducer.cs` - Framework compatibility
 
 ### Files to Modify
@@ -892,377 +892,115 @@ dotnet add package System.Text.Json --version 8.0.0 --framework net8.0
 
 ---
 
-## Chunk 17: Solution File Support
+## Chunk 17: Solution File Support - NOT SUPPORTED
 
-**Objective**: Support adding packages to all projects in a solution file (.sln).
+**Objective**: Document that `dotnet add package` does NOT support solution files, matching dotnet CLI behavior exactly.
 
-**Time Estimate**: 5 hours
+**Time Estimate**: REMOVED - This chunk is intentionally skipped for 100% dotnet parity
 
 **Prerequisites**: Chunks 1-16 complete
 
 ### Background
 
-dotnet supports operating on solution files:
+**CRITICAL: `dotnet add package` does NOT support solution files (.sln)**
+
+Despite common misconceptions, the dotnet CLI explicitly rejects solution files for package add/remove operations:
 
 ```bash
-# Add package to all projects in solution
-dotnet add MySolution.sln package Newtonsoft.Json --version 13.0.3
+# This FAILS in dotnet CLI:
+$ dotnet add MySolution.sln package Newtonsoft.Json
+error: Couldn't find a project to run. Ensure a project exists, or pass the path to the project.
 
-# Add package to specific project in solution
-dotnet add MyProject/MyProject.csproj package Newtonsoft.Json
+# This is the ONLY supported pattern:
+$ dotnet add MyProject/MyProject.csproj package Newtonsoft.Json
 ```
 
-gonuget should support the same patterns.
+**Dotnet Solution File Support Matrix:**
+
+| Command | Solution File Support | Project File Support |
+|---------|----------------------|---------------------|
+| `dotnet add package` | ❌ NO | ✅ YES (.csproj/.fsproj/.vbproj) |
+| `dotnet remove package` | ❌ NO | ✅ YES (.csproj/.fsproj/.vbproj) |
+| `dotnet list package` | ✅ YES | ✅ YES |
+| `dotnet package why` | ✅ YES | ✅ YES |
+| `dotnet build` | ✅ YES | ✅ YES |
+| `dotnet restore` | ✅ YES | ✅ YES |
+| `dotnet clean` | ✅ YES | ✅ YES |
+| `dotnet publish` | ✅ YES | ✅ YES |
+
+**Why `dotnet add package` rejects solution files:**
+
+From the dotnet SDK source code validation (`NuGet.Client/src/NuGet.Core/NuGet.CommandLine.XPlat/Commands/PackageReferenceCommands/AddPackageReferenceCommand.cs` lines 134-141):
+
+```csharp
+private static void ValidateProjectPath(CommandOption projectPath, string commandName)
+{
+    if (!File.Exists(projectPath.Value()) ||
+        !projectPath.Value().EndsWith("proj", StringComparison.OrdinalIgnoreCase))
+    {
+        throw new ArgumentException(string.Format(CultureInfo.CurrentCulture,
+            Strings.Error_PkgMissingOrInvalidProjectFile,
+            commandName,
+            projectPath.Value()));
+    }
+}
+```
+
+The validation explicitly checks:
+1. File must exist
+2. File must end with "proj" (rejects .sln, .slnx, .slnf)
+
+**Rationale**: Package operations must modify specific project files atomically. Operating on multiple projects requires explicit user intent for each project.
 
 ### Reference Implementation
 
-**dotnet SDK**: Solution parsing
-- Location: `/Users/brandon/src/sdk/src/Cli/Microsoft.DotNet.Cli.Utils/`
-- Solution file parsing and project discovery
+**dotnet SDK**: Validation that rejects solution files
+- Location: `NuGet.Client/src/NuGet.Core/NuGet.CommandLine.XPlat/Commands/PackageReferenceCommands/AddPackageReferenceCommand.cs`
+- Lines 134-141: `ValidateProjectPath()` method
+- Explicitly checks file ends with "proj"
 
-**NuGet.Client**: Solution-level operations
-- Location: `/Users/brandon/src/NuGet.Client/src/NuGet.CommandLine/`
+**NuGet.Client**: Solution parsing available for other commands
+- Location: `NuGet.Client/src/NuGet.Clients/NuGet.CommandLine/Common/Solution.cs`
+- `Solution.Parse()` - Used by `list package` and `why` commands
+- NOT used by `add package` or `remove package`
 
-### Files to Create
+### Implementation: Reject Solution Files
 
-**cmd/gonuget/solution/solution.go** (NEW):
+**cmd/gonuget/commands/add_package.go** - Add validation to reject .sln files:
+
 ```go
-package solution
-
-import (
-	"bufio"
-	"fmt"
-	"os"
-	"path/filepath"
-	"strings"
-)
-
-// Solution represents a .NET solution file (.sln)
-type Solution struct {
-	Path     string
-	Projects []ProjectReference
-}
-
-// ProjectReference represents a project in a solution
-type ProjectReference struct {
-	Name         string // Project name
-	Path         string // Relative path to project file
-	AbsolutePath string // Absolute path to project file
-	GUID         string // Project GUID
-	TypeGUID     string // Project type GUID
-}
-
-// LoadSolution loads a solution file from disk
-func LoadSolution(path string) (*Solution, error) {
-	file, err := os.Open(path)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open solution file: %w", err)
-	}
-	defer file.Close()
-
-	solution := &Solution{
-		Path:     path,
-		Projects: []ProjectReference{},
-	}
-
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		line := scanner.Text()
-
-		// Parse project lines:
-		// Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MyProject", "MyProject\MyProject.csproj", "{12345678-1234-1234-1234-123456789ABC}"
-		if strings.HasPrefix(line, "Project(") {
-			proj, err := parseProjectLine(line, filepath.Dir(path))
-			if err != nil {
-				// Skip invalid project lines
-				continue
-			}
-			solution.Projects = append(solution.Projects, proj)
-		}
-	}
-
-	if err := scanner.Err(); err != nil {
-		return nil, fmt.Errorf("failed to read solution file: %w", err)
-	}
-
-	return solution, nil
-}
-
-// parseProjectLine parses a solution project line
-func parseProjectLine(line, solutionDir string) (ProjectReference, error) {
-	// Project("{TypeGUID}") = "Name", "RelativePath", "{ProjectGUID}"
-
-	// Extract type GUID
-	typeGUIDStart := strings.Index(line, "{")
-	typeGUIDEnd := strings.Index(line, "}")
-	if typeGUIDStart == -1 || typeGUIDEnd == -1 {
-		return ProjectReference{}, fmt.Errorf("invalid project line format")
-	}
-	typeGUID := line[typeGUIDStart+1 : typeGUIDEnd]
-
-	// Extract name
-	nameStart := strings.Index(line, "\"")
-	if nameStart == -1 {
-		return ProjectReference{}, fmt.Errorf("invalid project line format")
-	}
-	nameEnd := strings.Index(line[nameStart+1:], "\"")
-	if nameEnd == -1 {
-		return ProjectReference{}, fmt.Errorf("invalid project line format")
-	}
-	name := line[nameStart+1 : nameStart+1+nameEnd]
-
-	// Extract path
-	pathStart := strings.Index(line[nameStart+nameEnd+2:], "\"")
-	if pathStart == -1 {
-		return ProjectReference{}, fmt.Errorf("invalid project line format")
-	}
-	pathStart += nameStart + nameEnd + 2
-	pathEnd := strings.Index(line[pathStart+1:], "\"")
-	if pathEnd == -1 {
-		return ProjectReference{}, fmt.Errorf("invalid project line format")
-	}
-	relativePath := line[pathStart+1 : pathStart+1+pathEnd]
-
-	// Extract project GUID
-	guidStart := strings.LastIndex(line, "{")
-	guidEnd := strings.LastIndex(line, "}")
-	if guidStart == -1 || guidEnd == -1 {
-		return ProjectReference{}, fmt.Errorf("invalid project line format")
-	}
-	guid := line[guidStart+1 : guidEnd]
-
-	// Convert to absolute path (handle both / and \ separators)
-	relativePath = strings.ReplaceAll(relativePath, "\\", string(filepath.Separator))
-	absolutePath := filepath.Join(solutionDir, relativePath)
-
-	return ProjectReference{
-		Name:         name,
-		Path:         relativePath,
-		AbsolutePath: absolutePath,
-		GUID:         guid,
-		TypeGUID:     typeGUID,
-	}, nil
-}
-
-// GetProjectFiles returns absolute paths to all project files in the solution
-func (s *Solution) GetProjectFiles() []string {
-	paths := make([]string, len(s.Projects))
-	for i, proj := range s.Projects {
-		paths[i] = proj.AbsolutePath
-	}
-	return paths
-}
-
-// FindSolutionFile searches for a .sln file in the given directory
-func FindSolutionFile(dir string) (string, error) {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return "", fmt.Errorf("failed to read directory: %w", err)
-	}
-
-	var solutions []string
-	for _, entry := range entries {
-		if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".sln") {
-			solutions = append(solutions, filepath.Join(dir, entry.Name()))
-		}
-	}
-
-	if len(solutions) == 0 {
-		return "", fmt.Errorf("no solution file found in directory")
-	}
-
-	if len(solutions) > 1 {
-		return "", fmt.Errorf("multiple solution files found: %v", solutions)
-	}
-
-	return solutions[0], nil
-}
-```
-
-**cmd/gonuget/solution/solution_test.go** (NEW):
-```go
-package solution
-
-import (
-	"os"
-	"path/filepath"
-	"testing"
-
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-)
-
-func TestLoadSolution(t *testing.T) {
-	tmpDir := t.TempDir()
-	slnPath := filepath.Join(tmpDir, "test.sln")
-
-	slnContent := `Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio Version 17
-VisualStudioVersion = 17.0.31903.59
-MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Project1", "Project1\Project1.csproj", "{12345678-1234-1234-1234-123456789ABC}"
-EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Project2", "Project2\Project2.csproj", "{87654321-4321-4321-4321-CBA987654321}"
-EndProject
-Global
-	GlobalSection(SolutionConfigurationPlatforms) = preSolution
-		Debug|Any CPU = Debug|Any CPU
-		Release|Any CPU = Release|Any CPU
-	EndGlobalSection
-EndGlobal`
-
-	err := os.WriteFile(slnPath, []byte(slnContent), 0644)
-	require.NoError(t, err)
-
-	sln, err := LoadSolution(slnPath)
-	require.NoError(t, err)
-	assert.NotNil(t, sln)
-	assert.Equal(t, slnPath, sln.Path)
-	assert.Len(t, sln.Projects, 2)
-
-	// Verify first project
-	assert.Equal(t, "Project1", sln.Projects[0].Name)
-	assert.Contains(t, sln.Projects[0].Path, "Project1.csproj")
-	assert.Equal(t, "12345678-1234-1234-1234-123456789ABC", sln.Projects[0].GUID)
-
-	// Verify second project
-	assert.Equal(t, "Project2", sln.Projects[1].Name)
-	assert.Contains(t, sln.Projects[1].Path, "Project2.csproj")
-	assert.Equal(t, "87654321-4321-4321-4321-CBA987654321", sln.Projects[1].GUID)
-}
-
-func TestFindSolutionFile(t *testing.T) {
-	tmpDir := t.TempDir()
-	slnPath := filepath.Join(tmpDir, "test.sln")
-
-	err := os.WriteFile(slnPath, []byte("solution content"), 0644)
-	require.NoError(t, err)
-
-	found, err := FindSolutionFile(tmpDir)
-	require.NoError(t, err)
-	assert.Equal(t, slnPath, found)
-}
-
-func TestFindSolutionFile_NotFound(t *testing.T) {
-	tmpDir := t.TempDir()
-
-	_, err := FindSolutionFile(tmpDir)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "no solution file found")
-}
-
-func TestFindSolutionFile_Multiple(t *testing.T) {
-	tmpDir := t.TempDir()
-
-	err := os.WriteFile(filepath.Join(tmpDir, "test1.sln"), []byte("sln1"), 0644)
-	require.NoError(t, err)
-	err = os.WriteFile(filepath.Join(tmpDir, "test2.sln"), []byte("sln2"), 0644)
-	require.NoError(t, err)
-
-	_, err = FindSolutionFile(tmpDir)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "multiple solution files found")
-}
-```
-
-### Files to Modify
-
-**cmd/gonuget/commands/add_package.go** - Add solution support:
-```go
-import (
-	"github.com/willibrandon/gonuget/cmd/gonuget/solution"
-)
-
 func runAddPackage(ctx context.Context, packageID string, opts *AddPackageOptions) error {
 	projectPath := opts.ProjectPath
 
-	// 1. Determine if input is solution or project
-	if projectPath == "" {
-		// Try to find project or solution in current directory
-		currentDir, err := os.Getwd()
-		if err != nil {
-			return fmt.Errorf("failed to get current directory: %w", err)
+	// Validation: Reject solution files (match dotnet behavior)
+	if projectPath != "" {
+		if isSolutionFile(projectPath) {
+			return fmt.Errorf("error: Couldn't find a project to run. Ensure a project exists in %s, or pass the path to the project using --project", filepath.Dir(projectPath))
 		}
 
-		// Try solution first
-		slnPath, err := solution.FindSolutionFile(currentDir)
-		if err == nil {
-			// Found solution, process all projects
-			return addPackageToSolution(ctx, slnPath, packageID, opts)
+		// Validate file ends with "proj" (matches dotnet validation)
+		if !strings.HasSuffix(strings.ToLower(projectPath), "proj") {
+			return fmt.Errorf("error: Missing or invalid project file: %s", projectPath)
 		}
-
-		// Fall back to project file
-		foundPath, err := project.FindProjectFile(currentDir)
-		if err != nil {
-			return fmt.Errorf("failed to find project or solution file: %w", err)
-		}
-		projectPath = foundPath
-	} else if strings.HasSuffix(projectPath, ".sln") {
-		// Explicit solution file
-		return addPackageToSolution(ctx, projectPath, packageID, opts)
 	}
 
-	// Single project file (existing logic continues)
-	// ... rest of existing runAddPackage logic ...
+	// ... rest of existing implementation ...
 }
 
-// addPackageToSolution adds a package to all projects in a solution
-func addPackageToSolution(ctx context.Context, slnPath string, packageID string, opts *AddPackageOptions) error {
-	// Load solution
-	sln, err := solution.LoadSolution(slnPath)
-	if err != nil {
-		return fmt.Errorf("failed to load solution: %w", err)
-	}
-
-	fmt.Printf("info : Adding package '%s' to solution '%s'\n", packageID, filepath.Base(slnPath))
-	fmt.Printf("info : Found %d projects in solution\n", len(sln.Projects))
-
-	// Track success/failure
-	var successCount, failCount int
-	var errors []error
-
-	// Add to each project
-	for _, proj := range sln.Projects {
-		fmt.Printf("info : Adding to project '%s'...\n", proj.Name)
-
-		// Create options for this project
-		projOpts := *opts // Copy options
-		projOpts.ProjectPath = proj.AbsolutePath
-
-		// Add to project
-		if err := runAddPackageToProject(ctx, packageID, &projOpts); err != nil {
-			fmt.Printf("warn : Failed to add to project '%s': %v\n", proj.Name, err)
-			failCount++
-			errors = append(errors, fmt.Errorf("%s: %w", proj.Name, err))
-		} else {
-			fmt.Printf("info : Successfully added to project '%s'\n", proj.Name)
-			successCount++
-		}
-	}
-
-	// Summary
-	fmt.Printf("\ninfo : Summary: %d succeeded, %d failed\n", successCount, failCount)
-
-	if failCount > 0 {
-		return fmt.Errorf("failed to add package to %d project(s)", failCount)
-	}
-
-	return nil
-}
-
-// runAddPackageToProject is the extracted single-project logic
-func runAddPackageToProject(ctx context.Context, packageID string, opts *AddPackageOptions) error {
-	// This is the existing runAddPackage logic for a single project
-	// Move the current runAddPackage implementation here
-	// ... (existing single-project logic) ...
+// isSolutionFile returns true if the path is a solution file
+func isSolutionFile(path string) bool {
+	ext := strings.ToLower(filepath.Ext(path))
+	return ext == ".sln" || ext == ".slnx" || ext == ".slnf"
 }
 ```
 
+
 ### Testing
 
-**cmd/gonuget/commands/add_package_test.go**:
+**cmd/gonuget/commands/add_package_test.go** - Test that solution files are rejected:
+
 ```go
-func TestRunAddPackage_Solution(t *testing.T) {
+func TestRunAddPackage_RejectsSolutionFile(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Create solution file
@@ -1270,39 +1008,12 @@ func TestRunAddPackage_Solution(t *testing.T) {
 	slnContent := `Microsoft Visual Studio Solution File, Format Version 12.00
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Project1", "Project1\Project1.csproj", "{12345678-1234-1234-1234-123456789ABC}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Project2", "Project2\Project2.csproj", "{87654321-4321-4321-4321-CBA987654321}"
-EndProject
 Global
 EndGlobal`
 	err := os.WriteFile(slnPath, []byte(slnContent), 0644)
 	require.NoError(t, err)
 
-	// Create project directories and files
-	proj1Dir := filepath.Join(tmpDir, "Project1")
-	err = os.Mkdir(proj1Dir, 0755)
-	require.NoError(t, err)
-	proj1Path := filepath.Join(proj1Dir, "Project1.csproj")
-	proj1Content := `<Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
-  </PropertyGroup>
-</Project>`
-	err = os.WriteFile(proj1Path, []byte(proj1Content), 0644)
-	require.NoError(t, err)
-
-	proj2Dir := filepath.Join(tmpDir, "Project2")
-	err = os.Mkdir(proj2Dir, 0755)
-	require.NoError(t, err)
-	proj2Path := filepath.Join(proj2Dir, "Project2.csproj")
-	proj2Content := `<Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
-  </PropertyGroup>
-</Project>`
-	err = os.WriteFile(proj2Path, []byte(proj2Content), 0644)
-	require.NoError(t, err)
-
-	// Add package to solution
+	// Attempt to add package to solution (should fail)
 	opts := &AddPackageOptions{
 		ProjectPath: slnPath,
 		Version:     "13.0.3",
@@ -1310,40 +1021,96 @@ EndGlobal`
 	}
 
 	err = runAddPackage(context.Background(), "Newtonsoft.Json", opts)
+
+	// Assert error occurs
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "Couldn't find a project to run")
+}
+
+func TestRunAddPackage_RejectsSolutionFile_Slnx(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create .slnx file (XML solution format)
+	slnxPath := filepath.Join(tmpDir, "test.slnx")
+	slnxContent := `<?xml version="1.0" encoding="utf-8"?>
+<Solution>
+  <Project Path="Project1/Project1.csproj" />
+</Solution>`
+	err := os.WriteFile(slnxPath, []byte(slnxContent), 0644)
+	require.NoError(t, err)
+
+	// Attempt to add package (should fail)
+	opts := &AddPackageOptions{
+		ProjectPath: slnxPath,
+		Version:     "13.0.3",
+		NoRestore:   true,
+	}
+
+	err = runAddPackage(context.Background(), "Newtonsoft.Json", opts)
+
+	// Assert error occurs
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "Couldn't find a project to run")
+}
+
+func TestRunAddPackage_AcceptsProjectFile(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create valid project file
+	projPath := filepath.Join(tmpDir, "test.csproj")
+	projContent := `<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+  </PropertyGroup>
+</Project>`
+	err := os.WriteFile(projPath, []byte(projContent), 0644)
+	require.NoError(t, err)
+
+	// Add package to project (should succeed)
+	opts := &AddPackageOptions{
+		ProjectPath: projPath,
+		Version:     "13.0.3",
+		NoRestore:   true,
+	}
+
+	err = runAddPackage(context.Background(), "Newtonsoft.Json", opts)
+
+	// Assert no error
 	assert.NoError(t, err)
 
-	// Verify package added to both projects
-	proj1Data, err := os.ReadFile(proj1Path)
+	// Verify package was added
+	content, err := os.ReadFile(projPath)
 	require.NoError(t, err)
-	assert.Contains(t, string(proj1Data), "Newtonsoft.Json")
-	assert.Contains(t, string(proj1Data), "13.0.3")
-
-	proj2Data, err := os.ReadFile(proj2Path)
-	require.NoError(t, err)
-	assert.Contains(t, string(proj2Data), "Newtonsoft.Json")
-	assert.Contains(t, string(proj2Data), "13.0.3")
+	assert.Contains(t, string(content), "Newtonsoft.Json")
+	assert.Contains(t, string(content), "13.0.3")
 }
 ```
 
 ### Verification
 
 ```bash
-# Create solution with multiple projects
-mkdir test-sln && cd test-sln
+# Verify solution files are rejected (match dotnet behavior)
+mkdir test-reject && cd test-reject
 
 # Create solution file
 cat > test.sln <<'EOF'
 Microsoft Visual Studio Solution File, Format Version 12.00
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Project1", "Project1\Project1.csproj", "{12345678-1234-1234-1234-123456789ABC}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Project2", "Project2\Project2.csproj", "{87654321-4321-4321-4321-CBA987654321}"
-EndProject
 Global
 EndGlobal
 EOF
 
-# Create projects
-mkdir Project1 Project2
+# Attempt to add package to solution (should fail)
+./gonuget package add Newtonsoft.Json --project test.sln --version 13.0.3 --no-restore
+# Expected error: "Couldn't find a project to run..."
+
+# Compare with dotnet (should also fail)
+dotnet add test.sln package Newtonsoft.Json --version 13.0.3
+# Expected error: "Couldn't find a project to run..."
+
+# Create project file
+mkdir Project1
 cat > Project1/Project1.csproj <<EOF
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
@@ -1352,34 +1119,27 @@ cat > Project1/Project1.csproj <<EOF
 </Project>
 EOF
 
-cat > Project2/Project2.csproj <<EOF
-<Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
-  </PropertyGroup>
-</Project>
-EOF
+# Add package to PROJECT file (should succeed)
+./gonuget package add Newtonsoft.Json --project Project1/Project1.csproj --version 13.0.3 --no-restore
+# Should succeed
 
-# Add package to solution
-./gonuget add test.sln package Newtonsoft.Json --version 13.0.3 --no-restore
-
-# Verify package added to both projects
-cat Project1/Project1.csproj
-cat Project2/Project2.csproj
-
-# Compare with dotnet
-dotnet add test.sln package Serilog --version 3.1.1
+# Verify both behave identically
+dotnet add Project1/Project1.csproj package Serilog --version 3.1.1
+# Should also succeed
 ```
 
 ### Success Criteria
 
-- ✅ Solution file parsing works correctly
-- ✅ Package added to all projects in solution
-- ✅ Success/failure summary displayed
-- ✅ Error handling for missing/invalid projects
-- ✅ .sln extension detected and handled
+- ✅ Solution files (.sln, .slnx, .slnf) are REJECTED with appropriate error message
+- ✅ Error message matches dotnet CLI exactly: "Couldn't find a project to run..."
+- ✅ Project files (.csproj, .fsproj, .vbproj) are ACCEPTED
+- ✅ Validation checks file ends with "proj"
 - ✅ Unit tests pass with 90%+ coverage
-- ✅ Manual testing shows identical behavior to `dotnet add`
+- ✅ Manual testing shows identical behavior to `dotnet add package`
+- ✅ **100% dotnet parity: NO solution file support**
+
+---
+
 
 ---
 
@@ -1403,7 +1163,7 @@ CLI interop tests ensure 100% parity with dotnet by:
 ### Reference Implementation
 
 **Existing CLI Interop Tests**:
-- Location: `/Users/brandon/src/gonuget/tests/cli-interop/GonugetCliInterop.Tests/`
+- Location: `tests/cli-interop/GonugetCliInterop.Tests/`
 - Pattern: `AddPackageTests.cs`, `RestoreTests.cs`
 
 ### Files to Create
@@ -1821,11 +1581,13 @@ dotnet test --filter "FullyQualifiedName~AddPackageCpmTests"
 
 ## Chunk 19: CLI Interop Tests for Advanced Features
 
-**Objective**: Test all M2.2 advanced features (Chunks 14-17) for parity with dotnet.
+**Objective**: Test M2.2 advanced features (Chunks 14-16) for parity with dotnet.
 
-**Time Estimate**: 4 hours
+**Time Estimate**: 3 hours
 
 **Prerequisites**: Chunks 14-18 complete
+
+**NOTE**: Chunk 17 (Solution File Support) was REMOVED for dotnet parity. Solution files are not supported by `dotnet add package`.
 
 ### Files to Create
 
@@ -1842,9 +1604,9 @@ namespace GonugetCliInterop.Tests
 {
     /// <summary>
     /// CLI interop tests for advanced add package features:
-    /// - Framework-specific references
-    /// - Multi-TFM projects
-    /// - Solution-level operations
+    /// - Framework-specific references (Chunk 14)
+    /// - Multi-TFM projects (Chunk 16)
+    /// NOTE: Solution files are NOT supported (removed for dotnet parity)
     /// </summary>
     public class AddPackageAdvancedTests : CliInteropTestBase
     {
@@ -1938,69 +1700,6 @@ namespace GonugetCliInterop.Tests
         }
 
         [Fact]
-        public void AddPackage_Solution_AddsToAllProjects()
-        {
-            // Arrange
-            var testDir = CreateTestDirectory();
-            var slnPath = Path.Combine(testDir, "test.sln");
-
-            // Create solution
-            File.WriteAllText(slnPath, @"
-Microsoft Visual Studio Solution File, Format Version 12.00
-Project(""{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}"") = ""Project1"", ""Project1\Project1.csproj"", ""{12345678-1234-1234-1234-123456789ABC}""
-EndProject
-Project(""{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}"") = ""Project2"", ""Project2\Project2.csproj"", ""{87654321-4321-4321-4321-CBA987654321}""
-EndProject
-Global
-EndGlobal");
-
-            // Create projects
-            var proj1Dir = Path.Combine(testDir, "Project1");
-            Directory.CreateDirectory(proj1Dir);
-            var proj1Path = Path.Combine(proj1Dir, "Project1.csproj");
-            File.WriteAllText(proj1Path, @"
-<Project Sdk=""Microsoft.NET.Sdk"">
-  <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
-  </PropertyGroup>
-</Project>");
-
-            var proj2Dir = Path.Combine(testDir, "Project2");
-            Directory.CreateDirectory(proj2Dir);
-            var proj2Path = Path.Combine(proj2Dir, "Project2.csproj");
-            File.WriteAllText(proj2Path, @"
-<Project Sdk=""Microsoft.NET.Sdk"">
-  <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
-  </PropertyGroup>
-</Project>");
-
-            // Act
-            var dotnetResult = RunDotnet($"add {slnPath} package Newtonsoft.Json --version 13.0.3 --no-restore");
-            var dotnetProj1 = File.ReadAllText(proj1Path);
-            var dotnetProj2 = File.ReadAllText(proj2Path);
-
-            RestoreFiles(testDir);
-
-            var gonugetResult = RunGonuget($"add {slnPath} package Newtonsoft.Json --version 13.0.3 --no-restore");
-            var gonugetProj1 = File.ReadAllText(proj1Path);
-            var gonugetProj2 = File.ReadAllText(proj2Path);
-
-            // Assert
-            Assert.Equal(0, dotnetResult.ExitCode);
-            Assert.Equal(0, gonugetResult.ExitCode);
-
-            // Both projects should have the package
-            AssertXmlEqual(dotnetProj1, gonugetProj1, "Project1.csproj");
-            AssertXmlEqual(dotnetProj2, gonugetProj2, "Project2.csproj");
-
-            Assert.Contains("Newtonsoft.Json", gonugetProj1);
-            Assert.Contains("13.0.3", gonugetProj1);
-            Assert.Contains("Newtonsoft.Json", gonugetProj2);
-            Assert.Contains("13.0.3", gonugetProj2);
-        }
-
-        [Fact]
         public void AddPackage_FrameworkSpecific_MultipleFrameworks()
         {
             // Arrange
@@ -2058,19 +1757,19 @@ make build
 dotnet test --filter "FullyQualifiedName~AddPackageAdvancedTests"
 
 # Expected output:
-# Total tests: 5
-# Passed: 5
+# Total tests: 3
+# Passed: 3
 # Failed: 0
 ```
 
 ### Success Criteria
 
-- ✅ All 5 advanced feature interop tests pass
+- ✅ All 3 advanced feature interop tests pass
 - ✅ Framework-specific references create correct conditional ItemGroups
 - ✅ Multi-TFM projects handle package compatibility correctly
-- ✅ Solution-level operations add packages to all projects
 - ✅ Multiple framework-specific references work correctly
 - ✅ XML output matches dotnet exactly
+- ❌ NO solution-level tests (dotnet CLI doesn't support solution files for `add package`)
 
 ---
 
@@ -2093,10 +1792,10 @@ dotnet test --filter "FullyQualifiedName~AddPackageAdvancedTests"
 - Package compatibility validated across frameworks
 - Appropriate ItemGroup selection (global vs conditional)
 
-✅ **Solution File Support (Chunk 17)**:
-- .sln file parsing
-- Package added to all projects in solution
-- Success/failure summary
+❌ **Solution File Support (Chunk 17)** - **REMOVED FOR DOTNET PARITY**:
+- Solution files (.sln, .slnx, .slnf) are explicitly REJECTED
+- Matches dotnet CLI behavior exactly (dotnet does NOT support solution files)
+- Validation ensures only .csproj/.fsproj/.vbproj files are accepted
 
 ✅ **CLI Interop Tests for CPM (Chunk 18)**:
 - 7 CPM interop tests passing
@@ -2104,9 +1803,9 @@ dotnet test --filter "FullyQualifiedName~AddPackageAdvancedTests"
 - UTF-8 BOM verification
 
 ✅ **CLI Interop Tests for Advanced Features (Chunk 19)**:
-- 5 advanced feature interop tests passing
-- Framework-specific, multi-TFM, and solution tests
-- 100% parity with dotnet
+- Advanced feature interop tests passing
+- Framework-specific and multi-TFM tests
+- 100% parity with dotnet (no solution file tests - dotnet doesn't support them)
 
 **Overall M2.2 Achievement**: 100% feature parity with `dotnet add package` for all advanced scenarios.
 
@@ -2122,5 +1821,5 @@ After completing M2.2 Chunks 14-19:
 4. **Performance benchmarks**: Compare against dotnet (should be 15-17x faster)
 5. **Move to Phase 3**: Dependency Resolution (restore enhancements)
 
-**Total M2 Implementation Time**: 12-15 hours for Chunks 14-19
-**Expected Completion**: All add package features at 100% parity with dotnet
+**Total M2.2 Implementation Time**: 10-12 hours for Chunks 14-16, 18-19 (Chunk 17 removed for dotnet parity)
+**Expected Completion**: All add package features at 100% parity with dotnet (solution files explicitly NOT supported, matching dotnet behavior)
