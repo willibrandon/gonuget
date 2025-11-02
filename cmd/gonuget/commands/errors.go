@@ -84,3 +84,35 @@ func HandleUnknownCommand(cmd *cobra.Command, args []string) error {
 	// Default unknown command handling (Cobra will provide suggestions via Levenshtein distance)
 	return fmt.Errorf("unknown command %q for %q", args[0], cmd.CommandPath())
 }
+
+// Solution file error messages matching dotnet CLI exactly
+const (
+	// ErrNoProjectForAdd is the error message when trying to add a package to a solution file
+	ErrNoProjectForAdd = "Couldn't find a project to run. Ensure a project exists in %s, or pass the path to the project using --project"
+
+	// ErrInvalidProjectFile is the error message when trying to remove a package from a solution file
+	ErrInvalidProjectFile = "Missing or invalid project file: %s"
+
+	// ErrSolutionNotSupported is a generic error for unsupported solution operations
+	ErrSolutionNotSupported = "Operation not supported for solution files"
+)
+
+// SolutionNotSupportedError represents an error when a solution file is provided for add operation
+type SolutionNotSupportedError struct {
+	Directory string
+}
+
+// Error implements the error interface
+func (e *SolutionNotSupportedError) Error() string {
+	return fmt.Sprintf(ErrNoProjectForAdd, e.Directory)
+}
+
+// InvalidProjectFileError represents an error when a solution file is provided for remove operation
+type InvalidProjectFileError struct {
+	Path string
+}
+
+// Error implements the error interface
+func (e *InvalidProjectFileError) Error() string {
+	return fmt.Sprintf(ErrInvalidProjectFile, e.Path)
+}
