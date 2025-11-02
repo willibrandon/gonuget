@@ -1,0 +1,9 @@
+{
+  "solution": {
+    "path": "simple.sln",
+    "projects": [
+      "src\\WebApi\\WebApi.csproj",
+      "src\\DataLayer\\DataLayer.csproj"
+    ]
+  }
+}

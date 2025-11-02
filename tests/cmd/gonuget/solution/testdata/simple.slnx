@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Solution xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <Folder Name="src">
+    <Project Path="src/WebApi/WebApi.csproj" />
+    <Project Path="src/DataLayer/DataLayer.csproj" />
+  </Folder>
+  <Folder Name="tests">
+    <Project Path="tests/UnitTests/UnitTests.csproj" />
+  </Folder>
+  <Properties>
+    <Property Name="VisualStudioVersion" Value="17.0" />
+    <Property Name="MinimumVisualStudioVersion" Value="10.0" />
+  </Properties>
+</Solution>

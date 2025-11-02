@@ -17,6 +17,7 @@ Interop tests passing against NuGet.Client for feature parity validation.
 - Package download with content verification
 - Full dependency graph resolution with conflict detection
 - Transitive dependency resolution with parallel processing
+- Solution file support (.sln, .slnx, .slnf) for multi-project operations
 
 **Version System**
 - SemVer 2.0 parsing and comparison (<20ns/op)
@@ -88,6 +89,12 @@ gonuget source list
 # Add a package to a project
 gonuget package add Newtonsoft.Json --project MyProject.csproj --version 13.0.3
 
+# List packages from a solution file
+gonuget package list --project MySolution.sln
+
+# List packages (auto-detects project or solution in current directory)
+gonuget package list
+
 # Search for packages
 gonuget package search Newtonsoft --format json
 
@@ -99,6 +106,13 @@ gonuget completion bash > /etc/bash_completion.d/gonuget
 ```
 
 **Command Structure**: Noun-first hierarchy matching `dotnet` CLI (e.g., `gonuget package add`, `gonuget source list`)
+
+**Solution File Support**:
+- Lists packages from all projects in `.sln`, `.slnx`, and `.slnf` files
+- Auto-detects solution files in the current directory
+- Cross-platform path handling (Windows/Unix compatibility)
+- UTF-8 with/without BOM support
+- Shows warnings for missing project files
 
 **Performance**: 15-17x faster than dotnet nuget for CLI operations
 

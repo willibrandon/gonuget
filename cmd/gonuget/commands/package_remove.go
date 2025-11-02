@@ -3,9 +3,11 @@ package commands
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/spf13/cobra"
 	"github.com/willibrandon/gonuget/cmd/gonuget/project"
+	"github.com/willibrandon/gonuget/cmd/gonuget/solution"
 )
 
 // PackageRemoveOptions holds the configuration for the package remove command.
@@ -51,11 +53,32 @@ func runPackageRemove(packageID string, opts *PackageRemoveOptions) error {
 			return fmt.Errorf("failed to get current directory: %w", err)
 		}
 
+		// Try to detect a solution file first
+		detector := solution.NewDetector(currentDir)
+		result, err := detector.DetectSolution()
+		if err != nil {
+			return fmt.Errorf("failed to detect solution: %w", err)
+		}
+
+		if result.Found {
+			// Solution file found - this is not supported for remove operation
+			absPath, _ := filepath.Abs(result.SolutionPath)
+			return &InvalidProjectFileError{Path: absPath}
+		}
+
+		// No solution file, try to find a project file
 		foundPath, err := project.FindProjectFile(currentDir)
 		if err != nil {
 			return fmt.Errorf("failed to find project file: %w", err)
 		}
 		projectPath = foundPath
+	} else {
+		// Check if the provided path is a solution file
+		if solution.IsSolutionFile(projectPath) {
+			// Return error for solution file
+			absPath, _ := filepath.Abs(projectPath)
+			return &InvalidProjectFileError{Path: absPath}
+		}
 	}
 
 	// Load the project
