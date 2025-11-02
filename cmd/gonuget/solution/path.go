@@ -20,12 +20,37 @@ func NewPathResolver(solutionDir string) *PathResolver {
 
 // NormalizePath converts Windows-style paths to forward slash format
 func NormalizePath(path string) string {
+	if path == "" {
+		return ""
+	}
+
+	// Check if this is a UNC path (starts with \\ or //)
+	isUNC := strings.HasPrefix(path, "\\\\") || strings.HasPrefix(path, "//")
+
 	// Convert backslashes to forward slashes
 	normalized := strings.ReplaceAll(path, "\\", "/")
 
-	// Remove duplicate slashes
-	for strings.Contains(normalized, "//") {
-		normalized = strings.ReplaceAll(normalized, "//", "/")
+	// For UNC paths, preserve the leading double slash
+	if isUNC {
+		// Ensure it starts with exactly two slashes
+		normalized = strings.TrimLeft(normalized, "/")
+		normalized = "//" + normalized
+	}
+
+	// Remove duplicate slashes (but preserve UNC prefix)
+	if isUNC && len(normalized) > 2 {
+		// For UNC paths, clean everything after the initial //
+		prefix := "//"
+		remainder := normalized[2:]
+		for strings.Contains(remainder, "//") {
+			remainder = strings.ReplaceAll(remainder, "//", "/")
+		}
+		normalized = prefix + remainder
+	} else if !isUNC {
+		// For non-UNC paths, remove all duplicate slashes
+		for strings.Contains(normalized, "//") {
+			normalized = strings.ReplaceAll(normalized, "//", "/")
+		}
 	}
 
 	return normalized

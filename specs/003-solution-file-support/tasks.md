@@ -85,12 +85,12 @@ Core types and interfaces that all parsers depend on.
 
 ### Tasks
 
-- [ ] T032 [P] [US4] Create cross-platform path tests in tests/cmd/gonuget/solution/path_test.go
-- [ ] T033 [US4] Implement Windows backslash to Unix forward slash conversion
-- [ ] T034 [US4] Handle relative path resolution (../../shared/common.csproj)
-- [ ] T035 [US4] Support UNC paths on Windows (\\server\share\project.csproj)
-- [ ] T036 [US4] Normalize duplicate separators (path//with//double)
-- [ ] T037 [US4] Test with mixed-platform solution files
+- [X] T032 [P] [US4] Create cross-platform path tests in tests/cmd/gonuget/solution/path_test.go
+- [X] T033 [US4] Implement Windows backslash to Unix forward slash conversion
+- [X] T034 [US4] Handle relative path resolution (../../shared/common.csproj)
+- [X] T035 [US4] Support UNC paths on Windows (\\server\share\project.csproj)
+- [X] T036 [US4] Normalize duplicate separators (path//with//double)
+- [X] T037 [US4] Test with mixed-platform solution files
 
 ## Phase 7: Polish & Integration (5 tasks)
 
