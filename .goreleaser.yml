@@ -1,0 +1,68 @@
+# .goreleaser.yml
+version: 2
+project_name: gonuget
+
+before:
+  hooks:
+    - go mod tidy
+    - go mod verify
+
+builds:
+  - id: gonuget
+    main: ./cmd/gonuget
+    binary: gonuget
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: windows
+        goarch: arm64
+    ldflags:
+      - -s -w
+      - -X github.com/willibrandon/gonuget/cmd/gonuget/version.Version={{.Version}}
+      - -X github.com/willibrandon/gonuget/cmd/gonuget/version.Commit={{.ShortCommit}}
+      - -X github.com/willibrandon/gonuget/cmd/gonuget/version.Date={{.Date}}
+
+archives:
+  - id: default
+    name_template: "{{ .ProjectName }}-{{ .Version }}-{{ .Os }}-{{ .Arch }}"
+    formats: ["tar.gz"]
+    format_overrides:
+      - goos: windows
+        formats: ["zip"]
+    files:
+      - LICENSE
+      - README.md
+      - CHANGELOG.md
+
+checksum:
+  name_template: "checksums.txt"
+  algorithm: sha256
+
+release:
+  github:
+    owner: willibrandon
+    name: gonuget
+  draft: false
+  prerelease: auto
+  name_template: "{{.Version}}"
+  header: |
+    ## gonuget {{.Version}}
+
+    Download the binary for your platform below.
+  footer: |
+    **Full Changelog**: https://github.com/willibrandon/gonuget/blob/main/CHANGELOG.md
+
+changelog:
+  disable: true  # Use manually generated CHANGELOG.md instead
+
+snapshot:
+  version_template: "{{ .Version }}-next"
+
+dist: dist

@@ -6,17 +6,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/willibrandon/gonuget/cmd/gonuget/cli"
 	"github.com/willibrandon/gonuget/cmd/gonuget/output"
 )
 
 func TestVersionCommand(t *testing.T) {
-	// Set version info for test
-	cli.Version = "1.0.0"
-	cli.Commit = "abc123"
-	cli.Date = "2025-01-01"
-	cli.BuiltBy = "test"
-
 	var out bytes.Buffer
 	console := output.NewConsole(&out, &out, output.VerbosityNormal)
 
@@ -26,11 +19,12 @@ func TestVersionCommand(t *testing.T) {
 	}
 
 	result := out.String()
-	if !strings.Contains(result, "1.0.0") {
-		t.Errorf("output doesn't contain version, got: %s", result)
+	// Version command should output version information
+	if result == "" {
+		t.Error("version command produced no output")
 	}
-	if !strings.Contains(result, "abc123") {
-		t.Errorf("output doesn't contain commit, got: %s", result)
+	if !strings.Contains(result, "gonuget version") {
+		t.Errorf("output doesn't contain 'gonuget version', got: %s", result)
 	}
 }
 

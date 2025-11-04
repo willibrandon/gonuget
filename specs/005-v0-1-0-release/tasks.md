@@ -23,12 +23,12 @@
 
 **Purpose**: Verify prerequisites and prepare for implementation
 
-- [ ] T001 Verify Go version is 1.23 or later with `go version`
-- [ ] T002 Install goreleaser with `go install github.com/goreleaser/goreleaser@latest`
-- [ ] T003 Verify goreleaser installation with `goreleaser --version`
-- [ ] T004 Verify all existing tests pass with `make test`
-- [ ] T005 Verify lint passes with `make lint`
-- [ ] T006 Verify clean git working directory with `git status`
+- [X] T001 Verify Go version is 1.23 or later with `go version`
+- [X] T002 Install goreleaser with `go install github.com/goreleaser/goreleaser@latest`
+- [X] T003 Verify goreleaser installation with `goreleaser --version`
+- [X] T004 Verify all existing tests pass with `make test`
+- [X] T005 Verify lint passes with `make lint`
+- [X] T006 Verify clean git working directory with `git status`
 
 **Checkpoint**: Prerequisites satisfied - ready for implementation
 
@@ -50,20 +50,20 @@
 
 ### Implementation for User Story 1
 
-- [ ] T007 [US1] Create scripts directory with `mkdir -p /Users/brandon/src/gonuget/scripts`
-- [ ] T008 [US1] Create generate-changelog.sh script skeleton in `/Users/brandon/src/gonuget/scripts/generate-changelog.sh`
-- [ ] T009 [US1] Implement argument parsing (--from-commit, --to-commit, --output, --version, --dry-run, --help) in generate-changelog.sh
-- [ ] T010 [US1] Implement conventional commit regex parsing logic in generate-changelog.sh (see contracts/changelog-script.md)
-- [ ] T011 [US1] Implement commit categorization logic (feat→Features, fix→Bug Fixes, etc.) in generate-changelog.sh
-- [ ] T012 [US1] Implement uncategorized section for non-conventional commits in generate-changelog.sh
-- [ ] T013 [US1] Implement markdown generation with Keep a Changelog format in generate-changelog.sh
-- [ ] T014 [US1] Implement version link generation at footer in generate-changelog.sh
-- [ ] T015 [US1] Make script executable with `chmod +x /Users/brandon/src/gonuget/scripts/generate-changelog.sh`
-- [ ] T016 [US1] Test script with dry-run mode: `./scripts/generate-changelog.sh --dry-run`
-- [ ] T017 [US1] Generate actual CHANGELOG.md with `./scripts/generate-changelog.sh --version "0.1.0"`
-- [ ] T018 [US1] Manually review CHANGELOG.md for accuracy and completeness
-- [ ] T019 [US1] Fix any categorization issues in Uncategorized section
-- [ ] T020 [US1] Verify CHANGELOG.md matches Keep a Changelog format with `grep -q "## \[0.1.0\]" CHANGELOG.md`
+- [X] T007 [US1] Create scripts directory with `mkdir -p /Users/brandon/src/gonuget/scripts`
+- [X] T008 [US1] Create generate-changelog.sh script skeleton in `/Users/brandon/src/gonuget/scripts/generate-changelog.sh`
+- [X] T009 [US1] Implement argument parsing (--from-commit, --to-commit, --output, --version, --dry-run, --help) in generate-changelog.sh
+- [X] T010 [US1] Implement conventional commit regex parsing logic in generate-changelog.sh (see contracts/changelog-script.md)
+- [X] T011 [US1] Implement commit categorization logic (feat→Features, fix→Bug Fixes, etc.) in generate-changelog.sh
+- [X] T012 [US1] Implement uncategorized section for non-conventional commits in generate-changelog.sh
+- [X] T013 [US1] Implement markdown generation with Keep a Changelog format in generate-changelog.sh
+- [X] T014 [US1] Implement version link generation at footer in generate-changelog.sh
+- [X] T015 [US1] Make script executable with `chmod +x /Users/brandon/src/gonuget/scripts/generate-changelog.sh`
+- [X] T016 [US1] Test script with dry-run mode: `./scripts/generate-changelog.sh --dry-run`
+- [X] T017 [US1] Generate actual CHANGELOG.md with `./scripts/generate-changelog.sh --version "0.1.0"`
+- [X] T018 [US1] Manually review CHANGELOG.md for accuracy and completeness
+- [X] T019 [US1] Fix any categorization issues in Uncategorized section
+- [X] T020 [US1] Verify CHANGELOG.md matches Keep a Changelog format with `grep -q "## \[0.1.0\]" CHANGELOG.md`
 
 **Checkpoint**: CHANGELOG.md generated, reviewed, and accurate ✅ SC-001
 
@@ -79,36 +79,36 @@
 
 #### CI Workflow Update
 
-- [ ] T021 [P] [US2] Update `.github/workflows/ci.yml` to use latest actions (setup-go@v5, checkout@v4)
-- [ ] T022 [US2] Add lint job with golangci-lint-action@v8 in ci.yml
-- [ ] T023 [US2] Add test matrix for 3 platforms (ubuntu-latest, macos-latest, windows-latest) in ci.yml
-- [ ] T024 [US2] Configure Go version to 'stable' in ci.yml setup-go step
-- [ ] T025 [US2] Add race detector to test job with `go test -race ./...` in ci.yml
-- [ ] T026 [US2] Add test coverage reporting in ci.yml (optional enhancement)
+- [X] T021 [P] [US2] Update `.github/workflows/ci.yml` to use latest actions (setup-go@v5, checkout@v4)
+- [X] T022 [US2] Add lint job with golangci-lint-action@v8 in ci.yml
+- [X] T023 [US2] Add test matrix for 3 platforms (ubuntu-latest, macos-latest, windows-latest) in ci.yml
+- [X] T024 [US2] Configure Go version to 'stable' in ci.yml setup-go step
+- [X] T025 [US2] Add race detector to test job with `go test -race ./...` in ci.yml
+- [X] T026 [US2] Add test coverage reporting in ci.yml (optional enhancement)
 - [ ] T027 [US2] Commit ci.yml changes with `git add .github/workflows/ci.yml && git commit -m "ci: update CI workflow to modern Go best practices"`
 - [ ] T028 [US2] Push to trigger CI and verify all jobs pass on all platforms
 
 #### goreleaser Configuration
 
-- [ ] T029 [P] [US2] Create `.goreleaser.yml` in repository root (see contracts/goreleaser-config.md)
-- [ ] T030 [US2] Configure builds section with 5 target platforms (linux/amd64, linux/arm64, darwin/amd64, darwin/arm64, windows/amd64) in .goreleaser.yml
-- [ ] T031 [US2] Configure ldflags for version injection in .goreleaser.yml
-- [ ] T032 [US2] Configure archives section with tar.gz for Unix, zip for Windows in .goreleaser.yml
-- [ ] T033 [US2] Configure checksum generation (SHA256) in .goreleaser.yml
-- [ ] T034 [US2] Configure GitHub release integration in .goreleaser.yml
-- [ ] T035 [US2] Disable auto-generated changelog (use manual CHANGELOG.md) in .goreleaser.yml
-- [ ] T036 [US2] Validate goreleaser config with `goreleaser check`
-- [ ] T037 [US2] Test local snapshot build with `goreleaser build --snapshot --clean`
-- [ ] T038 [US2] Verify all 5 binaries built successfully in dist/ directory
-- [ ] T039 [US2] Test one binary to ensure it runs: `dist/gonuget_linux_amd64_v1/gonuget --help`
+- [X] T029 [P] [US2] Create `.goreleaser.yml` in repository root (see contracts/goreleaser-config.md)
+- [X] T030 [US2] Configure builds section with 5 target platforms (linux/amd64, linux/arm64, darwin/amd64, darwin/arm64, windows/amd64) in .goreleaser.yml
+- [X] T031 [US2] Configure ldflags for version injection in .goreleaser.yml
+- [X] T032 [US2] Configure archives section with tar.gz for Unix, zip for Windows in .goreleaser.yml
+- [X] T033 [US2] Configure checksum generation (SHA256) in .goreleaser.yml
+- [X] T034 [US2] Configure GitHub release integration in .goreleaser.yml
+- [X] T035 [US2] Disable auto-generated changelog (use manual CHANGELOG.md) in .goreleaser.yml
+- [X] T036 [US2] Validate goreleaser config with `goreleaser check`
+- [X] T037 [US2] Test local snapshot build with `goreleaser build --snapshot --clean`
+- [X] T038 [US2] Verify all 5 binaries built successfully in dist/ directory
+- [X] T039 [US2] Test one binary to ensure it runs: `dist/gonuget_linux_amd64_v1/gonuget --help`
 
 #### Release Workflow Creation
 
-- [ ] T040 [P] [US2] Create `.github/workflows/release.yml` for tag-triggered releases
-- [ ] T041 [US2] Configure release workflow to trigger on tag push (v*.*.*)  in release.yml
-- [ ] T042 [US2] Add goreleaser-action@v6 step in release.yml
-- [ ] T043 [US2] Configure GITHUB_TOKEN permissions (contents: write) in release.yml
-- [ ] T044 [US2] Add full git history fetch (fetch-depth: 0) in release.yml for goreleaser
+- [X] T040 [P] [US2] Create `.github/workflows/release.yml` for tag-triggered releases
+- [X] T041 [US2] Configure release workflow to trigger on tag push (v*.*.*)  in release.yml
+- [X] T042 [US2] Add goreleaser-action@v6 step in release.yml
+- [X] T043 [US2] Configure GITHUB_TOKEN permissions (contents: write) in release.yml
+- [X] T044 [US2] Add full git history fetch (fetch-depth: 0) in release.yml for goreleaser
 
 **Checkpoint**: CI/CD pipeline modernized, goreleaser configured, all platforms build successfully ✅ SC-002, SC-003
 
@@ -124,35 +124,35 @@
 
 #### Version Package
 
-- [ ] T045 [US3] Create version package directory with `mkdir -p /Users/brandon/src/gonuget/cmd/gonuget/version`
-- [ ] T046 [US3] Create `/Users/brandon/src/gonuget/cmd/gonuget/version/version.go` with package-level variables (Version, Commit, Date)
-- [ ] T047 [US3] Implement `Info()` function in version/version.go that returns formatted version string
-- [ ] T048 [US3] Add default values ("dev", "none", "unknown") to version variables in version.go
-- [ ] T049 [US3] Add godoc comments to all exported variables and functions in version/version.go
+- [X] T045 [US3] Create version package directory with `mkdir -p /Users/brandon/src/gonuget/cmd/gonuget/version`
+- [X] T046 [US3] Create `/Users/brandon/src/gonuget/cmd/gonuget/version/version.go` with package-level variables (Version, Commit, Date)
+- [X] T047 [US3] Implement `Info()` function in version/version.go that returns formatted version string
+- [X] T048 [US3] Add default values ("dev", "none", "unknown") to version variables in version.go
+- [X] T049 [US3] Add godoc comments to all exported variables and functions in version/version.go
 
 #### Version Command
 
-- [ ] T050 [US3] Create `/Users/brandon/src/gonuget/cmd/gonuget/commands/version.go` for version command
-- [ ] T051 [US3] Implement Cobra command for `gonuget version` in commands/version.go
-- [ ] T052 [US3] Import version package and call `version.Info()` in version command
-- [ ] T053 [US3] Register version command with root command in cmd/gonuget/commands/root.go or main.go
-- [ ] T054 [US3] Test version command with development build: `go run ./cmd/gonuget version`
-- [ ] T055 [US3] Verify output shows "dev (commit: none, built: unknown)"
+- [X] T050 [US3] Create `/Users/brandon/src/gonuget/cmd/gonuget/commands/version.go` for version command
+- [X] T051 [US3] Implement Cobra command for `gonuget version` in commands/version.go
+- [X] T052 [US3] Import version package and call `version.Info()` in version command
+- [X] T053 [US3] Register version command with root command in cmd/gonuget/commands/root.go or main.go
+- [X] T054 [US3] Test version command with development build: `go run ./cmd/gonuget version`
+- [X] T055 [US3] Verify output shows "dev (commit: none, built: unknown)"
 
 #### Makefile Integration
 
-- [ ] T056 [US3] Update `/Users/brandon/src/gonuget/Makefile` with VERSION, COMMIT, DATE variables
-- [ ] T057 [US3] Add LDFLAGS variable with -X flags for version injection in Makefile
-- [ ] T058 [US3] Update build target to use LDFLAGS in Makefile
-- [ ] T059 [US3] Test make build with version injection: `make build && ./gonuget version`
-- [ ] T060 [US3] Verify version output shows actual commit SHA and build date
+- [X] T056 [US3] Update `/Users/brandon/src/gonuget/Makefile` with VERSION, COMMIT, DATE variables
+- [X] T057 [US3] Add LDFLAGS variable with -X flags for version injection in Makefile
+- [X] T058 [US3] Update build target to use LDFLAGS in Makefile
+- [X] T059 [US3] Test make build with version injection: `make build && ./gonuget version`
+- [X] T060 [US3] Verify version output shows actual commit SHA and build date
 
 #### Documentation
 
-- [ ] T061 [P] [US3] Create or update `/Users/brandon/src/gonuget/CONTRIBUTING.md` with versioning policy section
-- [ ] T062 [US3] Document semantic versioning rules (MAJOR.MINOR.PATCH) in CONTRIBUTING.md
-- [ ] T063 [US3] Document pre-1.0 release semantics (v0.x.x allows breaking changes) in CONTRIBUTING.md
-- [ ] T064 [US3] Document release process steps in CONTRIBUTING.md
+- [X] T061 [P] [US3] Create or update `/Users/brandon/src/gonuget/CONTRIBUTING.md` with versioning policy section
+- [X] T062 [US3] Document semantic versioning rules (MAJOR.MINOR.PATCH) in CONTRIBUTING.md
+- [X] T063 [US3] Document pre-1.0 release semantics (v0.x.x allows breaking changes) in CONTRIBUTING.md
+- [X] T064 [US3] Document release process steps in CONTRIBUTING.md
 
 **Checkpoint**: Version command implemented, Makefile configured, versioning policy documented ✅ SC-004
 
