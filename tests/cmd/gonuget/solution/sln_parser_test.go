@@ -4,7 +4,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/willibrandon/gonuget/cmd/gonuget/solution"
+	"github.com/willibrandon/gonuget/solution"
 )
 
 func TestSlnParser_CanParse(t *testing.T) {

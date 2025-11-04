@@ -48,7 +48,7 @@ func (p *SlnfParser) Parse(path string) (*Solution, error) {
 			Message:  fmt.Sprintf("cannot open file: %v", err),
 		}
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	absPath, err := filepath.Abs(path)
 	if err != nil {

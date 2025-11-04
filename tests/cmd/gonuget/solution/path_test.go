@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/willibrandon/gonuget/cmd/gonuget/solution"
+	"github.com/willibrandon/gonuget/solution"
 )
 
 func TestNormalizePath(t *testing.T) {

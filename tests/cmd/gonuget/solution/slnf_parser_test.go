@@ -3,7 +3,7 @@ package solution_test
 import (
 	"testing"
 
-	"github.com/willibrandon/gonuget/cmd/gonuget/solution"
+	"github.com/willibrandon/gonuget/solution"
 )
 
 func TestSlnfParser_CanParse(t *testing.T) {

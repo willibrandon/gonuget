@@ -25,7 +25,7 @@ type Solution struct {
 	Projects []Project
 
 	// SolutionFolders contains virtual folders for organizing projects
-	SolutionFolders []SolutionFolder
+	SolutionFolders []Folder
 
 	// SolutionDir is the directory containing the solution file
 	SolutionDir string
@@ -49,8 +49,8 @@ type Project struct {
 	ParentFolderGUID string
 }
 
-// SolutionFolder represents a virtual folder in the solution
-type SolutionFolder struct {
+// Folder represents a virtual folder in the solution
+type Folder struct {
 	// Name is the display name of the folder
 	Name string
 
@@ -64,8 +64,8 @@ type SolutionFolder struct {
 	Items []string
 }
 
-// SolutionFilter represents a .slnf filter file
-type SolutionFilter struct {
+// Filter represents a .slnf filter file
+type Filter struct {
 	// SolutionPath is the path to the parent .sln file
 	SolutionPath string
 
