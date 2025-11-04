@@ -91,8 +91,8 @@ func TestTerminalStatus_TTYMode(t *testing.T) {
 		height: 24,
 	}
 
-	var output bytes.Buffer
-	status := NewTerminalStatus(&output, "test.csproj", detector)
+	output := &safeBuffer{}
+	status := NewTerminalStatus(output, "test.csproj", detector)
 
 	// Give it time to update a few times (30Hz = ~33ms per update)
 	time.Sleep(100 * time.Millisecond)
@@ -132,8 +132,8 @@ func TestTerminalStatus_PipedMode(t *testing.T) {
 		height: 0,
 	}
 
-	var output bytes.Buffer
-	status := NewTerminalStatus(&output, "test.csproj", detector)
+	output := &safeBuffer{}
+	status := NewTerminalStatus(output, "test.csproj", detector)
 
 	// Give it time to see if any updates happen
 	time.Sleep(100 * time.Millisecond)
