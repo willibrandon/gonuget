@@ -66,7 +66,7 @@ func (m *mockConsoleForOutputMode) Printf(format string, args ...any) {
 	m.mu.Lock()
 	m.messages = append(m.messages, msg)
 	m.mu.Unlock()
-	m.output.Write([]byte(msg + "\n"))
+	_, _ = m.output.Write([]byte(msg + "\n"))
 }
 
 func (m *mockConsoleForOutputMode) Error(format string, args ...any) {
