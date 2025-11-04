@@ -3,6 +3,7 @@ package restore
 import (
 	"fmt"
 	"io"
+	"sync"
 	"time"
 )
 
@@ -20,6 +21,7 @@ type TerminalStatus struct {
 	done        chan struct{}
 	projectName string
 	stopped     bool
+	mu          sync.Mutex // Protects concurrent writes to output
 }
 
 // NewTerminalStatus creates a new terminal status updater
@@ -86,8 +88,10 @@ func (t *TerminalStatus) updateStatus() {
 	backwardCount := len(status)
 
 	// Hide cursor, position, write, show cursor
+	t.mu.Lock()
 	_, _ = fmt.Fprintf(t.output, "\x1B[?25l\x1B[%dG\x1B[%dD%s\r\x1B[?25h",
 		column, backwardCount, status)
+	t.mu.Unlock()
 }
 
 // Stop stops the status updater and clears the status line
@@ -105,7 +109,9 @@ func (t *TerminalStatus) Stop() {
 
 	if t.isTTY {
 		// Clear to end of line
+		t.mu.Lock()
 		_, _ = fmt.Fprint(t.output, "\x1B[K")
+		t.mu.Unlock()
 	}
 }
 

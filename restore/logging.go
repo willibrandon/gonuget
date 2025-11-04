@@ -31,7 +31,8 @@ func (r *Restorer) addErrorLog(err *NuGetError, targetFramework string) {
 // replayLogs outputs cached logs to console (on cache hit).
 // Matches MSBuildRestoreUtility.ReplayWarningsAndErrorsAsync in NuGet.Client.
 func (r *Restorer) replayLogs(logs []LogMessage) {
-	for _, log := range logs {
+	for i := range logs {
+		log := &logs[i]
 		level := strings.ToLower(log.Level)
 		switch level {
 		case "error":

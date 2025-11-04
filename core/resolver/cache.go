@@ -1,3 +1,4 @@
+// Package resolver implements NuGet dependency resolution algorithms.
 package resolver
 
 import (

@@ -231,7 +231,8 @@ func (p *V3ResourceProvider) Search(ctx context.Context, cacheCtx *cache.SourceC
 
 	// Convert v3 results to common format
 	results := make([]SearchResult, 0, len(resp.Data))
-	for _, r := range resp.Data {
+	for i := range resp.Data {
+		r := &resp.Data[i]
 		result := SearchResult{
 			ID:             r.PackageID,
 			Version:        r.Version,

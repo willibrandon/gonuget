@@ -46,7 +46,8 @@ func LoadProject(path string) (*Project, error) {
 	}
 
 	// Extract target framework(s)
-	for _, pg := range root.PropertyGroup {
+	for i := range root.PropertyGroup {
+		pg := &root.PropertyGroup[i]
 		if pg.TargetFramework != "" {
 			proj.TargetFramework = pg.TargetFramework
 		}
@@ -247,7 +248,8 @@ func (p *Project) GetPackageReferences() []PackageReference {
 // IsCentralPackageManagementEnabled checks if Central Package Management (CPM) is enabled.
 // Checks the ManagePackageVersionsCentrally property in the project file.
 func (p *Project) IsCentralPackageManagementEnabled() bool {
-	for _, pg := range p.Root.PropertyGroup {
+	for i := range p.Root.PropertyGroup {
+		pg := &p.Root.PropertyGroup[i]
 		if strings.EqualFold(pg.ManagePackageVersionsCentrally, "true") {
 			return true
 		}
@@ -261,7 +263,8 @@ func (p *Project) GetDirectoryPackagesPropsPath() string {
 	dir := filepath.Dir(p.Path)
 
 	// Check DirectoryPackagesPropsPath property
-	for _, pg := range p.Root.PropertyGroup {
+	for i := range p.Root.PropertyGroup {
+		pg := &p.Root.PropertyGroup[i]
 		if pg.DirectoryPackagesPropsPath != "" {
 			// Resolve relative path
 			if !filepath.IsAbs(pg.DirectoryPackagesPropsPath) {
@@ -341,7 +344,8 @@ func (p *Project) GetTargetFrameworks() []string {
 	}
 
 	// Parse from PropertyGroup (fallback if fields not populated during load)
-	for _, pg := range p.Root.PropertyGroup {
+	for i := range p.Root.PropertyGroup {
+		pg := &p.Root.PropertyGroup[i]
 		// TargetFrameworks (plural) - multiple frameworks
 		if pg.TargetFrameworks != "" {
 			return strings.Split(pg.TargetFrameworks, ";")

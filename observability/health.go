@@ -1,3 +1,4 @@
+// Package observability provides OpenTelemetry tracing, metrics, and health monitoring.
 package observability
 
 import (

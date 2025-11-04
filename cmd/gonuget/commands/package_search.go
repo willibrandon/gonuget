@@ -136,7 +136,8 @@ func outputSearchResultsConsole(searchTerm, source string, results []core.Search
 		return nil
 	}
 
-	for _, pkg := range results {
+	for i := range results {
+		pkg := &results[i]
 		fmt.Printf("> %s\n", pkg.ID)
 		if pkg.Description != "" {
 			fmt.Printf("  %s\n", pkg.Description)
@@ -155,13 +156,14 @@ func outputSearchResultsJSON(searchTerm string, sources []string, results []core
 	jsonOutput := output.NewPackageSearchOutput(searchTerm, sources, start)
 
 	// Convert core.SearchResult to output.SearchResult
-	for _, pkg := range results {
+	for i := range results {
+		pkg := &results[i]
 		// Convert authors array to comma-separated string
 		authorsStr := ""
 		if len(pkg.Authors) > 0 {
 			authorsStr = pkg.Authors[0]
-			for i := 1; i < len(pkg.Authors); i++ {
-				authorsStr += ", " + pkg.Authors[i]
+			for j := 1; j < len(pkg.Authors); j++ {
+				authorsStr += ", " + pkg.Authors[j]
 			}
 		}
 

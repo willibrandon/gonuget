@@ -39,9 +39,9 @@ EndGlobal
 	}
 
 	// Create test project directories
-	webApiDir := filepath.Join(tempDir, "src", "WebApi")
+	webAPIDir := filepath.Join(tempDir, "src", "WebApi")
 	dataLayerDir := filepath.Join(tempDir, "src", "DataLayer")
-	if err := os.MkdirAll(webApiDir, 0755); err != nil {
+	if err := os.MkdirAll(webAPIDir, 0755); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.MkdirAll(dataLayerDir, 0755); err != nil {
@@ -49,7 +49,7 @@ EndGlobal
 	}
 
 	// Create test project files with package references
-	webApiProject := `<Project Sdk="Microsoft.NET.Sdk.Web">
+	webAPIProject := `<Project Sdk="Microsoft.NET.Sdk.Web">
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
   </PropertyGroup>
@@ -69,7 +69,7 @@ EndGlobal
   </ItemGroup>
 </Project>`
 
-	if err := os.WriteFile(filepath.Join(webApiDir, "WebApi.csproj"), []byte(webApiProject), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(webAPIDir, "WebApi.csproj"), []byte(webAPIProject), 0644); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(dataLayerDir, "DataLayer.csproj"), []byte(dataLayerProject), 0644); err != nil {
@@ -151,10 +151,10 @@ func TestPackageList_WithSlnxFile(t *testing.T) {
 	// Create test project directories to match the paths in the .slnx
 	// .slnx has "WebApi/WebApi.csproj", "DataLayer/DataLayer.csproj", etc.
 	// So these should be relative to where .slnx file is, inside src/ and tests/ folders
-	webApiDir := filepath.Join(tempDir, "src", "WebApi")
+	webAPIDir := filepath.Join(tempDir, "src", "WebApi")
 	dataLayerDir := filepath.Join(tempDir, "src", "DataLayer")
 	unitTestsDir := filepath.Join(tempDir, "tests", "UnitTests")
-	if err := os.MkdirAll(webApiDir, 0755); err != nil {
+	if err := os.MkdirAll(webAPIDir, 0755); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.MkdirAll(dataLayerDir, 0755); err != nil {
@@ -165,7 +165,7 @@ func TestPackageList_WithSlnxFile(t *testing.T) {
 	}
 
 	// Create test project files
-	webApiProject := `<Project Sdk="Microsoft.NET.Sdk.Web">
+	webAPIProject := `<Project Sdk="Microsoft.NET.Sdk.Web">
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
   </PropertyGroup>
@@ -193,7 +193,7 @@ func TestPackageList_WithSlnxFile(t *testing.T) {
   </ItemGroup>
 </Project>`
 
-	if err := os.WriteFile(filepath.Join(webApiDir, "WebApi.csproj"), []byte(webApiProject), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(webAPIDir, "WebApi.csproj"), []byte(webAPIProject), 0644); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(dataLayerDir, "DataLayer.csproj"), []byte(dataLayerProject), 0644); err != nil {

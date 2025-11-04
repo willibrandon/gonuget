@@ -86,7 +86,8 @@ func (c *SearchClient) Search(ctx context.Context, feedURL string, opts SearchOp
 
 	// Convert entries to search results
 	results := make([]SearchResult, 0, len(feed.Entries))
-	for _, entry := range feed.Entries {
+	for i := range feed.Entries {
+		entry := &feed.Entries[i]
 		result := SearchResult{
 			ID:                       entry.Properties.ID,
 			Version:                  entry.Properties.Version,
