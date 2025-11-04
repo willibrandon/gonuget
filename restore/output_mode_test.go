@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -30,10 +31,29 @@ func (m *mockTTYDetector) GetSize(w io.Writer) (width, height int, err error) {
 	return m.width, m.height, nil
 }
 
+// safeBuffer wraps bytes.Buffer with mutex protection for concurrent access
+type safeBuffer struct {
+	buf bytes.Buffer
+	mu  sync.Mutex
+}
+
+func (sb *safeBuffer) Write(p []byte) (n int, err error) {
+	sb.mu.Lock()
+	defer sb.mu.Unlock()
+	return sb.buf.Write(p)
+}
+
+func (sb *safeBuffer) String() string {
+	sb.mu.Lock()
+	defer sb.mu.Unlock()
+	return sb.buf.String()
+}
+
 // mockConsoleForOutputMode extends mockConsole to support Output()
 type mockConsoleForOutputMode struct {
-	output   *bytes.Buffer
+	output   *safeBuffer
 	messages []string
+	mu       sync.Mutex
 }
 
 func (m *mockConsoleForOutputMode) Printf(format string, args ...any) {
@@ -43,8 +63,10 @@ func (m *mockConsoleForOutputMode) Printf(format string, args ...any) {
 	} else {
 		msg = format
 	}
+	m.mu.Lock()
 	m.messages = append(m.messages, msg)
-	m.output.WriteString(msg + "\n")
+	m.mu.Unlock()
+	_, _ = m.output.Write([]byte(msg + "\n"))
 }
 
 func (m *mockConsoleForOutputMode) Error(format string, args ...any) {
@@ -69,8 +91,8 @@ func TestTerminalStatus_TTYMode(t *testing.T) {
 		height: 24,
 	}
 
-	var output bytes.Buffer
-	status := NewTerminalStatus(&output, "test.csproj", detector)
+	output := &safeBuffer{}
+	status := NewTerminalStatus(output, "test.csproj", detector)
 
 	// Give it time to update a few times (30Hz = ~33ms per update)
 	time.Sleep(100 * time.Millisecond)
@@ -110,8 +132,8 @@ func TestTerminalStatus_PipedMode(t *testing.T) {
 		height: 0,
 	}
 
-	var output bytes.Buffer
-	status := NewTerminalStatus(&output, "test.csproj", detector)
+	output := &safeBuffer{}
+	status := NewTerminalStatus(output, "test.csproj", detector)
 
 	// Give it time to see if any updates happen
 	time.Sleep(100 * time.Millisecond)
@@ -161,7 +183,7 @@ func TestRun_TTYMode_Output(t *testing.T) {
 
 	// Create mock console with TTY detector
 	console := &mockConsoleForOutputMode{
-		output:   &bytes.Buffer{},
+		output:   &safeBuffer{},
 		messages: []string{},
 	}
 
@@ -248,7 +270,7 @@ func TestRun_PipedMode_Output(t *testing.T) {
 
 	// Create mock console with piped mode detector
 	console := &mockConsoleForOutputMode{
-		output:   &bytes.Buffer{},
+		output:   &safeBuffer{},
 		messages: []string{},
 	}
 

@@ -345,7 +345,8 @@ func (p *V2ResourceProvider) Search(ctx context.Context, cacheCtx *cache.SourceC
 
 	// Convert v2 results to common format
 	results := make([]SearchResult, 0, len(v2Results))
-	for _, r := range v2Results {
+	for i := range v2Results {
+		r := &v2Results[i]
 		result := SearchResult{
 			ID:             r.ID,
 			Version:        r.Version,

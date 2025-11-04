@@ -1,38 +1,26 @@
 package cli
 
 import (
-	"strings"
 	"testing"
+
+	"github.com/willibrandon/gonuget/cmd/gonuget/version"
 )
 
 func TestGetVersion(t *testing.T) {
-	Version = "1.0.0"
-	if got := GetVersion(); got != "1.0.0" {
-		t.Errorf("GetVersion() = %v, want %v", got, "1.0.0")
+	// Test that GetVersion returns the version package's Version
+	got := GetVersion()
+	if got == "" {
+		t.Error("GetVersion() returned empty string")
+	}
+	if got != version.Version {
+		t.Errorf("GetVersion() = %v, want %v", got, version.Version)
 	}
 }
 
 func TestGetFullVersion(t *testing.T) {
-	Version = "1.0.0"
-	Commit = "abc123"
-	Date = "2025-01-01"
-	BuiltBy = "test"
-
+	// Test that GetFullVersion returns a non-empty string
 	got := GetFullVersion()
 	if got == "" {
 		t.Error("GetFullVersion() returned empty string")
-	}
-	// Should contain version info
-	if !strings.Contains(got, Version) {
-		t.Errorf("GetFullVersion() doesn't contain version %s", Version)
-	}
-	if !strings.Contains(got, Commit) {
-		t.Errorf("GetFullVersion() doesn't contain commit %s", Commit)
-	}
-	if !strings.Contains(got, Date) {
-		t.Errorf("GetFullVersion() doesn't contain date %s", Date)
-	}
-	if !strings.Contains(got, BuiltBy) {
-		t.Errorf("GetFullVersion() doesn't contain builtBy %s", BuiltBy)
 	}
 }

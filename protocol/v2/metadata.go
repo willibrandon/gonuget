@@ -146,7 +146,8 @@ func (c *MetadataClient) FindPackagesByID(ctx context.Context, feedURL, packageI
 
 	// Convert all entries to PackageMetadata (includes dependencies!)
 	packages := make([]*PackageMetadata, 0, len(feed.Entries))
-	for _, entry := range feed.Entries {
+	for i := range feed.Entries {
+		entry := &feed.Entries[i]
 		if entry.Properties.Version == "" {
 			continue
 		}

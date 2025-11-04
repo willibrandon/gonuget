@@ -1,4 +1,4 @@
-version: 2
+version: "2"
 
 linters:
   enable:
@@ -6,11 +6,11 @@ linters:
     - gocritic
     - staticcheck
 
-linters-settings:
-  gocritic:
-    enabled-checks:
-      - rangeValCopy
-      - rangeExprCopy
+  settings:
+    gocritic:
+      enabled-checks:
+        - rangeValCopy
+        - rangeExprCopy
 
-  staticcheck:
-    checks: ["all"]
+    staticcheck:
+      checks: ["all"]

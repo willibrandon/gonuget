@@ -1,3 +1,4 @@
+// Package resilience provides circuit breakers and rate limiting for HTTP operations.
 package resilience
 
 import (

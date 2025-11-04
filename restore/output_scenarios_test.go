@@ -1,7 +1,6 @@
 package restore
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -104,7 +103,7 @@ func TestOutputScenarios(t *testing.T) {
 
 					// Create mock console with specific TTY mode
 					console := &mockConsoleForOutputMode{
-						output:   &bytes.Buffer{},
+						output:   &safeBuffer{},
 						messages: []string{},
 					}
 
@@ -288,7 +287,7 @@ func TestVerbosityMinimal(t *testing.T) {
 	}
 
 	console := &mockConsoleForOutputMode{
-		output:   &bytes.Buffer{},
+		output:   &safeBuffer{},
 		messages: []string{},
 	}
 
@@ -358,7 +357,7 @@ func TestVerbosityQuiet(t *testing.T) {
 	}
 
 	console := &mockConsoleForOutputMode{
-		output:   &bytes.Buffer{},
+		output:   &safeBuffer{},
 		messages: []string{},
 	}
 
@@ -423,7 +422,7 @@ func TestErrorScenarios(t *testing.T) {
 
 				t.Run(modeName, func(t *testing.T) {
 					console := &mockConsoleForOutputMode{
-						output:   &bytes.Buffer{},
+						output:   &safeBuffer{},
 						messages: []string{},
 					}
 

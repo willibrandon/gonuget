@@ -1,3 +1,4 @@
+// Package commands provides test helpers for CLI command testing.
 package commands
 
 import (

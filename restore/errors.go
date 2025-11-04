@@ -265,7 +265,8 @@ func (r *Restorer) buildUnresolvedError(ctx context.Context, unresolvedPkgs []re
 	}
 
 	errors := make([]*NuGetError, 0, len(unresolvedPkgs))
-	for _, pkg := range unresolvedPkgs {
+	for i := range unresolvedPkgs {
+		pkg := &unresolvedPkgs[i]
 		// Try to detect if this is NU1101, NU1102, or NU1103
 		queryResult := r.tryGetVersionInfo(ctx, pkg.ID, pkg.VersionRange)
 
