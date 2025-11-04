@@ -1,5 +1,13 @@
 .PHONY: build build-go build-dotnet build-interop test test-go test-go-unit test-dotnet test-interop clean help
 
+# Version information for build-time injection
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
+COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo "none")
+DATE := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
+LDFLAGS := -ldflags "-X github.com/willibrandon/gonuget/cmd/gonuget/version.Version=$(VERSION) \
+                      -X github.com/willibrandon/gonuget/cmd/gonuget/version.Commit=$(COMMIT) \
+                      -X github.com/willibrandon/gonuget/cmd/gonuget/version.Date=$(DATE)"
+
 # Default target
 .DEFAULT_GOAL := help
 
@@ -26,7 +34,7 @@ build-cli-interop: ## Build the gonuget-cli-interop-test binary
 # Build the gonuget CLI
 build-cli: ## Build the gonuget CLI executable
 	@echo "Building gonuget CLI..."
-	@go build -o gonuget ./cmd/gonuget
+	@go build $(LDFLAGS) -o gonuget ./cmd/gonuget
 	@echo "Binary built: gonuget"
 
 # Build .NET test project

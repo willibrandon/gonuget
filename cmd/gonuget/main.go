@@ -12,14 +12,6 @@ import (
 	"github.com/willibrandon/gonuget/cmd/gonuget/commands"
 )
 
-// Version information (set via ldflags during build)
-var (
-	version = "0.0.0-dev"
-	commit  = "unknown"
-	date    = "unknown"
-	builtBy = "unknown"
-)
-
 // preprocessArgs converts dotnet-style colon syntax to Cobra-compatible equals syntax
 // Converts: -v:quiet  -> -v=quiet
 // Converts: -v:d      -> -v=d
@@ -41,13 +33,7 @@ func main() {
 	// Preprocess arguments to support dotnet-style colon syntax (e.g., -v:quiet)
 	os.Args = preprocessArgs(os.Args)
 
-	// Set version info
-	cli.Version = version
-	cli.Commit = commit
-	cli.Date = date
-	cli.BuiltBy = builtBy
-
-	// Setup version after variables are set
+	// Setup version
 	cli.SetupVersion()
 
 	// Setup custom error handler for verb-first pattern detection
