@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/willibrandon/gonuget/cmd/gonuget/solution"
+	"github.com/willibrandon/gonuget/solution"
 )
 
 // UTF-8 BOM bytes
@@ -49,7 +49,9 @@ EndGlobal`
 			var content []byte
 			if tt.withBOM {
 				// Prepend BOM to content
-				content = append(utf8BOM, []byte(solutionContent)...)
+				content = make([]byte, len(utf8BOM))
+				copy(content, utf8BOM)
+				content = append(content, []byte(solutionContent)...)
 			} else {
 				content = []byte(solutionContent)
 			}
@@ -102,10 +104,10 @@ func TestSolutionParser_MixedEncodings(t *testing.T) {
 
 	// Test with various encodings and special characters
 	testCases := []struct {
-		name          string
-		solutionName  string
-		projectName   string
-		withBOM       bool
+		name         string
+		solutionName string
+		projectName  string
+		withBOM      bool
 	}{
 		{
 			name:         "ASCII_Only",
@@ -115,13 +117,13 @@ func TestSolutionParser_MixedEncodings(t *testing.T) {
 		},
 		{
 			name:         "UTF8_SpecialChars",
-			solutionName: "Lösung",  // German
+			solutionName: "Lösung", // German
 			projectName:  "Projekt",
 			withBOM:      true,
 		},
 		{
 			name:         "UTF8_Unicode",
-			solutionName: "解决方案",  // Chinese
+			solutionName: "解决方案", // Chinese
 			projectName:  "项目",
 			withBOM:      true,
 		},
@@ -148,7 +150,9 @@ EndGlobal`
 
 			var content []byte
 			if tc.withBOM {
-				content = append(utf8BOM, []byte(solutionContent)...)
+				content = make([]byte, len(utf8BOM))
+				copy(content, utf8BOM)
+				content = append(content, []byte(solutionContent)...)
 			} else {
 				content = []byte(solutionContent)
 			}
@@ -218,7 +222,9 @@ func TestSlnxParser_UTF8BOM(t *testing.T) {
 
 			var content []byte
 			if tt.withBOM {
-				content = append(utf8BOM, []byte(slnxContent)...)
+				content = make([]byte, len(utf8BOM))
+				copy(content, utf8BOM)
+				content = append(content, []byte(slnxContent)...)
 			} else {
 				content = []byte(slnxContent)
 			}
@@ -261,9 +267,9 @@ func TestSlnxParser_UTF8BOM(t *testing.T) {
 func TestBOMDetection(t *testing.T) {
 	// Test that we can detect and handle various BOMs correctly
 	testCases := []struct {
-		name     string
-		bom      []byte
-		encoding string
+		name        string
+		bom         []byte
+		encoding    string
 		shouldParse bool
 	}{
 		{
@@ -339,7 +345,9 @@ func TestBOMPreservation(t *testing.T) {
 
 	// Create a solution file with BOM
 	solutionPath := filepath.Join(tempDir, "WithBOM.sln")
-	originalContent := append(utf8BOM, []byte(`Microsoft Visual Studio Solution File, Format Version 12.00
+	originalContent := make([]byte, len(utf8BOM))
+	copy(originalContent, utf8BOM)
+	originalContent = append(originalContent, []byte(`Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 Global
 EndGlobal`)...)

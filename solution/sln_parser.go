@@ -38,7 +38,7 @@ func (p *SlnParser) Parse(path string) (*Solution, error) {
 			Message:  fmt.Sprintf("cannot open file: %v", err),
 		}
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	absPath, err := filepath.Abs(path)
 	if err != nil {
@@ -49,7 +49,7 @@ func (p *SlnParser) Parse(path string) (*Solution, error) {
 		FilePath:        absPath,
 		SolutionDir:     filepath.Dir(absPath),
 		Projects:        []Project{},
-		SolutionFolders: []SolutionFolder{},
+		SolutionFolders: []Folder{},
 	}
 
 	// Regular expressions for parsing
@@ -70,7 +70,7 @@ func (p *SlnParser) Parse(path string) (*Solution, error) {
 	inGlobalSection := false
 	inNestedProjects := false
 	currentProject := (*Project)(nil)
-	currentFolder := (*SolutionFolder)(nil)
+	currentFolder := (*Folder)(nil)
 
 	for scanner.Scan() {
 		lineNum++
@@ -112,7 +112,7 @@ func (p *SlnParser) Parse(path string) (*Solution, error) {
 
 			// Check if it's a solution folder
 			if typeGUID == ProjectTypeSolutionFolder {
-				folder := SolutionFolder{
+				folder := Folder{
 					Name:  projectName,
 					GUID:  projectGUID,
 					Items: []string{},

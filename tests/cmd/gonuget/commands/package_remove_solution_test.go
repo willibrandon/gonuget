@@ -12,9 +12,9 @@ import (
 
 func TestPackageRemove_RejectsSolutionFile(t *testing.T) {
 	tests := []struct {
-		name         string
-		extension    string
-		expectedErr  string
+		name        string
+		extension   string
+		expectedErr string
 	}{
 		{
 			name:        ".sln file",
@@ -95,7 +95,7 @@ EndGlobal
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Chdir(originalDir)
+	defer func() { _ = os.Chdir(originalDir) }()
 
 	if err := os.Chdir(tempDir); err != nil {
 		t.Fatal(err)

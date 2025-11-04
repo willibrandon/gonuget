@@ -7,7 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/willibrandon/gonuget/cmd/gonuget/project"
-	"github.com/willibrandon/gonuget/cmd/gonuget/solution"
+	"github.com/willibrandon/gonuget/solution"
 )
 
 // PackageRemoveOptions holds the configuration for the package remove command.
@@ -72,13 +72,11 @@ func runPackageRemove(packageID string, opts *PackageRemoveOptions) error {
 			return fmt.Errorf("failed to find project file: %w", err)
 		}
 		projectPath = foundPath
-	} else {
+	} else if solution.IsSolutionFile(projectPath) {
 		// Check if the provided path is a solution file
-		if solution.IsSolutionFile(projectPath) {
-			// Return error for solution file
-			absPath, _ := filepath.Abs(projectPath)
-			return &InvalidProjectFileError{Path: absPath}
-		}
+		// Return error for solution file
+		absPath, _ := filepath.Abs(projectPath)
+		return &InvalidProjectFileError{Path: absPath}
 	}
 
 	// Load the project

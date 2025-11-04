@@ -23,17 +23,17 @@ func (p *SlnxParser) CanParse(path string) bool {
 
 // slnxDocument represents the root element of a .slnx file
 type slnxDocument struct {
-	XMLName xml.Name      `xml:"Solution"`
-	Folders []slnxFolder  `xml:"Folder"`
-	Props   slnxProps     `xml:"Properties"`
+	XMLName xml.Name     `xml:"Solution"`
+	Folders []slnxFolder `xml:"Folder"`
+	Props   slnxProps    `xml:"Properties"`
 }
 
 // slnxFolder represents a folder element in .slnx
 type slnxFolder struct {
-	Name     string         `xml:"Name,attr"`
-	Projects []slnxProject  `xml:"Project"`
-	Folders  []slnxFolder   `xml:"Folder"` // Nested folders
-	Files    []slnxFile     `xml:"File"`   // Solution items
+	Name     string        `xml:"Name,attr"`
+	Projects []slnxProject `xml:"Project"`
+	Folders  []slnxFolder  `xml:"Folder"` // Nested folders
+	Files    []slnxFile    `xml:"File"`   // Solution items
 }
 
 // slnxProject represents a project reference in .slnx
@@ -74,7 +74,7 @@ func (p *SlnxParser) Parse(path string) (*Solution, error) {
 			Message:  fmt.Sprintf("cannot open file: %v", err),
 		}
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	absPath, err := filepath.Abs(path)
 	if err != nil {
@@ -104,7 +104,7 @@ func (p *SlnxParser) Parse(path string) (*Solution, error) {
 		FilePath:        absPath,
 		SolutionDir:     filepath.Dir(absPath),
 		Projects:        []Project{},
-		SolutionFolders: []SolutionFolder{},
+		SolutionFolders: []Folder{},
 		FormatVersion:   "12.00", // .slnx is equivalent to modern .sln format
 	}
 
@@ -134,7 +134,7 @@ func (p *SlnxParser) processFolder(folder *slnxFolder, sol *Solution, parentGUID
 	*guidCounter++
 
 	// Add the solution folder
-	solutionFolder := SolutionFolder{
+	solutionFolder := Folder{
 		Name:             folder.Name,
 		GUID:             folderGUID,
 		ParentFolderGUID: parentGUID,

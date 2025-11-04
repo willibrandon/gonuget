@@ -10,7 +10,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/willibrandon/gonuget/cmd/gonuget/output"
 	"github.com/willibrandon/gonuget/cmd/gonuget/project"
-	"github.com/willibrandon/gonuget/cmd/gonuget/solution"
+	"github.com/willibrandon/gonuget/solution"
 )
 
 // PackageListOptions holds the configuration for the package list command.
@@ -105,7 +105,7 @@ func runPackageListForSolution(solutionPath string, format string, start time.Ti
 	// Get all .NET project paths (excluding solution folders)
 	projectPaths := sol.GetProjects()
 	if len(projectPaths) == 0 {
-		fmt.Fprintf(w, "Solution '%s' contains no projects.\n", filepath.Base(solutionPath))
+		_, _ = fmt.Fprintf(w, "Solution '%s' contains no projects.\n", filepath.Base(solutionPath))
 		return nil
 	}
 
@@ -150,19 +150,19 @@ func runPackageListForProject(projectPath string, format string, start time.Time
 
 // outputPackageListConsole outputs package references in human-readable format
 func outputPackageListConsole(projectPath string, packageRefs []project.PackageReference, w io.Writer) error {
-	fmt.Fprintf(w, "Project '%s' has the following package references:\n", filepath.Base(projectPath))
-	fmt.Fprintln(w)
+	_, _ = fmt.Fprintf(w, "Project '%s' has the following package references:\n", filepath.Base(projectPath))
+	_, _ = fmt.Fprintln(w)
 
 	if len(packageRefs) == 0 {
-		fmt.Fprintln(w, "   [No package references found]")
+		_, _ = fmt.Fprintln(w, "   [No package references found]")
 		return nil
 	}
 
 	for _, ref := range packageRefs {
 		if ref.Version != "" {
-			fmt.Fprintf(w, "   %s %s\n", ref.Include, ref.Version)
+			_, _ = fmt.Fprintf(w, "   %s %s\n", ref.Include, ref.Version)
 		} else {
-			fmt.Fprintf(w, "   %s (version managed centrally)\n", ref.Include)
+			_, _ = fmt.Fprintf(w, "   %s (version managed centrally)\n", ref.Include)
 		}
 	}
 
@@ -192,8 +192,8 @@ func outputPackageListJSON(projectPath, framework string, packageRefs []project.
 
 // outputSolutionPackageListConsole outputs packages from all projects in console format
 func outputSolutionPackageListConsole(solutionPath string, sol *solution.Solution, projectPaths []string, w io.Writer) error {
-	fmt.Fprintf(w, "Solution '%s' has the following package references:\n", filepath.Base(solutionPath))
-	fmt.Fprintln(w)
+	_, _ = fmt.Fprintf(w, "Solution '%s' has the following package references:\n", filepath.Base(solutionPath))
+	_, _ = fmt.Fprintln(w)
 
 	totalPackages := 0
 	successCount := 0
@@ -220,7 +220,7 @@ func outputSolutionPackageListConsole(solutionPath string, sol *solution.Solutio
 		proj, err := project.LoadProject(absProjectPath)
 		if err != nil {
 			// Skip projects that can't be loaded
-			fmt.Fprintf(w, "   [Warning: Could not load project %s]\n", filepath.Base(projectPath))
+			_, _ = fmt.Fprintf(w, "   [Warning: Could not load project %s]\n", filepath.Base(projectPath))
 			continue
 		}
 
@@ -228,23 +228,23 @@ func outputSolutionPackageListConsole(solutionPath string, sol *solution.Solutio
 		packageRefs := proj.GetPackageReferences()
 
 		if len(packageRefs) > 0 {
-			fmt.Fprintf(w, "   Project '%s' has the following package references:\n", filepath.Base(projectPath))
+			_, _ = fmt.Fprintf(w, "   Project '%s' has the following package references:\n", filepath.Base(projectPath))
 			for _, ref := range packageRefs {
 				if ref.Version != "" {
-					fmt.Fprintf(w, "      > %s %s\n", ref.Include, ref.Version)
+					_, _ = fmt.Fprintf(w, "      > %s %s\n", ref.Include, ref.Version)
 				} else {
-					fmt.Fprintf(w, "      > %s (version managed centrally)\n", ref.Include)
+					_, _ = fmt.Fprintf(w, "      > %s (version managed centrally)\n", ref.Include)
 				}
 				totalPackages++
 			}
-			fmt.Fprintln(w)
+			_, _ = fmt.Fprintln(w)
 		}
 	}
 
 	if totalPackages == 0 {
-		fmt.Fprintln(w, "   [No package references found in any projects]")
+		_, _ = fmt.Fprintln(w, "   [No package references found in any projects]")
 	} else {
-		fmt.Fprintf(w, "Total packages: %d across %d projects\n", totalPackages, successCount)
+		_, _ = fmt.Fprintf(w, "Total packages: %d across %d projects\n", totalPackages, successCount)
 	}
 
 	return nil
@@ -256,7 +256,7 @@ func outputSolutionPackageListJSON(solutionPath string, sol *solution.Solution, 
 	type solutionOutput struct {
 		Solution  string                     `json:"solution"`
 		Projects  []output.PackageListOutput `json:"projects"`
-		ElapsedMs int64                     `json:"elapsedMs"`
+		ElapsedMs int64                      `json:"elapsedMs"`
 	}
 
 	result := solutionOutput{

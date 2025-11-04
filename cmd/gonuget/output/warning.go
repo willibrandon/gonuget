@@ -27,13 +27,13 @@ func NewWarningWriterWithOutput(w io.Writer) *WarningWriter {
 
 // Warning writes a warning message with the standard format
 // Format: "Warning: <message>"
-func (w *WarningWriter) Warning(format string, args ...interface{}) {
+func (w *WarningWriter) Warning(format string, args ...any) {
 	message := fmt.Sprintf(format, args...)
-	fmt.Fprintf(w.writer, "Warning: %s\n", message)
+	_, _ = fmt.Fprintf(w.writer, "Warning: %s\n", message)
 }
 
 // Warn is an alias for Warning
-func (w *WarningWriter) Warn(format string, args ...interface{}) {
+func (w *WarningWriter) Warn(format string, args ...any) {
 	w.Warning(format, args...)
 }
 
@@ -56,7 +56,7 @@ func (w *WarningWriter) WriteSolutionWarning(solutionPath string, message string
 var globalWarningWriter = NewWarningWriter()
 
 // Warning writes a warning message to stderr using the global writer
-func Warning(format string, args ...interface{}) {
+func Warning(format string, args ...any) {
 	globalWarningWriter.Warning(format, args...)
 }
 

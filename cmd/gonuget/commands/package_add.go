@@ -11,8 +11,8 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/willibrandon/gonuget/cmd/gonuget/config"
 	"github.com/willibrandon/gonuget/cmd/gonuget/project"
-	"github.com/willibrandon/gonuget/cmd/gonuget/solution"
 	"github.com/willibrandon/gonuget/restore"
+	"github.com/willibrandon/gonuget/solution"
 	"github.com/willibrandon/gonuget/version"
 )
 
@@ -93,13 +93,11 @@ func runAddPackage(ctx context.Context, packageID string, opts *AddPackageOption
 			return &SolutionNotSupportedError{Directory: currentDir}
 		}
 		projectPath = foundPath
-	} else {
+	} else if solution.IsSolutionFile(projectPath) {
 		// Check if the provided path is a solution file
-		if solution.IsSolutionFile(projectPath) {
-			// Get the directory containing the solution
-			dir := filepath.Dir(projectPath)
-			return &SolutionNotSupportedError{Directory: dir}
-		}
+		// Get the directory containing the solution
+		dir := filepath.Dir(projectPath)
+		return &SolutionNotSupportedError{Directory: dir}
 	}
 
 	// 2. Load the project

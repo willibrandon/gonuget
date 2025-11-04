@@ -154,7 +154,7 @@ func ValidateSolutionFile(path string) error {
 	if err != nil {
 		return fmt.Errorf("cannot read solution file: %w", err)
 	}
-	file.Close()
+	_ = file.Close()
 
 	return nil
 }

@@ -3,7 +3,7 @@ package solution_test
 import (
 	"testing"
 
-	"github.com/willibrandon/gonuget/cmd/gonuget/solution"
+	"github.com/willibrandon/gonuget/solution"
 )
 
 func TestSlnxParser_CanParse(t *testing.T) {
@@ -52,9 +52,9 @@ func TestSlnxParser_Parse(t *testing.T) {
 
 		// Verify project names
 		expectedProjects := map[string]bool{
-			"WebApi":     false,
-			"DataLayer":  false,
-			"UnitTests":  false,
+			"WebApi":    false,
+			"DataLayer": false,
+			"UnitTests": false,
 		}
 
 		for _, project := range sol.Projects {
