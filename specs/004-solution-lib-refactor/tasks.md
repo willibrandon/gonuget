@@ -108,13 +108,13 @@
 
 ### Implementation for User Story 3
 
-- [ ] T038 [P] [US3] Create example function `ExampleGetParser` in `solution/example_test.go` demonstrating .sln parsing
-- [ ] T039 [P] [US3] Create example function `ExampleNewDetector` in `solution/example_test.go` demonstrating auto-detection
-- [ ] T040 [P] [US3] Create example function `ExampleSolution_GetProjects` in `solution/example_test.go` demonstrating project filtering
-- [ ] T041 [US3] Verify examples compile with `go test ./solution`
-- [ ] T042 [US3] Run examples to ensure they execute successfully with `go test -run Example ./solution`
-- [ ] T043 [US3] Verify godoc comments present for all exported symbols with `go doc -all ./solution | grep "^func\|^type\|^const" | wc -l`
-- [ ] T044 [US3] Generate local godoc preview with `godoc -http=:6060` and verify examples appear at `http://localhost:6060/pkg/github.com/willibrandon/gonuget/solution/`
+- [X] T038 [P] [US3] Create example function `ExampleGetParser` in `solution/example_test.go` demonstrating .sln parsing
+- [X] T039 [P] [US3] Create example function `ExampleNewDetector` in `solution/example_test.go` demonstrating auto-detection
+- [X] T040 [P] [US3] Create example function `ExampleSolution_GetProjects` in `solution/example_test.go` demonstrating project filtering
+- [X] T041 [US3] Verify examples compile with `go test ./solution`
+- [X] T042 [US3] Run examples to ensure they execute successfully with `go test -run Example ./solution`
+- [X] T043 [US3] Verify godoc comments present for all exported symbols with `go doc -all ./solution | grep "^func\|^type\|^const" | wc -l`
+- [X] T044 [US3] Generate local godoc preview with `godoc -http=:6060` and verify examples appear at `http://localhost:6060/pkg/github.com/willibrandon/gonuget/solution/`
 
 **Checkpoint**: Documentation and examples ready for pkg.go.dev ✅ SC-006
 
@@ -124,13 +124,13 @@
 
 **Purpose**: Final validation and verification across all user stories
 
-- [ ] T045 [P] Verify code diff shows only import path changes with `git diff --stat`
-- [ ] T046 [P] Verify no logic modifications with code review of changed files
-- [ ] T047 Verify all exported APIs accessible at new location by running external test program
-- [ ] T048 Capture API surface with `go doc -all github.com/willibrandon/gonuget/solution > api-after.txt`
-- [ ] T049 Run full build validation with `go build ./...` and verify zero errors/warnings
-- [ ] T050 Run quickstart.md validation steps 1-15
-- [ ] T051 Update CLAUDE.md if needed to document solution package relocation pattern
+- [X] T045 [P] Verify code diff shows only import path changes with `git diff --stat`
+- [X] T046 [P] Verify no logic modifications with code review of changed files
+- [X] T047 Verify all exported APIs accessible at new location by running external test program
+- [X] T048 Capture API surface with `go doc -all github.com/willibrandon/gonuget/solution > api-after.txt`
+- [X] T049 Run full build validation with `go build ./...` and verify zero errors/warnings
+- [X] T050 Run quickstart.md validation steps 1-15
+- [X] T051 Update CLAUDE.md if needed to document solution package relocation pattern
 
 ---
 
